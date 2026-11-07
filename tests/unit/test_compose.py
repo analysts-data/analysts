@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from cqa import compose
 from cqa.adapters.cassette import CassetteMissing, _key
+from cqa.adapters.jev import JEV_URL, JevVerifier
 from cqa.adapters.llm import PROFILES
 from cqa.compose import build_evaluator
 from cqa.domain.models import Checklist, Dialog
@@ -68,7 +69,7 @@ async def test_replay_without_cassette_never_reaches_the_network(
         ({"llm_mode": "record"}, "CQA_LLM_API_KEY"),
         ({"llm_mode": "live", "llm_api_key": SecretStr("k"), "llm_base_url": None}, "CQA_LLM_BASE_URL"),
         ({"llm_profile": "nope"}, "nope"),
-        ({"verifier": "jev"}, "CQA_VERIFIER"),
+        ({"llm_mode": "live", "llm_api_key": SecretStr("k"), "verifier": "jev"}, "CQA_JEV_API_KEY"),
     ],
 )
 async def test_config_errors_surface_at_evaluate_not_at_build(kw: dict[str, Any], message: str) -> None:
@@ -87,3 +88,34 @@ def test_only_live_mode_sends_real_data(mode: str, real: bool) -> None:
 def test_create_app_builds_the_evaluator_when_none_is_given() -> None:
     app = create_app(settings(db_path=":memory:"))
     assert app.state.runner is not None
+
+
+def test_jev_verifier_is_built_on_request_without_key_in_replay() -> None:
+    evaluator = build_evaluator(settings(verifier="jev"))
+    assert isinstance(evaluator.verifier, JevVerifier)
+    assert evaluator.config_error is None
+
+
+async def test_scenario_5_calls_deepseek_with_thinking_and_jev_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(compose, "CASSETTES", tmp_path)
+    s = settings(
+        llm_mode="live", llm_api_key=SecretStr("k"), llm_profile="deepseek", verifier="jev",
+        jev_api_key=SecretStr("j"), llm_price_in=0.435, llm_price_out=0.87,
+    )  # fmt: skip
+    answer = {"reason_ru": "Поздоровался и представился.", "answer": "yes"}
+    usage = {"prompt_tokens": 1000, "completion_tokens": 100}
+    with respx.mock(assert_all_called=True) as net:
+        llm = net.post("https://llm.test/v1/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(answer)}}], "usage": usage}
+        )
+        jev = net.post(JEV_URL).respond(200, json={"answers": {"q0": "no"}, "usage": {"input_tokens": 1000}})
+        out = await build_evaluator(s).evaluate(CHAT, CHECKLIST, [FIRST])
+    [e] = out.results
+    assert (e.result.a, e.result.alt, e.result.calls) == ("yes", "no", 1)
+    assert e.result.cost == pytest.approx((1000 * 0.435 + 100 * 0.87) / 1e6)
+    assert (out.verifier_calls, out.verifier_usd) == (1, pytest.approx(1000 * 0.042 / 1e6))
+    assert json.loads(llm.calls.last.request.content)["thinking"] == {"type": "enabled"}
+    assert jev.calls.last.request.headers["authorization"] == "Bearer j"
+    assert not list(tmp_path.rglob("*.json"))  # live пишет записи только в record
