@@ -49,6 +49,18 @@ def commit_all(repo: Path, message: str = "init") -> None:
     git("commit", "-m", message, cwd=repo)
 
 
+def clone_with_origin(tmp_path: Path, branch: str = "feat/test") -> Path:
+    """Клон с remote origin: base-коммит на main, локальная ветка branch."""
+    seed = init_repo(tmp_path / "seed")
+    (seed / "README.md").write_text("base\n", encoding="utf-8")
+    commit_all(seed, "base")
+    git("clone", "--bare", str(seed), str(tmp_path / "origin.git"), cwd=tmp_path)
+    clone = tmp_path / "clone"
+    git("clone", str(tmp_path / "origin.git"), str(clone), cwd=tmp_path)
+    git("switch", "-c", branch, cwd=clone)
+    return clone
+
+
 def run_script(name: str, *args: str, cwd: Path, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPTS / name), *args],

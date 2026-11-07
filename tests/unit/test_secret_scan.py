@@ -42,7 +42,7 @@ def test_planted_secret_is_reported(tmp_path: Path, secret: str) -> None:
 
 
 def test_env_example_is_skipped(tmp_path: Path) -> None:
-    repo = make_repo_with(tmp_path, ".env.example", f"CQA_ORG_SIG={SIG}example\n")
+    repo = make_repo_with(tmp_path, ".env.example", f"CQA_ORG_TOKEN={SIG}example\n")
 
     result = run_script("secret_scan.sh", cwd=repo)
 
