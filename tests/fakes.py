@@ -18,6 +18,11 @@ from cqa.domain.models import (
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def prototype_checklist() -> Checklist:
+    """Checklist v3 of the prototype (CL0) with the general rules."""
+    return Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
+
+
 def prototype_dialogs() -> list[Dialog]:
     """The ten synthetic dialogs of the prototype, with their `res`."""
     raw = json.loads((FIXTURES / "dialogs_prototype.json").read_text(encoding="utf-8"))
