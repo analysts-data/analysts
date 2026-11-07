@@ -8,7 +8,7 @@ from cqa.settings import Settings
 
 
 def client() -> TestClient:
-    return TestClient(create_app(Settings(_env_file=None)))
+    return TestClient(create_app(Settings(_env_file=None, db_path=":memory:")))
 
 
 def test_health_is_ok() -> None:
@@ -34,7 +34,7 @@ def test_root_serves_page_with_cqa_app() -> None:
     ],
 )
 def test_service_error_becomes_http_response(exc: Exception, code: int) -> None:
-    app = create_app(Settings(_env_file=None))
+    app = create_app(Settings(_env_file=None, db_path=":memory:"))
 
     def boom() -> None:
         raise exc
