@@ -3,9 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CQA</title>
+  <meta name="color-scheme" content="light">
+  <title>CQA — контроль качества диалогов</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <cqa-app></cqa-app>
+  <!-- Весь интерфейс в одном элементе: в Dynamics 365 он отдаётся как HTML-ресурс, адрес API — параметр data или атрибут data-api. -->
+  <cqa-app class="app" data-role="qa" data-api="/api"></cqa-app>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
