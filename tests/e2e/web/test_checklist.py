@@ -354,3 +354,58 @@ def test_import_disabled_while_draft_dirty(page: Page, web_url: str) -> None:
     page.locator("#cf-name").fill("Приветствие")  # без ухода из поля: только syncSave, без перерисовки
     expect(cimport).to_be_disabled()
     expect(page.locator("#cf-name")).to_have_value("Приветствие")
+
+
+def test_run_progress_survives_page_reload(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    page.locator('[data-act="crun"]').click()
+    expect(page.locator('[data-view="checklist"]')).to_contain_text("Оценено 3 из 10 ответов по критериям")
+    assert page.evaluate("localStorage.getItem('cqa.run')") == "r9"
+
+    page.reload()
+    expect(page.locator('[data-view="checklist"]')).to_contain_text("Оценено 3 из 10 ответов по критериям")
+    expect(page.locator('[data-act="stop"]')).to_be_visible()
+
+    api.finish = True
+    expect(page.locator('[data-act="stop"]')).to_have_count(0)
+    page.wait_for_function("localStorage.getItem('cqa.run') === null")
+    assert page.evaluate("localStorage.getItem('cqa.run')") is None
+
+
+@pytest.mark.parametrize(
+    ("cancelled", "missing"),
+    [(True, False), (False, True)],
+    ids=["cancelled", "unknown-404"],
+)
+def test_finished_or_unknown_stored_run_is_forgotten(
+    page: Page, web_url: str, cancelled: bool, missing: bool
+) -> None:
+    page.add_init_script("localStorage.setItem('cqa.run', 'r9')")
+    api = Api(page)
+    if cancelled:
+        api.cancels = 1  # как сервер после остановки: статус уже не running
+    if missing:
+        page.route(
+            "**/api/runs/r9",
+            lambda route: route.fulfill(status=404, json={"detail": "Запуск не найден"}),
+        )
+    page.goto(f"{web_url}/#/checklist")
+    expect(page.locator('[data-view="checklist"] h1')).to_have_text("Чек-лист качества")
+    expect(page.locator('[data-act="stop"]')).to_have_count(0)
+    expect(page.locator("#toast")).to_be_hidden()
+    page.wait_for_function("localStorage.getItem('cqa.run') === null")
+
+
+def test_run_works_without_local_storage(page: Page, web_url: str) -> None:
+    page.add_init_script(
+        "Object.defineProperty(window, 'localStorage', "
+        "{get() { throw new DOMException('denied', 'SecurityError'); }})"
+    )
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    page.locator('[data-act="crun"]').click()
+    expect(page.locator('[data-view="checklist"]')).to_contain_text("Оценено 3 из 10 ответов по критериям")
+    assert errors == []

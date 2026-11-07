@@ -1,5 +1,5 @@
 // <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
-import { S, api, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { S, api, cancelRun, init, postDataset, reload, render, resumeRun, toast, uploadDataset } from './state.js';
 import { modeText } from './config.js';
 import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
@@ -13,6 +13,12 @@ import * as checklist from './views/checklist.js';
 import * as analytics from './views/analytics.js';
 import * as coaching from './views/coaching.js';
 import { openConfig } from './views/config.js';
+
+// Имя продукта: сайдбар, крошки; <title> в index.html — тем же именем.
+const NAME = 'CQA';
+// Тот же рисунок, что в ./favicon.svg, но currentColor: на плитке .brand он белый на --accent.
+const ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM8.3 11.4l2.3 2.3 4.8-4.8-1.3-1.3-3.5 3.5-1-1z"/></svg>';
 
 const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
@@ -28,7 +34,7 @@ const ACTS = Object.assign({
 
 const SHELL = `
   <aside class="side">
-    <div class="brand"><i aria-hidden="true">CQ</i><div><b>CQA</b><span>Качество диалогов</span></div></div>
+    <div class="brand"><i aria-hidden="true">${ICON}</i><div><b>${NAME}</b><span>Качество диалогов</span></div></div>
     <div class="navgroup">Работа</div>
     <nav class="nav" aria-label="Работа">
       <a href="#/queue" data-page="queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Диалоги<span class="badge" id="bQueue"></span></a>
@@ -74,6 +80,7 @@ class CqaApp extends HTMLElement {
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
     reload();
+    resumeRun(); // перезагрузка во время оценки: продолжаем опрос запомненного запуска
     // llm_mode задаёт .env и из интерфейса не меняется: хватит одного запроса
     api.getConfig().then(c => { S.llmMode = c.llm_mode; this.render(); }, () => {});
   }
@@ -97,7 +104,7 @@ class CqaApp extends HTMLElement {
     }
     const navPage = r.page === 'd' ? 'queue' : r.page;
     this.querySelectorAll('.nav a').forEach(a => a.dataset.page === navPage ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    this.querySelector('#crumb').innerHTML = `CQA / <b>${NAMES[r.page]}</b>`;
+    this.querySelector('#crumb').innerHTML = `${NAME} / <b>${NAMES[r.page]}</b>`;
     const mode = this.querySelector('#mode');
     mode.hidden = !S.mode;
     if (S.mode) {
