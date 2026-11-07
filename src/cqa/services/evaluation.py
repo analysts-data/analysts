@@ -90,13 +90,31 @@ class LlmEvaluator:
     ) -> DialogEvaluation:
         text = render_dialog(dialog)
         lines = {x.n: x.text for x in dialog.lines or [] if isinstance(x, Line)}
-        results = await asyncio.gather(
-            *(self._criterion(build_messages(text, checklist.rules, c), c, lines) for c in criteria)
+        # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
+        asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
+        answers = asyncio.gather(
+            *(self._criterion(build_messages(text, checklist.rules, c), c, lines) for c in asked)
         )
+        verdict: Verdict | None = None
+        if self.verifier and asked:
+            found, verdict = await asyncio.gather(answers, self.verifier.verify(text, checklist.rules, asked))
+        else:
+            found = await answers
+        by_id = dict(zip((c.id for c in asked), found, strict=True))
+        results = []
+        for c in criteria:
+            result = by_id[c.id] if c.id in by_id else self._other_channel()
+            if result is not None:  # None: допустимого ответа нет, критерий ждёт оценки
+                results.append(Evaluation(c.id, result))
         return DialogEvaluation(
-            results=[Evaluation(c.id, r) for c, r in zip(criteria, results, strict=True) if r is not None],
-            verifier_calls=0,
-            verifier_usd=0.0,
+            results=results,
+            verifier_calls=1 if verdict else 0,
+            verifier_usd=verdict.cost if verdict else 0.0,
+        )
+
+    def _other_channel(self) -> CriterionResult:
+        return CriterionResult(
+            a="na", why="Критерий для другого канала", model=self.model_name, calls=0, cost=0, ms=0
         )
 
     async def _criterion(

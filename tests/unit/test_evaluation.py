@@ -183,3 +183,37 @@ async def test_flag_question_with_unproven_violation_keeps_it_and_marks_flag() -
     [flag] = (await evaluator(model).evaluate(CHAT, CHECKLIST, [FLAG])).results
     assert flag.result.a == {"insult": False, "paid": True, "leak": False}
     assert (flag.result.ev, flag.result.evFail, flag.result.calls) == ([], True, 4)
+
+
+async def test_criterion_for_other_channel_is_na_without_model_or_verifier() -> None:
+    chat_only = CRITERIA["05"].model_copy(update={"channel": "chat", "na": True})
+    criteria = [CRITERIA["01"], chat_only, CRITERIA["07"]]
+    model, verifier = FakeModel(), FakeVerifier()
+    out = await evaluator(model, verifier).evaluate(CALL, CHECKLIST, criteria)
+    assert [e.cid for e in out.results] == ["01", "05", "07"]
+    res = out.results[1].result
+    assert res.model_dump(exclude_unset=True) == {
+        "a": "na",
+        "why": "Критерий для другого канала",
+        "model": "qwen3-6",
+        "calls": 0,
+        "cost": 0.0,
+        "ms": 0,
+    }
+    assert model.keys() == ["01", "07"]
+    assert verifier.criteria == [["01", "07"]]
+    assert (out.verifier_calls, out.verifier_usd) == (1, 0.0002)
+
+
+async def test_criterion_for_same_channel_is_asked() -> None:
+    call_only = CRITERIA["05"].model_copy(update={"channel": "call", "na": True})
+    model = FakeModel()
+    [ev] = (await evaluator(model).evaluate(CALL, CHECKLIST, [call_only])).results
+    assert (ev.result.a, ev.result.calls, model.keys()) == ("yes", 1, ["05"])
+
+
+async def test_verifier_is_not_called_when_no_criterion_needs_a_call() -> None:
+    verifier = FakeVerifier()
+    chat_only = CRITERIA["05"].model_copy(update={"channel": "chat", "na": True})
+    out = await evaluator(FakeModel(), verifier).evaluate(CALL, CHECKLIST, [chat_only])
+    assert (verifier.criteria, out.verifier_calls, out.verifier_usd) == ([], 0, 0.0)
