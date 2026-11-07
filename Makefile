@@ -22,7 +22,7 @@ eval-holdout:
 	CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval --holdout $(ARGS)
 
 record:
-	@echo "запись ответов модели появится в llm-evaluation"
+	CQA_LLM_MODE=record uv run pytest -m "cassette or e2e"
 
 run:
 	uv run uvicorn cqa.http.app:create_app --factory --reload --port 8000
