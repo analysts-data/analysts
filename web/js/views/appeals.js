@@ -3,7 +3,7 @@ import { S, api, reload, render, toast } from '../state.js';
 import { calc } from '../scoring.js';
 import { esc, titleOf, f2, mmss, ansTxt } from '../format.js';
 import { href } from '../router.js';
-import { allowed, signOf } from '../appeal_form.js';
+import { allowed, answerOf, signOf } from '../appeal_form.js';
 
 // Черновики решений по id апелляции: режим, выбранный ответ, причина. Живут до сохранения.
 const DEC = {};
@@ -13,7 +13,6 @@ const crit = cid => S.checklist.criteria.find(c => c.id === cid);
 const dlg = id => S.dialogs.find(d => d.id === id);
 const txt = (c, v) => (c ? ansTxt(c, v) : String(v));
 const step = v => (v === 'yes' ? 'Да' : v === 'no' ? 'Нет' : v === 'na' ? 'N/A' : v);
-const val = v => (/^\d+$/.test(v) ? Number(v) : v);
 const WHO = { client: 'клиент', operator: 'оператор', bot: 'бот', system: 'система' };
 const STATUS = {
   pending: ['c-ev', 'Ждёт решения', ''],
@@ -110,7 +109,7 @@ function detail(a) {
 
 export const actions = {
   dmode: t => { DEC[t.dataset.id].mode = t.value; render(); },
-  dval: t => { DEC[t.dataset.id].val = val(t.dataset.v); render(); },
+  dval: t => { DEC[t.dataset.id].val = answerOf(t.dataset.v); render(); },
   dreason: t => {
     DEC[t.dataset.id].reason = t.value;
     S.app.querySelector('[data-act="decide"]').disabled = t.value.trim().length < MIN_REASON;
