@@ -37,6 +37,8 @@ def test_pr_template_links_openspec_and_tdd() -> None:
 
 
 def test_make_e2e_passes_without_e2e_tests_yet() -> None:
-    """Пустой набор e2e-тестов не должен ломать CI (pytest выходит с кодом 5)."""
-    result = subprocess.run(["make", "e2e"], cwd=REPO_ROOT, capture_output=True, text=True)
+    """Пустой набор e2e-тестов не должен ломать CI (pytest выходит с кодом 5); браузер здесь не нужен."""
+    result = subprocess.run(
+        ["make", "e2e", "ARGS=-k no_such_e2e_test"], cwd=REPO_ROOT, capture_output=True, text=True
+    )
     assert result.returncode == 0, result.stdout + result.stderr

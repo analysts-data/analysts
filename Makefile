@@ -12,7 +12,7 @@ check:
 
 e2e:
 	# код 5 — e2e-тестов пока нет: цель не должна ломать CI пустым набором
-	uv run pytest -q -m e2e tests/e2e || [ $$? -eq 5 ]
+	uv run pytest -q -m e2e tests/e2e $(ARGS) || [ $$? -eq 5 ]
 
 eval:
 	@echo "нет эталона: make eval появится в eval-and-delivery"
