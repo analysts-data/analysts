@@ -22,6 +22,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     getState: () => call('GET', '/state'),
     postDataset: groupId => call('POST', '/datasets', { group_id: groupId }),
     uploadDataset: file => call('POST', '/datasets/upload', file, true),
+    postPaste: payload => call('POST', '/dialogs/text', payload),
     postRun: ({ dialogs, criteria }) => call('POST', '/runs', { dialogs, criteria }),
     getRun: rid => call('GET', `/runs/${id(rid)}`),
     cancelRun: rid => call('POST', `/runs/${id(rid)}/cancel`),

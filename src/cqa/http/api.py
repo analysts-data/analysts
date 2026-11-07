@@ -14,7 +14,7 @@ from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import save_owners, set_reviewed
+from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import configure, view
 from cqa.services.ports import DialogSource
@@ -30,6 +30,12 @@ Owner = Literal["Не назначено", "Инструкция", "Сервис
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class PasteIn(BaseModel):
+    title: str
+    ch: Literal["chat", "call"]
+    text: str
 
 
 class DatasetIn(BaseModel):
@@ -90,6 +96,11 @@ async def get_state(request: Request) -> dict[str, Any]:
     syncer: Syncer | None = request.app.state.syncer
     state = build_state(request.app.state.store, request.app.state.mode)
     return {**state, "source": syncer.status() if syncer else None}
+
+
+@router.post("/dialogs/text")
+async def post_paste(body: PasteIn, request: Request) -> dict[str, str]:
+    return {"id": paste_text(request.app.state.store, title=body.title, ch=body.ch, text=body.text)}
 
 
 @router.post("/dialogs/{dialog_id}/reviewed")

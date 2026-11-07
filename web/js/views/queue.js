@@ -103,6 +103,7 @@ export function view() {
       <label class="sr" for="orgurl">Ссылка API организаторов</label><input id="orgurl" type="url" class="fld" placeholder="Ссылка API организаторов (необязательно)" autocomplete="off" style="width:240px">
       <button type="button" class="btn" data-act="load">Получить набор</button>
       <label class="btn" for="jsonf">Загрузить JSON</label><input id="jsonf" type="file" accept="application/json" class="sr" data-act="jsonf">
+      <button type="button" class="btn" data-act="paste">Вставить диалог</button>
     </div></div>
   ${S.source ? `<p class="muted small only-qa">${esc(syncNote(S.source))}</p>` : ''}
   <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}</section>
