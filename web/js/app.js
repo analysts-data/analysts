@@ -12,6 +12,8 @@ const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
 const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
+const TEXT = 'textarea, input:not([type=checkbox], [type=radio], [type=file])';
+
 const ACTS = Object.assign({
   role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
 }, ...Object.values(VIEWS).map(v => v.actions || {}));
@@ -55,9 +57,10 @@ class CqaApp extends HTMLElement {
     S.base = this.dataset.api || '/api';
     this.innerHTML = SHELL;
     this.view = this.querySelector('#view');
-    // click — кнопки и ссылки, change — поля ввода и списки
+    // click — кнопки и ссылки, change — поля ввода и списки; input — ещё и текстовые поля на каждый ввод
     this.addEventListener('click', e => this.act(e, false));
     this.addEventListener('change', e => this.act(e, true));
+    this.addEventListener('input', e => e.target.matches(TEXT) && this.act(e, true));
     window.addEventListener('hashchange', () => { this.render(true); window.scrollTo(0, 0); });
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
