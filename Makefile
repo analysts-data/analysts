@@ -1,4 +1,4 @@
-.PHONY: check e2e eval eval-holdout record run fmt
+.PHONY: check e2e eval eval-holdout record run fmt backup
 
 check:
 	uv run ruff check --no-cache src tests
@@ -30,3 +30,6 @@ run:
 fmt:
 	uv run ruff format src tests
 	uv run ruff check --fix src tests
+
+backup:
+	uv run python scripts/backup_db.py
