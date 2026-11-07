@@ -24,6 +24,9 @@ CALC_JS = """async id => {
 
 GROSS = ("p1-ru-022", "p1-ru-009", "p1-kz-015", "p1-ru-029")  # грубые ошибки набора
 CARD = "p1-ru-022"
+NA = "p1-ru-025"
+CALL = "call-024"
+HOLD = "Удержание и разговор с коллегой"
 
 
 @dataclass
@@ -95,6 +98,42 @@ def card(d: Defence) -> None:
     expect(d.body).to_contain_text(f2(total))
 
 
+def na_and_call(d: Defence) -> None:
+    """N/A и звонок (60 с): условие N/A и итог; переход к фрагменту записи, удержание свёрнуто."""
+    s = d.state()
+    cl, dlg = s["checklist"], dialog(s, NA)
+    nas = [c for c in scored(cl) if dlg["res"][c["id"]]["a"] == "na"]
+    assert nas, f"у {NA} нет N/A"
+    d.go(f"#/d/{NA}")
+    for c in nas:
+        expect(open_criterion(d.page, c["id"])).to_contain_text(c["naCond"])
+    total = d.total(NA)
+    assert total is not None, f"итог {NA} не рассчитан"
+    expect(d.body).to_contain_text(f2(total))
+
+    call = dialog(s, CALL)
+    lines = {x["n"]: x for x in call["lines"] if not x.get("fold")}
+    hold = next(x for x in call["lines"] if x.get("fold") and x["label"] == HOLD)
+    inside = set(range(hold["from"], hold["to"] + 1))
+    assert inside <= lines.keys(), "реплики удержания пропали из lines"
+    evidence = {n for r in call["res"].values() for n in r["ev"]}
+    assert not evidence & inside, f"основания внутри удержания: {sorted(evidence & inside)}"
+    cid, n = next(
+        (c["id"], n) for c in scored(cl) for n in call["res"][c["id"]]["ev"] if lines[n]["s"] is not None
+    )
+    d.go(f"#/d/{CALL}")
+    open_criterion(d.page, cid).locator(f'[data-act="seek"][data-n="{n}"]').first.click()
+    d.page.wait_for_function(
+        "s => Math.abs((document.querySelector('audio')?.currentTime ?? -1) - s) <= 0.5", arg=lines[n]["s"]
+    )
+    expect(line(d.page, n)).to_contain_text(mmss(lines[n]["t"]))
+    fold = line(d.page, hold["from"] - 1).locator(f"xpath=following-sibling::*[contains(., '{HOLD}')][1]")
+    expect(fold).to_contain_text("не оценивается")
+    expect(line(d.page, hold["from"])).to_be_hidden()
+    fold.get_by_role("button").first.click()
+    expect(line(d.page, hold["from"])).to_be_visible()
+
+
 def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
     deadline = time.monotonic() + RUN_TIMEOUT_S
     while (run := api.get(f"/api/runs/{run_id}").raise_for_status().json())["status"] == "running":
@@ -129,6 +168,10 @@ def num(x: float) -> str:
 def f2(total: float | None) -> str:
     """Итог на экране: два знака с запятой или «—»."""
     return "—" if total is None else f"{total:.2f}".replace(".", ",")
+
+
+def mmss(seconds: float) -> str:
+    return f"{int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
 
 
 def points_text(c: dict[str, Any], a: Any) -> str:
