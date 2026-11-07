@@ -1,5 +1,7 @@
 // <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
-import { S, reload, render, toast } from './state.js';
+import { S, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { resolveBase } from './api.js';
+import { groupOf } from './queue.js';
 import { parseHash } from './router.js';
 import * as queue from './views/queue.js';
 import * as card from './views/card.js';
@@ -10,10 +12,17 @@ import * as coaching from './views/coaching.js';
 
 const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
+const WHERE = { kz: 'Казахстан', local: 'локально', external: 'внешний провайдер' };
+// Плашка режима данных: скрыть нельзя, это ответ про трансграничную передачу на защите.
+const modeText = m => [`Обработка: ${WHERE[m.where] || m.where}`, m.anonymized ? 'транскрипты обезличены' : 'без обезличивания',
+  `модель ${m.model}`, m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
 const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
 const ACTS = Object.assign({
   role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
+  load: () => postDataset(document.getElementById('gid').value.trim()),
+  jsonf: t => { if (t.files[0]) uploadDataset(t.files[0]); t.value = ''; },
+  stop: () => cancelRun(),
 }, ...Object.values(VIEWS).map(v => v.actions || {}));
 
 const SHELL = `
@@ -36,6 +45,7 @@ const SHELL = `
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="row">
+        <span class="mode" id="mode" hidden></span>
         <span class="muted small" id="roleLbl">Роль</span>
         <div class="seg" role="group" aria-labelledby="roleLbl">
           <button type="button" data-act="role" data-role="qa" aria-pressed="true">Специалист КК</button>
@@ -52,7 +62,7 @@ const SHELL = `
 class CqaApp extends HTMLElement {
   connectedCallback() {
     S.app = this;
-    S.base = this.dataset.api || '/api';
+    init(resolveBase(location.search, this.dataset.api));
     this.innerHTML = SHELL;
     this.view = this.querySelector('#view');
     // click — кнопки и ссылки, change — поля ввода и списки
@@ -84,6 +94,16 @@ class CqaApp extends HTMLElement {
     const navPage = r.page === 'd' ? 'queue' : r.page;
     this.querySelectorAll('.nav a').forEach(a => a.dataset.page === navPage ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
     this.querySelector('#crumb').innerHTML = `CQA / <b>${NAMES[r.page]}</b>`;
+    const mode = this.querySelector('#mode');
+    mode.hidden = !S.mode;
+    if (S.mode) {
+      mode.textContent = modeText(S.mode);
+      mode.classList.toggle('warn', S.mode.where === 'external' || !S.mode.anonymized);
+    }
+    if (S.checklist) {
+      this.querySelector('#bQueue').textContent = S.dialogs.filter(d => groupOf(d, S.checklist, S.appeals) !== 'other').length || '';
+      this.querySelector('#bAppeals').textContent = S.appeals.filter(a => a.status === 'pending').length || '';
+    }
     this.querySelector('#clVer').textContent = S.checklist ? `Чек-лист v${S.checklist.version}` : '';
     this.querySelectorAll('[data-act=role]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.role === S.role)));
     if (focusView) this.view.focus({ preventScroll: true });
