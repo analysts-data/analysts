@@ -147,9 +147,7 @@ def test_unknown_dialogs_in_a_run_are_404(api: TestClient) -> None:
 def test_without_an_evaluator_runs_are_503(
     settings: Settings, store: Store, conn: sqlite3.Connection
 ) -> None:
-    # create_app builds the evaluator by default; the 503 branch covers an explicitly missing runner
-    app = create_app(settings, source=FakeSource(), conn=conn)
-    app.state.runner = None
-    with TestClient(app) as client:
+    with _client(settings, conn, FakeEvaluator()) as client:
+        client.app.state.runner = None  # type: ignore[attr-defined]  # create_app may wire a default evaluator
         response = client.post("/api/runs", json={"dialogs": None, "criteria": None})
     assert (response.status_code, response.json()) == (503, {"detail": "Оценка моделью не подключена"})
