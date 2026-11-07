@@ -1,5 +1,6 @@
 """HTTP-клиент API организаторов: адрес не попадает ни в журнал, ни в текст ошибок."""
 
+import logging
 import re
 from typing import Final
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -9,6 +10,10 @@ import httpx
 FETCH_TIMEOUT_S: Final = 30.0
 
 _GROUP_ID_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+# httpx пишет адрес запроса с подписью на INFO, httpcore — хост на DEBUG
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 
 class OrgApiError(Exception):
