@@ -1,14 +1,47 @@
-"""Фикстура `tests/fixtures/org_payload.json`: конверт организаторов на синтетике."""
+"""Формат организаторов: фикстура `tests/fixtures/org_payload.json`, разбор меток и конверта."""
 
 import json
 import os
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
+
+from cqa.domain.ingest import ts_seconds
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "org_payload.json"
 
 # маркеры подписанных ссылок собираем по частям, чтобы файл теста сам их не содержал
 FORBIDDEN_MARKERS = ("si" + "g=", "dyna" + "mics.com", "power" + "platform.com")
+
+
+def test_ts_seconds_mmss() -> None:
+    assert ts_seconds("01:10") == 70
+
+
+def test_ts_seconds_hmmss() -> None:
+    assert ts_seconds("1:02:03") == 3723
+
+
+def test_ts_seconds_iso_with_seven_fraction_digits() -> None:
+    """Дробь обрезается до 6 знаков, пояс учитывается, секунды POSIX."""
+    ts = "2026-11-01T10:00:14.1234567+05:00"
+    expected = datetime(2026, 11, 1, 5, 0, 14, 123456, tzinfo=UTC).timestamp()
+    assert ts_seconds(ts) == expected
+
+
+def test_ts_seconds_iso_z_equals_explicit_utc() -> None:
+    assert ts_seconds("2026-11-01T05:00:00Z") == ts_seconds("2026-11-01T05:00:00+00:00")
+
+
+def test_ts_seconds_without_timezone_is_utc() -> None:
+    assert ts_seconds("2026-11-01T05:00:00") == ts_seconds("2026-11-01T05:00:00+00:00")
+
+
+@pytest.mark.parametrize("bad", ["??", "", "10:99", "01.10"])
+def test_ts_seconds_unparsable_returns_none(bad: str) -> None:
+    assert ts_seconds(bad) is None
 
 
 def test_org_payload_fixture_is_valid_envelope() -> None:
