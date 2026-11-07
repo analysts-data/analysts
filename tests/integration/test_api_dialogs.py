@@ -2,6 +2,8 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from cqa.adapters.store import Store
+
 
 def call_024(client: TestClient) -> dict[str, Any]:
     return next(d for d in client.get("/api/state").json()["dialogs"] if d["id"] == "call-024")
@@ -23,3 +25,16 @@ def test_reviewed_of_unknown_dialog_is_404(client: TestClient) -> None:
     response = client.post("/api/dialogs/nope/reviewed", json={"reviewed": True})
     assert response.status_code == 404
     assert response.json() == {"detail": "Диалог nope не найден"}
+
+
+def test_owners_are_merged_and_returned_whole(client: TestClient, store: Store) -> None:
+    store.set_owners({"Переспрос известного": "Сервис"})
+    response = client.put("/api/owners", json={"Не назван срок ответа": "Инструкция"})
+    expected = {"Переспрос известного": "Сервис", "Не назван срок ответа": "Инструкция"}
+    assert response.json() == expected
+    assert client.get("/api/state").json()["owners"] == expected
+
+
+def test_unknown_owner_is_rejected_without_writing(client: TestClient, store: Store) -> None:
+    assert client.put("/api/owners", json={"Не назван срок ответа": "Маркетинг"}).status_code == 422
+    assert store.get_owners() == {}
