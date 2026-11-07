@@ -1,5 +1,5 @@
 // Экран решений по апелляциям: очередь слева, рассмотрение справа, история решений (прототип, раздел 3).
-import { S, reload, render, toast } from '../state.js';
+import { S, api, reload, render, toast } from '../state.js';
 import { calc } from '../scoring.js';
 import { esc, titleOf, f2, mmss, ansTxt } from '../format.js';
 import { href } from '../router.js';
@@ -23,15 +23,6 @@ const STATUS = {
 };
 const draft = a => (DEC[a.id] ||= { mode: 'change', val: a.ask, reason: '' });
 const target = (a, st) => (st.mode === 'confirm' ? a.from : st.val);
-
-// ponytail: временный POST до api из state.js (группа 3), затем api.postDecision
-async function post(path, body) {
-  const res = await fetch(S.base + path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
-  return res.json();
-}
 
 export function view(S, id) {
   const list = S.appeals.filter(a => a.kind === 'appeal');
@@ -129,7 +120,7 @@ export const actions = {
     const before = calc(dlg(a.dlg), S.checklist, S.appeals).total;
     t.disabled = true;
     try {
-      await post(`/appeals/${encodeURIComponent(a.id)}/decision`, { to: target(a, st), reason: st.reason.trim(), reviewer: signOf(S.role) });
+      await api.postDecision(a.id, { to: target(a, st), reason: st.reason.trim(), reviewer: signOf(S.role) });
     } catch (e) {
       t.disabled = false;
       toast(`Решение не сохранено: ${e.message}`);
