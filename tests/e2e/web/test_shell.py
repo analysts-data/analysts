@@ -84,7 +84,7 @@ def test_run_filtered_dialogs_then_stop(page: Page, web_url: str) -> None:
     page.route("**/api/runs/r1/cancel", cancel)
     page.goto(f"{web_url}/#/queue?ch=call")
     page.click('[data-act="run"]')
-    expect(page.locator("#runProgress")).to_contain_text("0/1")
+    expect(page.locator("#runProgress")).to_contain_text("оценено 0 из 1 ответов по критериям")
     page.click('[data-act="stop"]')
     expect(page.locator('[data-act="stop"]')).to_have_count(0)
     assert runs == [{"dialogs": ["call-024"], "criteria": None}]
