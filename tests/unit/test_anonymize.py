@@ -133,3 +133,35 @@ def test_anonymize_preserves_structure_of_prototype_call() -> None:
                 assert getattr(anonymized_line, field) == getattr(source, field)
         if isinstance(source, Fold):
             assert anonymized_line == source
+
+
+def test_operator_self_introduction_without_hint_is_masked_in_ru_en_kz() -> None:
+    out = anonymized_texts(
+        ("operator", "Здравствуйте, я Марк. Откройте «Котировки»."),
+        ("client", "Марк, спасибо"),
+        ("operator", "Hi, I'm Adrian. Open Quotes."),
+        ("operator", "Сәлеметсіз бе, мен Мұратпын. Шотыңызды көріп тұрмын."),
+        ("operator", "Сәлеметсіз бе, мен Айданамын."),
+        ("operator", "Сәлеметсіз бе, мен Дана. Түсінікті."),
+    )
+    assert out[0] == "Здравствуйте, я [ИМЯ_ОПЕРАТОРА]. Откройте «Котировки»."
+    assert out[1] == "[ИМЯ_ОПЕРАТОРА], спасибо"
+    assert out[2] == "Hi, I'm [ИМЯ_ОПЕРАТОРА]. Open Quotes."
+    assert out[3] == "Сәлеметсіз бе, мен [ИМЯ_ОПЕРАТОРА]. Шотыңызды көріп тұрмын."
+    assert out[4] == "Сәлеметсіз бе, мен [ИМЯ_ОПЕРАТОРА]."
+    assert out[5] == "Сәлеметсіз бе, мен [ИМЯ_ОПЕРАТОРА]. Түсінікті."
+
+
+def test_self_introduction_needs_a_capitalized_non_service_word_from_a_person() -> None:
+    out = anonymized_texts(
+        ("operator", "Я передам вопрос специалистам."),
+        ("operator", "Я Вас понял, сейчас проверю."),
+        ("client", "I'm Sorry, I'm new here"),
+        ("bot", "Мен AIM, компанияның көмекшісімін."),
+    )
+    assert out == [
+        "Я передам вопрос специалистам.",
+        "Я Вас понял, сейчас проверю.",
+        "I'm Sorry, I'm new here",
+        "Мен AIM, компанияның көмекшісімін.",
+    ]
