@@ -138,6 +138,17 @@ def test_save_applies_new_version_and_marks_pending(page: Page, web_url: str) ->
     assert next(c for c in draft["criteria"] if c["id"] == "04")["text"] == TEXT_04
 
 
+def test_double_click_on_save_sends_one_put(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": []})
+    item(page, "06").click()
+    page.locator("#cf-w").fill("10")
+    page.locator("#cf-w").press("Tab")
+    page.locator('[data-act="csave"]').dblclick()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 4 применяется")
+    page.wait_for_timeout(300)
+    assert len(api.puts) == 1
+
+
 def test_new_criterion_is_sent_and_waits_for_evaluation(page: Page, web_url: str) -> None:
     api = open_checklist(page, web_url, {"version": 4, "pending": ["09"]})
     page.locator('[data-act="cadd"]').click()

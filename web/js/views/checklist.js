@@ -30,12 +30,12 @@ export function view(S) {
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
     <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
       <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
-      <button type="button" class="btn pri" data-act="csave" ${dirty ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+      <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
   ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done}/${run.total}</b>, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
     <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
-      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
+      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
     <section class="card" style="padding:10px" aria-label="Структура чек-листа">
       ${dr.sections.map((s, si) => `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${wsum(scored(dr).filter(x => x.sec === si)) || ''}</span></p><div class="clist">
@@ -100,6 +100,13 @@ function setField(t) {
   } else c[k] = t.value;
 }
 
+// csave и crun неактивны, пока запрос в пути: двойной клик не создаёт две версии или два запуска
+async function busy(request) {
+  S.busy = true;
+  render();
+  try { await request(); } finally { S.busy = false; render(); }
+}
+
 export const actions = {
   csel: t => { S.cSel = t.dataset.cid; render(); },
   cf: t => { setField(t); render(); },
@@ -111,7 +118,7 @@ export const actions = {
   },
   cdel: () => { S.draft.criteria = S.draft.criteria.filter(c => c.id !== S.cSel); S.cSel = null; render(); },
   creset: () => { S.draft = null; render(); },
-  csave: async () => {
+  csave: () => busy(async () => {
     try {
       const { version, pending } = await api.putChecklist(S.draft);
       S.pending = [...new Set([...(S.pending || []), ...pending])];
@@ -120,6 +127,6 @@ export const actions = {
     } catch (e) {
       toast(`Чек-лист не сохранён: ${e.message}`);
     }
-  },
-  crun: () => startRun({ dialogs: null, criteria: waiting() }),
+  }),
+  crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
 };
