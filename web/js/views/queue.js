@@ -1,15 +1,16 @@
 // Экран очереди: группы приоритета, плитки-фильтры из хеша, поиск и панель оценки. DOM-модуль.
-import { S, startRun, cancelRun, postDataset, uploadDataset, saveSource, render } from '../state.js';
-import { groupOf, queueOrder, reasonOf, syncNote } from '../queue.js';
+import { S, startRun, cancelRun, postDataset, uploadDataset, saveSource, render, failedDialogs, runNote } from '../state.js';
+import { groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../queue.js';
 import { calc, flagsOf, r2, frac, ans } from '../scoring.js';
 import { esc, titleOf, f2, fn, ansTxt } from '../format.js';
 import { href, parseHash } from '../router.js';
 
+// Подсказка группы зависит от второго мнения: без него о двух моделях не говорим.
 const GROUPS = [
-  ['risk', 'Грубые ошибки', 'c-risk', 'флаг ставит любая из двух моделей, итог он не обнуляет'],
-  ['review', 'Нужна проверка человека', 'c-info', 'модели разошлись или цитата не нашлась в реплике'],
-  ['next', 'Без понятного следующего шага', 'c-ev', 'критерий с сигналом «Решение запроса» на нижних ступенях'],
-  ['other', 'Остальные', 'c-na', ''],
+  ['risk', 'Грубые ошибки', 'c-risk', two => `флаг ставит ${two ? 'любая из двух моделей' : 'модель'}, итог он не обнуляет`],
+  ['review', 'Нужна проверка человека', 'c-info', two => `${two ? 'модели разошлись или ' : ''}цитата не нашлась в реплике`],
+  ['next', 'Без понятного следующего шага', 'c-ev', () => 'критерий с сигналом «Решение запроса» ниже верхней ступени'],
+  ['other', 'Остальные', 'c-na', () => ''],
 ];
 
 // Видимые строки в порядке очереди: фильтры из параметров хеша, поиск в S.
@@ -58,13 +59,23 @@ function idlePanel(all) {
 function runPanel(run, all) {
   if (!run) return idlePanel(all);
   const pct = run.total ? (100 * run.done) / run.total : 0;
-  const state = run.status === 'running' ? '' : run.status === 'cancelled' ? 'Оценка остановлена. ' : 'Оценка завершена. ';
+  const state = run.status === 'running' ? 'Идёт оценка: ' : run.status === 'cancelled' ? 'Оценка остановлена: ' : 'Оценка завершена: ';
   const eta = run.eta_s != null && run.status === 'running' ? `, осталось около ${Math.ceil(run.eta_s)} с` : '';
   return `<div style="flex:1 1 320px" class="stack"><div class="row" style="justify-content:space-between">
-      <span id="runProgress">${state}оценено <b>${run.done} из ${run.total}</b> ответов по критериям</span>
+      <span id="runProgress">${state}${run.errors.length ? 'обработано' : 'оценено'} <b>${run.done} из ${run.total}</b> ответов по критериям</span>
       <span class="muted small">${run.calls} вызовов, $${fn(run.cost)}${eta}${run.errors.length ? `, ошибок: ${run.errors.length}` : ''}</span></div>
     <div class="runbar"><i style="width:${pct}%"></i></div></div>
     ${run.status === 'running' ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : '<button type="button" class="btn pri" data-act="run">Оценить</button>'}`;
+}
+
+// Ошибки запуска рядом с прогрессом (очередь и баннер чек-листа): итог одной фразой и список по диалогам.
+export function runErrors(run) {
+  if (!run?.errors.length) return '';
+  const n = run.errors.length;
+  const head = run.status === 'running' ? `Ошибок пока: ${n}, в диалогах: ${failedDialogs(run.errors).length}.` : runNote(run);
+  const items = run.errors.map(e => { const id = failedDialogs([e])[0]; return `<li><a href="${href('d', id)}">${esc(id)}</a>${esc(e.slice(id.length))}</li>`; }).join('');
+  return `<div class="box risk stack" style="flex-basis:100%;gap:6px"><b>${esc(head)}</b>
+    <details><summary>Показать ошибки (${n})</summary><ul style="margin:6px 0 0;padding-left:18px;overflow-wrap:anywhere">${items}</ul></details></div>`;
 }
 
 export function view() {
@@ -74,6 +85,7 @@ export function view() {
   const totals = all.map(x => x.c.total).filter(x => x != null);
   const avg = totals.length ? r2(totals.reduce((a, b) => a + b, 0) / totals.length) : null;
   const pa = S.appeals.filter(a => a.status === 'pending').length;
+  const two = twoModels(S);
   const seq = visibleOrder();
   const ids = seq.map(x => x.d.id);
   if (ids.length && !ids.includes(S.qsel)) S.qsel = ids[0];
@@ -84,7 +96,7 @@ export function view() {
   for (const [g, title, cls, hint] of GROUPS) {
     const rs = seq.filter(x => x.g === g);
     if (!rs.length) continue;
-    body += `<tbody><tr class="grp"><td colspan="6"><span class="chip ${cls}">${title}: ${rs.length}</span> <span class="muted" style="font-weight:400;margin-left:8px">${hint}</span></td></tr>`;
+    body += `<tbody><tr class="grp"><td colspan="6"><span class="chip ${cls}">${title}: ${rs.length}</span> <span class="muted" style="font-weight:400;margin-left:8px">${hint(two)}</span></td></tr>`;
     body += rs.map(x => {
       const why = reasonOf(x.d, S.checklist, S.appeals);
       return `<tr class="click${x.d.id === S.qsel ? ' sel' : ''}" data-act="open" data-id="${esc(x.d.id)}">
@@ -106,11 +118,11 @@ export function view() {
       <button type="button" class="btn" data-act="paste">Вставить диалог</button>
     </div></div>
   ${S.source ? `<p class="muted small only-qa">${esc(syncNote(S.source))}</p>` : ''}
-  <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}</section>
+  <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}${runErrors(S.run)}</section>
   <section class="tiles" aria-label="Быстрые фильтры">
     ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.dialogs.filter(d => d.reviewed && flagsOf(d, S.checklist).length).length} проверено`)}
-    ${tile('review', 'Нужна проверка', cnt('review'), 'модели разошлись или цитата не найдена')}
-    ${tile('next', 'Без следующего шага', cnt('next'), 'клиент не знает, что делать дальше')}
+    ${tile('review', 'Нужна проверка', cnt('review'), two ? 'модели разошлись или цитата не найдена' : 'цитата не найдена в реплике')}
+    ${tile('next', 'Без следующего шага', cnt('next'), 'следующий шаг не назван или неполный')}
     <a class="tile" href="${href('appeals')}"><span class="t">Апелляции</span><strong>${pa}</strong><span class="muted small">ждут решения проверяющего</span></a>
     <a class="tile" href="${href('analytics')}"><span class="t">Средний итог</span><strong>${f2(avg)}</strong><span class="muted small">по ${totals.length} диалогам, открыть аналитику</span></a>
   </section>

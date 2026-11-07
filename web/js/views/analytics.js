@@ -2,6 +2,7 @@
 import { criteriaStats, flagStats, nextStepStats, qualityStats, reasonsCsv, reasonsStats, resultsCsv } from '../analytics.js';
 import { esc, fn, titleOf } from '../format.js';
 import { href } from '../router.js';
+import { twoModels } from '../queue.js';
 import { S, api, render, toast } from '../state.js';
 
 const LANGS = ['RU', 'KZ', 'EN'];
@@ -68,7 +69,8 @@ export function view(S) {
       <p class="muted xs">Флаг не входит в итог. Все такие разговоры стоят первыми в очереди, пока специалист их не проверит. Проверено ${fl.reviewed} из ${flagged}.</p>
       <h2 class="h2" style="margin-top:8px">Качество самой оценки</h2>
       <div class="grid2">
-        <a href="#/queue?grp=review" style="text-decoration:none;color:inherit"><strong style="font-size:24px">${q.answers ? Math.round((100 * q.agree) / q.answers) : '—'}%</strong><p class="muted small">ответов двух моделей совпали (${q.agree} из ${q.answers}); оснований не нашлось: ${q.evFail}</p></a>
+        ${twoModels(S) ? `<a href="#/queue?grp=review" style="text-decoration:none;color:inherit"><strong style="font-size:24px">${q.answers ? Math.round((100 * q.agree) / q.answers) : '—'}%</strong><p class="muted small">ответов двух моделей совпали (${q.agree} из ${q.answers}); оснований не нашлось: ${q.evFail}</p></a>`
+    : `<a href="#/queue?grp=review" style="text-decoration:none;color:inherit"><strong style="font-size:24px">${q.evFail}</strong><p class="muted small">ответов без найденной в реплике цитаты; второе мнение выключено</p></a>`}
         <a href="#/queue?grp=review" style="text-decoration:none;color:inherit"><strong style="font-size:24px">${q.awaiting}</strong><p class="muted small">ответов ждут решения специалиста</p></a>
         <a href="#/appeals" style="text-decoration:none;color:inherit"><strong style="font-size:24px">${q.appeals.changed} из ${decidedAppeals}</strong><p class="muted small">решённых апелляций изменили оценку; ждут ${q.appeals.pending}, закрыто новой версией ${q.appeals.closed}</p></a>
         <div><strong style="font-size:24px">${q.reviews.changed} из ${q.reviews.confirmed + q.reviews.changed}</strong><p class="muted small">проверок расхождений изменили оценку модели</p></div>

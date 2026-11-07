@@ -111,7 +111,7 @@ export function view(S, id) {
       <div class="row" style="justify-content:space-between"><h2 class="label">Грубые ошибки</h2>${flags.length ? `<span class="chip c-risk">Найдены: ${flags.length}</span>` : frr ? '<span class="chip c-ok">Не найдены</span>' : '<span class="chip c-ev">Ждут оценки</span>'}</div>
       ${fr ? (fr.questions || []).map(q => `<div class="kv"><span>${esc(q.label)}</span>${frr && frr.a[q.k] ? '<b style="color:var(--risk)">да</b>' : '<span class="muted">нет</span>'}</div>`).join('') : ''}
       ${flags.length && frr.ev && frr.ev.length ? `<button type="button" class="btn sm" data-act="goto" data-cid="${esc(fr.id)}">Показать реплику ${frr.ev.join(', ')}</button>` : ''}
-      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла хотя бы одна из двух моделей. Итог он не обнуляет.</p>
+      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла ${S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог он не обнуляет.</p>
       ${answered ? `<p class="small" style="margin-top:auto;border-top:1px solid var(--line2);padding-top:10px">Второе мнение совпало по ${answered - disagree(d).length} из ${answered} критериев</p>` : ''}
     </div>
   </section>

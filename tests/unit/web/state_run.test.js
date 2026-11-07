@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { S, cancelRun, init, startRun } from '../../../web/js/state.js';
+import { S, cancelRun, failedDialogs, init, runNote, startRun } from '../../../web/js/state.js';
 
 const until = async (check, ms = 3000) => {
   const end = Date.now() + ms;
@@ -34,4 +34,18 @@ test('stop keeps polling until the server says the run is over: dialogs in fligh
   status = 'cancelled';
   await until(() => seen.includes('GET /api/state'));
   assert.equal(S.run.status, 'cancelled');
+});
+
+const ERRORS = ['p1-ru-003: Нет записи ответа модели', 'call-024/04: нет ответа модели, ждёт оценки', 'call-024/09: нет ответа модели, ждёт оценки'];
+
+test('failedDialogs: dialog ids from run errors, once each, in order', () => {
+  assert.deepEqual(failedDialogs(ERRORS), ['p1-ru-003', 'call-024']);
+});
+
+test('runNote: how a finished run ended, errors first', () => {
+  assert.equal(runNote({ status: 'done', done: 16, total: 16, errors: [] }), 'Оценка завершена: оценено 16 из 16 ответов по критериям.');
+  assert.equal(runNote({ status: 'cancelled', done: 4, total: 16, errors: [] }), 'Оценка остановлена: оценено 4 из 16 ответов по критериям.');
+  assert.equal(runNote({ status: 'done', done: 16, total: 16, errors: ERRORS }),
+    'Оценка завершена с ошибками: 3, в диалогах: 2. Эти ответы ждут оценки, итог считается без них.');
+  assert.equal(runNote({ status: 'done', done: 0, total: 0, errors: [] }), 'Оценивать нечего: все ответы по текущему чек-листу уже есть.');
 });
