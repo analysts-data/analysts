@@ -24,7 +24,8 @@ export function view(S) {
   const dirty = JSON.stringify(dr) !== JSON.stringify(cl);
   const changed = id => {
     const o = cl.criteria.find(x => x.id === id), n = dr.criteria.find(x => x.id === id);
-    return !o || JSON.stringify(o) !== JSON.stringify(n);
+    // правила входят в смысл каждого критерия: сервер вернёт в pending весь чек-лист
+    return dr.rules !== cl.rules || !o || JSON.stringify(o) !== JSON.stringify(n);
   };
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
@@ -46,7 +47,16 @@ export function view(S) {
       <div class="stack small" style="padding:12px 10px 4px;gap:4px"><span class="label">Версии</span>${S.versions.slice().reverse().map(v => `<span>v${esc(v.v)}: ${esc(v.note)}${v.v === cl.version ? ' <span class="chip c-ok">применяется</span>' : ''}</span>`).join('')}</div>
     </section>
     ${c ? editor(S, c) : '<section class="card empty">Критериев нет. Добавьте первый.</section>'}
-  </div>`;
+  </div>
+  ${rulesEditor(S)}`;
+}
+
+// Общие правила — часть черновика, сохраняются тем же PUT /api/checklist (см. actions.crules)
+function rulesEditor(S) {
+  return `<section class="card pad" aria-label="Общие правила"><fieldset ${S.role === 'qa' ? '' : 'disabled'}>
+    <label class="field"><span>Общие правила</span><textarea id="cl-rules" class="fld" data-act="crules" data-input style="min-height:150px">${esc(S.draft.rules)}</textarea>
+      <span class="muted xs">Модель получает правила вместе с каждым критерием. Смена правил меняет смысл всех критериев: после сохранения весь чек-лист ждёт новой оценки.</span></label>
+  </fieldset></section>`;
 }
 
 function editor(S, c) {
@@ -59,6 +69,7 @@ function editor(S, c) {
         <label class="field"><span>Секция</span><select ${field('sec', 'sec')}>${opts(S.draft.sections.map((s, i) => [i, s]), c.sec)}</select></label>
       </div>
       <label class="field"><span>Что проверяем</span><textarea ${field('text', 'text')}>${esc(c.text)}</textarea><span class="muted xs">Этот текст модель получает дословно. Названий критериев нет ни в коде, ни в промпте.</span></label>
+      ${callField(c, field)}
       <div class="grid2">
         <label class="field"><span>Тип ответа</span><select ${field('type', 'type')}>${opts(TYPES, c.type)}</select></label>
         ${c.type !== 'flag' ? `<label class="field"><span>Вес</span><input ${field('w', 'w')} type="number" min="0" max="100" value="${esc(c.w)}"></label>` : '<span></span>'}
@@ -73,9 +84,20 @@ function editor(S, c) {
           <span class="muted xs">Метка «Без следующего шага» и плитки аналитики строятся по сигналу, а не по номеру критерия, поэтому замена критерия их не ломает.</span></label>
       </div>
       <div class="row only-qa" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:14px">
-        <span class="muted small">Смена веса пересчитывает итоги сразу. Смена текста, типа, шкалы или N/A требует новой оценки этого критерия.</span>
+        <span class="muted small">Смена веса пересчитывает итоги сразу. Смена текста, типа, шкалы или N/A требует новой оценки этого критерия, смена уточнения для звонка — только на звонках.</span>
         <button type="button" class="btn" data-act="cdel">Удалить критерий</button></div>
     </fieldset></section>`;
+}
+
+// Уточнение для звонка — для любого типа; пустое поле убирает ключ, сервер читает это как call: null
+function callField(c, field) {
+  return `<label class="field"><span>Уточнение для звонка</span><textarea ${field('call', 'call')} style="min-height:64px">${esc(c.call || '')}</textarea>
+    <span class="muted xs">Необязательно. Модель получает его только на звонках, запрос по чатам не меняется.</span></label>`;
+}
+
+function setCall(c, value) {
+  if (value.trim()) c.call = value;
+  else delete c.call; // без ключа черновик совпадает с версией с сервера (там нет null-полей)
 }
 
 function setField(t) {
@@ -84,6 +106,7 @@ function setField(t) {
   else if (k === 'sec') c.sec = Number(t.value);
   else if (k === 'na') c.na = t.checked;
   else if (k === 'signal') { if (t.value) c.signal = t.value; else delete c.signal; }
+  else if (k === 'call') setCall(c, t.value);
   else if (k === 'channel') { c.channel = t.value; if (t.value !== 'all') c.na = true; } // контракт: канал без N/A — 422
   else if (k === 'type') {
     c.type = t.value;
@@ -101,7 +124,7 @@ function setField(t) {
   } else c[k] = t.value;
 }
 
-const TYPED = new Set(['name', 'text', 'naCond']);
+const TYPED = new Set(['name', 'text', 'naCond', 'call']);
 
 // Текстовые поля не перерисовывают экран ни на ввод, ни на change: перерисовка по change
 // (уход из поля) приходится на нажатие «Сохранить» и съедает клик. Кнопки — по черновику.
@@ -140,4 +163,5 @@ export const actions = {
     }
   }),
   crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
+  crules: t => { S.draft.rules = t.value; syncSave(); },
 };

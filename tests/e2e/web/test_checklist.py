@@ -205,6 +205,54 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
     )  # было 82,94 при весе 15
 
 
+RULES = "N/A ставь только там, где он разрешён. Время ответа не оценивай."
+CALL_04 = "На звонке срок можно назвать устно, ссылку присылать не нужно."
+
+
+def test_rules_change_marks_every_criterion_and_is_saved_with_the_draft(page: Page, web_url: str) -> None:
+    ids = [c["id"] for c in json.loads(STATE)["checklist"]["criteria"]]
+    api = open_checklist(page, web_url, {"version": 4, "pending": ids})
+    rules = page.locator("#cl-rules")
+    expect(rules).to_have_value(api.state["checklist"]["rules"])
+    expect(page.get_by_text("Смена правил меняет смысл всех критериев")).to_be_visible()
+    rules.fill(RULES)
+    expect(page.locator('[data-act="csave"]')).to_be_enabled()
+    item(page, "03").click()
+    expect(item(page, "03")).to_contain_text("изменён")
+    expect(item(page, "08")).to_contain_text("изменён")
+    page.locator('[data-act="csave"]').click()
+    for cid in ids:
+        expect(item(page, cid)).to_contain_text("ждёт оценки")
+    [draft] = api.puts
+    assert draft["rules"] == RULES
+
+
+def test_call_addendum_is_offered_for_every_type_and_empty_means_none(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    for cid in ("01", "08", "04"):  # bool, flag, scale
+        item(page, cid).click()
+        expect(page.locator("#cf-call")).to_have_value("")
+    expect(
+        page.get_by_text("Модель получает его только на звонках, запрос по чатам не меняется")
+    ).to_be_visible()
+    page.locator("#cf-call").fill(CALL_04)
+    expect(page.locator('[data-act="csave"]')).to_be_enabled()
+    page.locator("#cf-call").fill("  ")
+    expect(page.locator('[data-act="csave"]')).to_be_disabled()
+    page.locator("#cf-call").fill(CALL_04)
+    page.locator('[data-act="csave"]').click()
+    expect(item(page, "04")).to_contain_text("ждёт оценки")
+    expect(page.locator("#cf-call")).to_have_value(CALL_04)
+
+    api.put_reply = {"version": 5, "pending": ["04"]}
+    page.locator("#cf-call").fill("")
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 5 применяется")
+    sent = [next(c for c in d["criteria"] if c["id"] == "04").get("call") for d in api.puts]
+    assert sent == [CALL_04, None]
+    assert all("call" not in c for c in api.puts[0]["criteria"] if c["id"] != "04")
+
+
 @pytest.mark.parametrize(
     ("cid", "field", "typed"),
     [
@@ -212,6 +260,8 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
         ("04", "#cf-text", "Оцените ответ, следующий шаг и срок."),
         ("04", "#cf-steps", "10: Полностью\n5: Частично\n0: Нет"),
         ("08", "#cf-q", "Оскорбление клиента\nПлатная услуга"),
+        ("04", "#cf-call", "Срок можно назвать устно."),
+        ("04", "#cl-rules", "N/A только где разрешён.\nВремя ответа не оцениваем."),
     ],
 )
 def test_typing_key_by_key_keeps_every_character_and_focus(
