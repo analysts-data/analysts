@@ -23,6 +23,25 @@ class Api:
         page.on("pageerror", lambda e: self.errors.append(str(e)))
         page.route("**/api/state", lambda route: route.fulfill(json=self.state))
         page.route("**/api/appeals/*/decision", self.decide)
+        page.route("**/api/appeals", self.appeal)
+
+    def appeal(self, route: Route) -> None:
+        body = route.request.post_data_json
+        self.posts.append((route.request.url, body))
+        a = {
+            **body,
+            "id": "a9",
+            "kind": "appeal",
+            "from": 5,
+            "to": None,
+            "at": "07.11 16:00",
+            "status": "pending",
+            "reviewer": None,
+            "reason": None,
+            "decidedAt": None,
+        }
+        self.state["appeals"].append(a)
+        route.fulfill(json=a)
 
     def decide(self, route: Route) -> None:
         body = route.request.post_data_json
@@ -32,6 +51,64 @@ class Api:
         status = "confirmed" if body["to"] == a["from"] else "changed"
         a.update(body, status=status, decidedAt="07.11 16:00")
         route.fulfill(json=a)
+
+
+def open_criterion(page: Page, cid: str) -> None:
+    row = page.locator(f'.crit[data-cid="{cid}"] .crit-row')
+    if row.get_attribute("aria-expanded") != "true":
+        row.click()
+
+
+def test_appeal_from_card_posts_answer_comment_and_line(page: Page, web_url: str) -> None:
+    api = Api(page)
+    page.goto(f"{web_url}/#/d/p1-ru-003")
+    open_criterion(page, "04")
+    page.locator('[data-act="appeal"][data-cid="04"]').click()
+    form = page.locator("#dlg")
+    expect(form).to_be_visible()
+    expect(form.get_by_label("Критерий")).to_have_value("04")
+    form.get_by_label("Какой ответ вы считаете верным").select_option("10")
+    send = form.get_by_role("button", name="Отправить апелляцию")
+    comment = form.get_by_label("Комментарий, обязательно")
+    comment.fill("Коротко   ")
+    expect(send).to_be_disabled()
+    comment.fill("Срок вывода назван, это существенная часть ответа.")
+    expect(send).to_be_enabled()
+    form.get_by_label("Реплика в подтверждение").select_option("8")
+    send.click()
+    expect(form).to_be_hidden()
+    expect(page.locator("#toast")).to_contain_text("отправлена")
+    expect(page.locator('.crit[data-cid="04"]')).to_contain_text("Апелляция на рассмотрении")
+    assert api.posts == [
+        (
+            api.posts[0][0],
+            {
+                "dlg": "p1-ru-003",
+                "cid": "04",
+                "ask": 10,
+                "ev": [8],
+                "comment": "Срок вывода назван, это существенная часть ответа.",
+                "by": "Специалист КК",
+            },
+        )
+    ]
+    assert api.posts[0][0].endswith("/api/appeals")
+    assert api.errors == []
+
+
+def test_appeal_form_offers_only_scored_criteria_and_other_answers(page: Page, web_url: str) -> None:
+    Api(page)
+    page.goto(f"{web_url}/#/d/call-024")
+    open_criterion(page, "06")
+    page.locator('[data-act="appeal"][data-cid="06"]').click()
+    form = page.locator("#dlg")
+    cids = form.get_by_label("Критерий").locator("option").evaluate_all("os => os.map(o => o.value)")
+    assert "04" not in cids  # по 04 уже есть апелляция a1 на рассмотрении
+    assert "08" not in cids  # флаг не оспаривается
+    asks = form.get_by_label("Какой ответ вы считаете верным").locator("option")
+    assert asks.evaluate_all("os => os.map(o => o.value)") == ["10", "4", "0"]  # без текущего 7
+    form.get_by_label("Критерий").select_option("01")
+    assert asks.evaluate_all("os => os.map(o => o.value)") == ["no"]
 
 
 def as_reviewer(page: Page, web_url: str, hash_: str) -> None:
