@@ -32,17 +32,25 @@ test('every client method goes to its contract path', async () => {
   await api.postReview({ dlg: 'd', cid: 'c', from: 'no', to: 'yes', reason: 'r', reviewer: 'Специалист КК' });
   await api.postReviewed('p1-ru-003', false);
   await api.putOwners({ Тег: 'Инструкция' });
+  await api.putSource('https://org.test/api?token=t', 'DEV');
+  await api.putAnswer('p1-ru-003', '01', { a: 'no', reason: 'r', by: 'Специалист КК' });
+  await api.getConfig();
+  await api.putConfig({ llm_model: 'm' });
   const seen = calls.map(c => `${c.method} ${c.url}`);
   assert.deepEqual(seen, [
     'GET /api/state', 'POST /api/datasets', 'POST /api/datasets/upload', 'POST /api/runs', 'GET /api/runs/r1',
     'POST /api/runs/r1/cancel', 'PUT /api/checklist', 'POST /api/appeals', 'POST /api/appeals/a1/decision',
-    'POST /api/decisions', 'POST /api/dialogs/p1-ru-003/reviewed', 'PUT /api/owners',
+    'POST /api/decisions', 'POST /api/dialogs/p1-ru-003/reviewed', 'PUT /api/owners', 'PUT /api/source',
+    'PUT /api/dialogs/p1-ru-003/answers/01', 'GET /api/config', 'PUT /api/config',
   ]);
   assert.deepEqual(JSON.parse(calls[1].body), { group_id: 'DEV' });
   assert.equal(calls[2].body, '{"data": {}}');
   assert.deepEqual(JSON.parse(calls[3].body), { dialogs: ['call-024'], criteria: null });
   assert.deepEqual(JSON.parse(calls[10].body), { reviewed: false });
   assert.deepEqual(JSON.parse(calls[11].body), { Тег: 'Инструкция' });
+  assert.deepEqual(JSON.parse(calls[12].body), { url: 'https://org.test/api?token=t', group_id: 'DEV' });
+  assert.deepEqual(JSON.parse(calls[13].body), { a: 'no', reason: 'r', by: 'Специалист КК' });
+  assert.deepEqual(JSON.parse(calls[15].body), { llm_model: 'm' });
   assert.equal(api.audioUrl('call-024'), '/api/dialogs/call-024/audio');
   assert.equal(api.playerUrl('call-024'), '/api/dialogs/call-024/player');
 });

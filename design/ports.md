@@ -32,7 +32,7 @@ class DialogEvaluation:
 
 # src/cqa/services/ports.py — bootstrap-harness
 class DialogSource(Protocol):     # реализует OrgDialogSource (dialog-ingest)
-    async def fetch(self, group_id: str) -> IngestResult: ...      # Invalid | Upstream
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult: ...  # Invalid | Upstream; url важнее CQA_ORG_API_URL
     def upload(self, raw: bytes) -> IngestResult: ...              # Invalid
     async def audio_link(self, audio_url: str) -> str | None: ...  # свежий MP3 из плеера; None — не вышло
 
@@ -52,6 +52,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
 | `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
 | `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
+| `set_answer` | `src/cqa/services/answers.py`, review-workflow | `set_answer(store, *, dlg, cid, a, reason, by) -> CriterionResult`, `model = MANUAL = "вручную"`; `NotFound`, `Invalid`, `Conflict` |
+| `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
 | `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
@@ -100,6 +103,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
 
 | Строка в `create_app` | Трек |
 | --- | --- |

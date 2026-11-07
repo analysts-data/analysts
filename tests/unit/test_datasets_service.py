@@ -61,3 +61,10 @@ async def test_blank_group_id_is_rejected(store: Store) -> None:
 def test_empty_upload_is_rejected(store: Store) -> None:
     with pytest.raises(Invalid, match="^Пустой файл$"):
         load_upload(store, _source(), b"")
+
+
+async def test_load_group_uses_the_saved_org_link(store: Store) -> None:
+    store.set_org_source("https://org.test/api?token=t", "DEV")
+    source = _source()
+    await load_group(store, source, "CTRL1")
+    assert source.fetched == [("CTRL1", "https://org.test/api?token=t")]

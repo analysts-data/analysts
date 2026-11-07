@@ -41,3 +41,12 @@ export function reasonOf(d, checklist, appeals) {
   if (g === 'next') { const c = resolution(checklist); return { cls: 'c-ev', text: `${c.name}: ${ansTxt(c, ans(d, c.id, appeals))}` }; }
   return flagsOf(d, checklist).length ? { cls: 'c-na', text: 'Грубая ошибка проверена' } : { cls: '', text: '' };
 }
+
+// Строка автосинхронизации из state.source; ссылку сервер не отдаёт.
+export function syncNote(s) {
+  if (!s) return '';
+  const head = `Автосинхронизация ${s.group_id} раз в 5 минут`;
+  if (!s.synced_at) return head;
+  const time = new Date(s.synced_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${head}, последняя в ${time}: ${s.error ? `ошибка — ${s.error}` : `добавлено ${s.added}`}`;
+}

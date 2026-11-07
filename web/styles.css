@@ -234,6 +234,8 @@ tr.sel td{background:var(--accent-soft)}
 
 /* плашка режима данных (заменяет «Учебный макет» прототипа) */
 .mode{font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:3px 10px}
+button.mode{border:0;cursor:pointer;font-family:inherit}
+button.mode:hover{text-decoration:underline}
 .mode.warn{color:#7A3A06;background:var(--ev-soft)}
 
 /* узкий экран: колонки не растягиваются по ширине таблиц, таблицы прокручиваются внутри .tablewrap,

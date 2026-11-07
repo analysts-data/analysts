@@ -40,12 +40,14 @@ class FakeSource:
     ) -> None:
         self.result = IngestResult(list(dialogs), dict(audio or {}), len(errors), list(errors))
         self.raises = dict(raises or {})
+        self.fetched: list[tuple[str, str | None]] = []  # (group_id, url) of every fetch
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.raises:
             raise self.raises[method]
 
-    async def fetch(self, group_id: str) -> IngestResult:
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult:
+        self.fetched.append((group_id, url))
         self._maybe_raise("fetch")
         return self.result
 

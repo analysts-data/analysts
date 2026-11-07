@@ -55,13 +55,14 @@ class Defence:
 
 
 def mode_and_roles(d: Defence) -> None:
-    """Перед шагами: плашка режима из `state.mode`, решение у проверяющего, «Оспорить» у оператора.
+    """Перед шагами: плашка режима из `mode` и `llm_mode`, решение у проверяющего, «Оспорить» у оператора.
 
     Подаёт апелляцию на критерий из `replacement_criterion.json`: её закрывает шаг замены.
     """
     s = d.state()
     d.go("#/queue")
-    expect(d.body).to_contain_text(s["mode"]["model"])
+    replay = d.api.get("/api/config").raise_for_status().json()["llm_mode"] == "replay"
+    expect(d.body).to_contain_text("Записанные ответы" if replay else s["mode"]["model"])
     expect(d.body).to_contain_text(WHERE[s["mode"]["where"]])
     c = criterion(s["checklist"], load_fixture("replacement_criterion.json")["id"])
     current = dialog(s, CARD)["res"][c["id"]]["a"]

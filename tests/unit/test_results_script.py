@@ -10,6 +10,7 @@ import pytest
 
 from cqa.adapters.store import Store, connect
 from cqa.domain.review import fingerprint
+from cqa.services.answers import set_answer
 from fakes import prototype_checklist, prototype_dialogs
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "results.py"
@@ -99,6 +100,20 @@ def test_several_snapshots_join_in_order_without_repeats(base: Path) -> None:
     assert results.main(["dev", "--group", "CHATS", "--group", "CALLS", "--out", str(out)]) == 0
 
     assert [r["conversation_id"] for r in json.loads(out.read_text(encoding="utf-8"))["results"]] == IDS
+
+
+def test_manual_answer_is_the_exported_answer_and_not_a_model_name(base: Path) -> None:
+    conn = connect(str(base / "cqa.db"))
+    set_answer(Store(conn), dlg=IDS[0], cid="01", a="no", reason="Не поздоровался", by="Анна")
+    conn.close()
+    out = base / "out.json"
+
+    assert results.main(["dev", "--out", str(out)]) == 0
+
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    first = next(c for c in doc["results"][0]["criteria"] if c["criterion_id"] == "contact")
+    assert (first["value"], first["rationale"]) == (False, "Не поздоровался")
+    assert doc["model"]["name"] == "qwen3-6"
 
 
 def test_prod_without_exactly_ten_records_fails_loudly_but_keeps_the_file(

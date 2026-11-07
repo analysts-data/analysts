@@ -30,7 +30,7 @@ def test_analytics_tiles_and_tables_from_state_only(page: Page, web_url: str) ->
     expect(page.locator('[aria-label="Критерий и язык"] tbody tr')).to_have_count(7)
     expect(page.locator('[aria-label="Повторяющиеся причины"] tbody tr')).to_have_count(4)
     expect(page.locator('a[href="#/queue?lost=07&lang=KZ"]')).to_have_text("1 из 2")
-    assert requests == ["GET /state"]
+    assert requests == ["GET /state", "GET /config"]  # /config — один раз для плашки режима
 
 
 @pytest.mark.parametrize("route", ["#/analytics", "#/coaching"])
@@ -89,7 +89,7 @@ def test_coaching_moments_from_state_only(page: Page, web_url: str) -> None:
     expect(page.locator('[aria-label="Как звучит хороший ответ"]')).to_contain_text("Примеры появятся")
     page.click('[data-act="coach"][data-cid="07"]')
     expect(moments).to_have_count(2)
-    assert requests == ["GET /state"]
+    assert requests == ["GET /state", "GET /config"]  # /config — один раз для плашки режима
 
 
 def test_meeting_sheet_collects_and_copies(page: Page, context: BrowserContext, web_url: str) -> None:
