@@ -220,7 +220,7 @@ async def test_signed_links_never_leak_into_dialogs_or_logs(caplog: pytest.LogCa
     )
     for player_id in result.audio:
         respx.get(f"https://org.test/player/{player_id}").mock(
-            return_value=httpx.Response(200, text='<source src="https://storage.test/rec.mp3?sig=abc">')
+            return_value=httpx.Response(200, text='<source src="https://storage.test/rec.mp3?token=abc">')
         )
     store = FakeStore(dict(result.audio))
 
