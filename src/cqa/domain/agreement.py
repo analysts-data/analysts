@@ -138,6 +138,22 @@ class NaMetrics:
 
 
 @dataclass(frozen=True)
+class TagStats:
+    """Теги причин: встреченные в двух и более диалогах и одиночные."""
+
+    recurring: int
+    single: int
+
+
+@dataclass(frozen=True)
+class VerifierStats:
+    """Второе мнение: доля расхождений с a и доля «уловленных» несовпадений."""
+
+    disagree: float
+    catch: float
+
+
+@dataclass(frozen=True)
 class RunMetrics:
     agree_total: Agreement
     per_lang: dict[str, Agreement]
@@ -146,6 +162,13 @@ class RunMetrics:
     gross: GrossMetrics
     na: NaMetrics
     disagreements: list[Disagreement]
+    evidence_ok: float
+    cost: float
+    calls: int
+    n_dialogs: int
+    model: str
+    tags: TagStats
+    verifier: VerifierStats | None
 
     @property
     def kz_gap_pts(self) -> float | None:
@@ -154,6 +177,14 @@ class RunMetrics:
         if ru is None or kz is None or ru.frac is None or kz.frac is None:
             return None
         return round((ru.frac - kz.frac) * 100, 2)
+
+    @property
+    def cost_per_dialog(self) -> float | None:
+        return None if self.n_dialogs == 0 else self.cost / self.n_dialogs
+
+    @property
+    def calls_per_dialog(self) -> float | None:
+        return None if self.n_dialogs == 0 else self.calls / self.n_dialogs
 
 
 def score_run(
@@ -181,6 +212,13 @@ def score_run(
     missed: list[tuple[str, str]] = []
     false_flags = 0
     na_tp = na_fp = na_fn = 0
+    mismatch_present = mismatch_alt_diff = 0
+    all_results = [res for per_dialog in results.values() for res in per_dialog.values()]
+    tag_dialogs: dict[str, set[str]] = {}
+    for dlg_id, per_dialog in results.items():
+        for res in per_dialog.values():
+            if res.tag:
+                tag_dialogs.setdefault(res.tag, set()).add(dlg_id)
 
     for label in gold:
         if label.ok is None:
@@ -215,6 +253,10 @@ def score_run(
                     quote=res.quote if res is not None else None,
                 )
             )
+            if res is not None:
+                mismatch_present += 1
+                if res.alt is not None and res.alt != res.a:
+                    mismatch_alt_diff += 1
         keys = flag_keys.get(label.cid)
         if keys is not None:
             gold_true = {k for answer in label.ok if isinstance(answer, dict) for k, v in answer.items() if v}
@@ -256,7 +298,43 @@ def score_run(
             recall=na_tp / (na_tp + na_fn) if na_tp + na_fn else None,
         ),
         disagreements=disagreements,
+        evidence_ok=(sum(1 for res in all_results if not res.evFail) / len(all_results))
+        if all_results
+        else 1.0,
+        cost=sum(res.cost for res in all_results),
+        calls=sum(res.calls for res in all_results),
+        n_dialogs=len(dialogs),
+        model=", ".join(sorted({res.model for res in all_results if res.model})),
+        tags=TagStats(
+            recurring=sum(1 for dlgs in tag_dialogs.values() if len(dlgs) >= 2),
+            single=sum(1 for dlgs in tag_dialogs.values() if len(dlgs) == 1),
+        ),
+        verifier=VerifierStats(
+            disagree=sum(1 for res in all_results if res.alt is not None and res.alt != res.a)
+            / len(all_results),
+            catch=mismatch_alt_diff / mismatch_present if mismatch_present else 0.0,
+        )
+        if any(res.alt is not None for res in all_results)
+        else None,
     )
+
+
+def stability(
+    a: Mapping[str, Mapping[str, CriterionResult]],
+    b: Mapping[str, Mapping[str, CriterionResult]],
+) -> float:
+    """Доля пар «диалог, критерий» с одинаковым a в двух прогонах."""
+    pairs = {(dlg, cid) for dlg, per_dialog in a.items() for cid in per_dialog} | {
+        (dlg, cid) for dlg, per_dialog in b.items() for cid in per_dialog
+    }
+    if not pairs:
+        return 1.0
+    same = sum(
+        1
+        for dlg, cid in pairs
+        if dlg in a and dlg in b and cid in a[dlg] and cid in b[dlg] and a[dlg][cid].a == b[dlg][cid].a
+    )
+    return same / len(pairs)
 
 
 class _Counter:

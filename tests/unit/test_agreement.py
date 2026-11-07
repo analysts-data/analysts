@@ -2,7 +2,8 @@
 
 import json
 
-from builders import dialog, result, v3_checklist
+import pytest
+from builders import checklist, criterion, dialog, result, v3_checklist
 
 
 def gold_line(dlg: str, cid: str, ok, by: str = "team", note: str = "") -> str:
@@ -373,3 +374,163 @@ def test_na_metrics_are_null_on_empty_denominator() -> None:
 
     assert metrics.na.precision is None
     assert metrics.na.recall is None
+
+
+# --- stability, стоимость, теги, второе мнение ----------------------------------------------
+
+
+def _results_matrix(n_dialogs: int, n_criteria: int, tweak=None):
+    """n_dialogs × n_criteria результатов yes; tweak(dialog, cid) -> новый ответ."""
+    results = {}
+    for d in range(n_dialogs):
+        dlg = f"p1-ru-{d:03d}"
+        results[dlg] = {
+            f"c{i:02d}": result(tweak(d, i) if tweak and tweak(d, i) else "yes") for i in range(n_criteria)
+        }
+    return results
+
+
+def test_stability_192_of_200_is_096() -> None:
+    from cqa.domain.agreement import stability
+
+    def tweak(d: int, i: int):
+        return "no" if (d, i) in {(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)} else None
+
+    a = _results_matrix(20, 10)
+    b = _results_matrix(20, 10, tweak)  # 8 из 200 различаются
+
+    assert stability(a, b) == 0.96
+
+
+def test_stability_188_of_200_is_094() -> None:
+    from cqa.domain.agreement import stability
+
+    diff = {(d, i) for d in range(10) for i in range(1)} | {(d, i) for d in range(10, 12) for i in range(1)}
+
+    def tweak(d: int, i: int):
+        return "no" if (d, i) in diff else None
+
+    assert stability(_results_matrix(20, 10), _results_matrix(20, 10, tweak)) == 0.94
+
+
+def test_stability_counts_pairs_missing_in_one_run() -> None:
+    from cqa.domain.agreement import stability
+
+    a = _results_matrix(2, 2)
+    b = {"p1-ru-000": dict(a["p1-ru-000"])}
+
+    assert stability(a, b) == 0.5  # 2 из 4 пар есть только в одном прогоне
+
+
+def test_run_metrics_cost_calls_model_per_dialog() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    bools = checklist_of_ten_bools()
+    for d in range(20):
+        dlg = f"p1-ru-{d:03d}"
+        dialogs[dlg] = dialog(dlg)
+        results[dlg] = {}
+        for i in range(10):
+            cid = f"c{i:02d}"
+            lines.append(gold_line(dlg, cid, ["yes"]))
+            results[dlg][cid] = result("yes", calls=1, cost=0.0012, model="qwen3-6")
+
+    metrics = score_run(load_gold(lines, bools), results, dialogs, bools)
+
+    assert metrics.calls == 200
+    assert metrics.cost == pytest.approx(0.24)
+    assert metrics.cost_per_dialog == pytest.approx(0.012)
+    assert metrics.calls_per_dialog == 10
+    assert metrics.model == "qwen3-6"
+
+
+def test_run_metrics_evidence_ok_share() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    bools = checklist_of_ten_bools()
+    for d in range(20):
+        dlg = f"p1-ru-{d:03d}"
+        dialogs[dlg] = dialog(dlg)
+        results[dlg] = {}
+        for i in range(10):
+            cid = f"c{i:02d}"
+            lines.append(gold_line(dlg, cid, ["yes"]))
+            results[dlg][cid] = result("yes", evFail=(d, i) in {(d0, 0) for d0 in range(20)})
+
+    metrics = score_run(load_gold(lines, bools), results, dialogs, bools)
+
+    assert metrics.evidence_ok == 0.90
+
+
+def test_run_metrics_tags_recurring_and_single() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    bools = checklist_of_ten_bools()
+    tags = {
+        ("p1-ru-000", "c00"): "Не назван срок ответа",
+        ("p1-ru-001", "c00"): "Не назван срок ответа",  # recurring
+        ("p1-ru-000", "c01"): "Долгий ответ",  # single
+        ("p1-ru-002", "c05"): "Не поздоровался",  # single
+    }
+    for d in range(3):
+        dlg = f"p1-ru-{d:03d}"
+        dialogs[dlg] = dialog(dlg)
+        results[dlg] = {}
+        for i in range(10):
+            cid = f"c{i:02d}"
+            lines.append(gold_line(dlg, cid, ["yes"]))
+            results[dlg][cid] = result("yes", tag=tags.get((dlg, cid)))
+
+    metrics = score_run(load_gold(lines, bools), results, dialogs, bools)
+
+    assert metrics.tags.recurring == 1
+    assert metrics.tags.single == 2
+
+
+def test_run_metrics_verifier_disagree_and_catch() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    bools = checklist_of_ten_bools()
+    for d in range(20):
+        dlg = f"p1-ru-{d:03d}"
+        dialogs[dlg] = dialog(dlg)
+        results[dlg] = {}
+        for i in range(10):
+            cid = f"c{i:02d}"
+            lines.append(gold_line(dlg, cid, ["yes"]))
+            answer, alt = "yes", None
+            if i == 0 and d < 10:
+                answer = "no"  # 10 несовпадений
+                if d < 6:
+                    alt = "yes"  # alt отличается на 6 из них
+            elif i == 1 and d < 14:
+                alt = "no"  # ещё 14 расхождений с a
+            results[dlg][cid] = result(answer, alt=alt)
+
+    metrics = score_run(load_gold(lines, bools), results, dialogs, bools)
+
+    assert metrics.verifier is not None
+    assert metrics.verifier.disagree == pytest.approx(0.10)  # 20 из 200
+    assert metrics.verifier.catch == pytest.approx(0.60)  # 6 из 10 несовпадений
+
+
+def test_run_metrics_verifier_block_absent_without_alt() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines = [gold_line("p1-ru-006", "01", ["yes"])]
+    metrics = score_run(
+        load_gold(lines, v3_checklist()),
+        {"p1-ru-006": {"01": result("yes")}},
+        {"p1-ru-006": dialog("p1-ru-006")},
+        v3_checklist(),
+    )
+
+    assert metrics.verifier is None
+
+
+def checklist_of_ten_bools():
+    return checklist(*[criterion(f"c{i:02d}") for i in range(10)])
