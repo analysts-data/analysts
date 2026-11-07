@@ -204,3 +204,14 @@ test('resultsCsv: «—» for N/A and total, «ждёт оценки» without r
     'p1-ru-025;chat;RU;—;;' + ['01', '02', '03', '04', '05', '06', '07'].map(() => 'ждёт оценки').join(';')
   );
 });
+
+test('reasonsCsv quotes a reason with the separator so columns stay in place', () => {
+  const S = {
+    checklist: { criteria: [{ id: '01', type: 'bool', w: 10, na: false }] },
+    dialogs: ['d1', 'd2'].map(id => ({ id, lang: 'RU', res: { '01': { a: 'no', tag: 'Срок; канал "чат"' } } })),
+    appeals: [],
+    owners: {},
+  };
+  const row = reasonsCsv(S).split('\n')[1];
+  assert.equal(row, '"Срок; канал ""чат""";2;01;RU;Не назначено;d1, d2');
+});

@@ -139,3 +139,16 @@ def test_messages_ignore_weight_name_section_signal_and_follow_meaning() -> None
     assert build_messages("d", "r", crit(SCALE, naCond="Другое условие.")) != base
     assert build_messages("d", "r", crit(SCALE, stepText=(SCALE.stepText or {}) | {"15": "Иначе."})) != base
     assert build_messages("d", "другие правила", crit(SCALE)) != base
+
+
+def test_scale_with_missing_step_text_still_lists_every_step() -> None:
+    partial = crit(SCALE, stepText={k: v for k, v in (SCALE.stepText or {}).items() if k != "5"})
+    block = build_messages("<dialog/>", "", partial)[0][1]["content"]
+    assert "\n5\n" in block  # ступень без текста — одно число
+    assert f"\n20 — {(SCALE.stepText or {})['20']}\n" in block
+
+
+def test_na_without_condition_offers_neutral_na_not_none() -> None:
+    block = build_messages("<dialog/>", "", crit(BOOL, na=True, naCond=None))[0][1]["content"]
+    assert '"na" — неприменимо' in block
+    assert "None" not in block

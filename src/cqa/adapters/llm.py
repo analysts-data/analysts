@@ -10,7 +10,7 @@ import httpx
 
 from cqa.domain.prompt import Message
 from cqa.services.errors import ConfigError
-from cqa.services.evaluation import Reply
+from cqa.services.evaluation import ModelUnavailable, Reply
 from cqa.settings import Settings
 
 _RETRY_PAUSES = (5.0, 10.0, 20.0)
@@ -24,10 +24,6 @@ PROFILES: dict[str, dict[str, dict[str, Any]]] = {
         "off": {"thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}},
     },
 }
-
-
-class ModelUnavailable(Exception):
-    """Провайдер не ответил или вернул ошибку после всех повторов."""
 
 
 def _error_text(response: httpx.Response) -> str:

@@ -476,7 +476,7 @@ def gate(report: Report, thresholds: Thresholds, baseline: Report | None) -> lis
         ):
             if now is None or best is None:
                 continue
-            drop = (best - now) * 100
+            drop = round((best - now) * 100, 6)  # 0.90 - 0.87 даёт 3.0000000000000027
             if drop > thresholds.baseline_drop_max_pts:
                 problems.append(
                     f"совпадение {name} упало на {_pts(drop)} пункта к лучшему прогону "

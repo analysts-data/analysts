@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from cqa.adapters.llm import ModelUnavailable
 from cqa.domain.models import Checklist, Criterion, Dialog
 from cqa.domain.prompt import Message
 from cqa.services.evaluation import LlmEvaluator, Reply, Verdict
@@ -225,3 +226,27 @@ async def test_dialog_without_transcript_raises_before_any_call() -> None:
     with pytest.raises(ValueError, match="p1-ru-022"):
         await evaluator(model, FakeVerifier()).evaluate(empty, CHECKLIST, CHECKLIST.criteria)
     assert model.calls == []
+
+
+async def test_unavailable_model_on_one_criterion_drops_only_it() -> None:
+    model = FakeModel({"06": [ModelUnavailable("HTTP 429")]})
+    out = await evaluator(model).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+    assert [e.cid for e in out.results] == ["01", "02", "03", "04", "05", "07", "08"]
+
+
+async def test_unavailable_flag_question_keeps_found_violation_and_marks_flag() -> None:
+    paid = {"reason_ru": "Предложил", "turn_ids": [6], "quote": "Готовые портфели", "violation_found": True}
+    model = FakeModel({"08:paid": [paid], "08:leak": [ModelUnavailable("HTTP 429")]})
+    [flag] = (await evaluator(model).evaluate(CHAT, CHECKLIST, [FLAG])).results
+    assert flag.result.a == {"insult": False, "paid": True, "leak": False}
+    assert (flag.result.ev, flag.result.evFail, flag.result.calls) == ([6], True, 2)
+
+
+async def test_unavailable_model_on_every_call_fails_the_dialog() -> None:
+    class Down(FakeModel):
+        async def complete(self, messages: list[Message]) -> Reply:
+            self.calls.append(messages)
+            raise ModelUnavailable("HTTP 503: нет связи")
+
+    with pytest.raises(ModelUnavailable, match="503"):
+        await evaluator(Down()).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
