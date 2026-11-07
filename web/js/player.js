@@ -1,13 +1,11 @@
 // Плеер звонка: один настоящий <audio preload="none"> на /api/dialogs/{id}/audio, волна по репликам, переход к моменту.
 // Элемент живёт вне #view: перерисовка карточки (раскрытие критерия) не прерывает воспроизведение.
-import { S, toast } from './state.js';
+import { S, api, toast } from './state.js';
 import { esc, mmss } from './format.js';
 import { parseHash } from './router.js';
 
 let audio = null, dialog = null;
 
-export const audioUrl = id => `${S.base}/dialogs/${encodeURIComponent(id)}/audio`;
-export const playerUrl = id => `${S.base}/dialogs/${encodeURIComponent(id)}/player`;
 
 const spoken = l => !l.fold && l.s != null;
 const folds = d => d.lines.filter(l => l.fold);
@@ -39,7 +37,7 @@ export function mount(d) {
   if (!audio.isConnected) S.app.append(audio);
   if (!dialog || dialog.id !== d.id) {
     audio.pause();
-    audio.src = audioUrl(d.id); // свежая ссылка при входе в карточку: подписанные адреса живут около часа
+    audio.src = api.audioUrl(d.id); // свежая ссылка при входе в карточку: подписанные адреса живут около часа
   }
   dialog = d;
 }

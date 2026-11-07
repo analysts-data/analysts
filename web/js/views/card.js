@@ -1,5 +1,5 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
-import { S, render } from '../state.js';
+import { S, api, render } from '../state.js';
 import { ans, calc, flagsOf, frac, lastDec } from '../scoring.js';
 import { groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
@@ -181,7 +181,7 @@ function critHTML(d, c, open) {
 
 // Перемотка к началу реплики; без line.s — запасной путь на плеер организаторов в новой вкладке.
 function listen(d, l, mini) {
-  if (l.s == null) return `<a class="small" href="${esc(player.playerUrl(d.id))}" target="_blank" rel="noopener">Открыть в плеере</a>`;
+  if (l.s == null) return `<a class="small" href="${esc(api.playerUrl(d.id))}" target="_blank" rel="noopener">Открыть в плеере</a>`;
   return mini
     ? `<button type="button" class="mini" data-act="seek" aria-label="Слушать реплику ${l.n} с ${mmss(l.s)}" title="Слушать с ${mmss(l.s)}">▶</button>`
     : `<button type="button" class="btn sm" data-act="seek" data-n="${l.n}">▶ Перейти к фрагменту, ${mmss(l.s)}</button>`;
