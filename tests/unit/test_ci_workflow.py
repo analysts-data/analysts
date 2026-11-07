@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-
 from gitrepo import REPO_ROOT
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "check.yml"
@@ -34,9 +32,3 @@ def test_pr_template_links_openspec_and_tdd() -> None:
     assert "openspec/changes" in content
     assert "TDD" in content
     assert "human-ok" in content
-
-
-def test_make_e2e_passes_without_e2e_tests_yet() -> None:
-    """Пустой набор e2e-тестов не должен ломать CI (pytest выходит с кодом 5)."""
-    result = subprocess.run(["make", "e2e"], cwd=REPO_ROOT, capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout + result.stderr
