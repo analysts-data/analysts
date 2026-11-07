@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from cqa.adapters.store import Store, connect
 from cqa.domain.models import Checklist
 from cqa.http import api
+from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.state import mode_from_settings
@@ -64,7 +65,7 @@ def create_app(
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
-    # dialog-ingest: app.include_router(cqa.http.audio.router)
+    app.include_router(audio_router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path
     return app
