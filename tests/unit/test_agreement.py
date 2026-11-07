@@ -304,3 +304,72 @@ def test_gross_without_positives_is_null() -> None:
     assert metrics.gross.overall is None
     assert metrics.gross.missed == []
     assert metrics.gross.false_flags == 0
+
+
+# --- score_run: N/A ------------------------------------------------------------------------
+
+
+def test_na_precision_and_recall() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    for i in range(10):
+        dlg = f"p1-ru-2{i:02d}"
+        lines.append(gold_line(dlg, "02", ["na"]))  # 10 положительных na в эталоне
+        results[dlg] = {"02": result("na" if i < 9 else "no")}  # 9 найдено, один пропуск
+        dialogs[dlg] = dialog(dlg)
+    lines.append(gold_line("p1-ru-299", "02", ["no"]))  # и один na там, где эталон no
+    results["p1-ru-299"] = {"02": result("na")}
+    dialogs["p1-ru-299"] = dialog("p1-ru-299")
+
+    metrics = score_run(load_gold(lines, v3_checklist()), results, dialogs, v3_checklist())
+
+    assert metrics.na.precision == 0.9
+    assert metrics.na.recall == 0.9
+
+
+def test_na_recall_below_eight_tenths_is_reported() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines, results, dialogs = [], {}, {}
+    for i in range(10):
+        dlg = f"p1-kz-2{i:02d}"
+        lines.append(gold_line(dlg, "03", ["na"]))
+        results[dlg] = {"03": result("na" if i < 8 else "yes")}  # найдено 8 из 10
+        dialogs[dlg] = dialog(dlg, lang="KZ")
+
+    metrics = score_run(load_gold(lines, v3_checklist()), results, dialogs, v3_checklist())
+
+    assert metrics.na.recall == 0.8
+
+
+def test_na_on_disallowed_criterion_is_mismatch_but_not_in_na_stats() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines = [gold_line("p1-ru-006", "02", ["na"]), gold_line("p1-ru-007", "01", ["no"])]
+    results = {
+        "p1-ru-006": {"02": result("na")},
+        "p1-ru-007": {"01": result("na")},  # na у критерия без na: false
+    }
+    dialogs = {"p1-ru-006": dialog("p1-ru-006"), "p1-ru-007": dialog("p1-ru-007")}
+
+    metrics = score_run(load_gold(lines, v3_checklist()), results, dialogs, v3_checklist())
+
+    assert metrics.na.precision == 1.0
+    assert metrics.na.recall == 1.0
+    assert (metrics.agree_total.n, metrics.agree_total.ok) == (2, 1)  # второй ответ — несовпадение
+
+
+def test_na_metrics_are_null_on_empty_denominator() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines = [gold_line("p1-ru-006", "01", ["yes"])]
+    metrics = score_run(
+        load_gold(lines, v3_checklist()),
+        {"p1-ru-006": {"01": result("yes")}},
+        {"p1-ru-006": dialog("p1-ru-006")},
+        v3_checklist(),
+    )
+
+    assert metrics.na.precision is None
+    assert metrics.na.recall is None

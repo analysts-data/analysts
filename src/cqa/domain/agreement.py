@@ -130,12 +130,21 @@ class GrossMetrics:
 
 
 @dataclass(frozen=True)
+class NaMetrics:
+    """Ответ na по критериям с na: true; None — знаменатель пуст."""
+
+    precision: float | None
+    recall: float | None
+
+
+@dataclass(frozen=True)
 class RunMetrics:
     agree_total: Agreement
     per_lang: dict[str, Agreement]
     per_cid: dict[str, Agreement]
     missing: int
     gross: GrossMetrics
+    na: NaMetrics
     disagreements: list[Disagreement]
 
     @property
@@ -159,6 +168,7 @@ def score_run(
     Спорные (`ok: null`) исключены; нет записи в `res` — несовпадение и `missing`.
     """
     flag_keys = {c.id: [q.k for q in c.questions or []] for c in checklist.criteria if c.type == "flag"}
+    na_allowed = {c.id: c.na for c in checklist.criteria}
     total = _Counter()
     per_lang: dict[str, _Counter] = {}
     per_cid: dict[str, _Counter] = {}
@@ -170,6 +180,7 @@ def score_run(
     found_lang: dict[str, int] = {}
     missed: list[tuple[str, str]] = []
     false_flags = 0
+    na_tp = na_fp = na_fn = 0
 
     for label in gold:
         if label.ok is None:
@@ -184,6 +195,15 @@ def score_run(
         per_cid.setdefault(label.cid, _Counter()).add(hit)
         if res is None:
             missing += 1
+        if na_allowed.get(label.cid, False):
+            gold_na = "na" in label.ok
+            model_na = res is not None and res.a == "na"
+            if gold_na and model_na:
+                na_tp += 1
+            elif gold_na:
+                na_fn += 1
+            elif model_na:
+                na_fp += 1
         if not hit:
             disagreements.append(
                 Disagreement(
@@ -231,6 +251,10 @@ def score_run(
         per_cid={cid: counter.agreement() for cid, counter in per_cid.items()},
         missing=missing,
         gross=gross,
+        na=NaMetrics(
+            precision=na_tp / (na_tp + na_fp) if na_tp + na_fp else None,
+            recall=na_tp / (na_tp + na_fn) if na_tp + na_fn else None,
+        ),
         disagreements=disagreements,
     )
 
