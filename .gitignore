@@ -5,6 +5,7 @@
 
 # real data, caches, databases: never committed
 data/
+eval/reports/
 *.db
 *.db-journal
 *.mp3

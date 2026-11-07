@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from dataclasses import field as dc_field
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -415,6 +416,24 @@ class Report:
     stability: float
     evidence_ok: float
     holdout_agreement: float | None = None
+    # цена, время и состав первого прогона: Σ cost + verifier_usd, Σ calls + verifier_calls
+    cost: float = 0.0
+    calls: int = 0
+    seconds: float = 0.0
+    n_dialogs: int = 0
+    model: str = ""
+    false_flags: int = 0
+    tags: TagStats | None = None
+    verifier: VerifierStats | None = None
+    disagreements: list[Disagreement] = dc_field(default_factory=list)  # оба прогона, без повторов
+
+    @property
+    def cost_per_dialog(self) -> float | None:
+        return None if self.n_dialogs == 0 else self.cost / self.n_dialogs
+
+    @property
+    def calls_per_dialog(self) -> float | None:
+        return None if self.n_dialogs == 0 else self.calls / self.n_dialogs
 
 
 def _frac(value: float) -> str:
