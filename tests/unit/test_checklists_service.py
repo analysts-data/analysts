@@ -201,3 +201,20 @@ def test_unknown_section_is_invalid() -> None:
 def test_channel_without_na_is_invalid() -> None:
     with pytest.raises(Invalid, match="Критерий 05: для канала chat нужен na: true"):
         save_checklist(make_store(), draft({"05": {"channel": "chat"}}))
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        ({"steps": None, "stepText": None}, "Критерий 04: у шкалы нет ступеней"),
+        (
+            {"stepText": {"20": "Всё", "15": "Почти", "10": "Часть", "0": "Нет"}},
+            "Критерий 04: нет текста ступени 5",
+        ),
+    ],
+)
+def test_scale_needs_steps_with_text_for_each(edit: dict[str, Any], message: str) -> None:
+    store = make_store()
+    with pytest.raises(Invalid, match=message):
+        save_checklist(store, draft({"04": edit}))
+    assert len(store.list_versions()) == 1
