@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog
 
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS appeals (
 CREATE TABLE IF NOT EXISTS owners (
   tag TEXT PRIMARY KEY,
   owner TEXT NOT NULL CHECK (owner IN ('Не назначено', 'Инструкция', 'Сервис', 'Продукт')));
+CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
@@ -311,6 +312,20 @@ class Store:
     def get_owners(self) -> dict[str, str]:
         rows = self._conn.execute("SELECT tag, owner FROM owners").fetchall()
         return {row["tag"]: row["owner"] for row in rows}
+
+    def overrides(self) -> dict[str, Any]:
+        """Значения `Settings`, сохранённые из интерфейса: имя поля -> значение JSON."""
+        return {
+            r["key"]: json.loads(r["value"]) for r in self._conn.execute("SELECT key, value FROM overrides")
+        }
+
+    def set_overrides(self, values: Mapping[str, Any]) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO overrides (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [(k, _dump(v)) for k, v in values.items()],
+            )
 
     def org_source(self) -> tuple[str, str] | None:
         """Ссылка API организаторов и group_id автосинхронизации, сохранённые из интерфейса."""

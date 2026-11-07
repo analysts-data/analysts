@@ -10,6 +10,7 @@ import * as appeals from './views/appeals.js';
 import * as checklist from './views/checklist.js';
 import * as analytics from './views/analytics.js';
 import * as coaching from './views/coaching.js';
+import { openConfig } from './views/config.js';
 
 const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
@@ -21,6 +22,7 @@ const ROLE = { qa: 'специалист КК', operator: 'оператор', re
 
 const ACTS = Object.assign({
   role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
+  cfg: () => openConfig(),
   load: () => postDataset(document.getElementById('gid').value.trim()),
   jsonf: t => { if (t.files[0]) uploadDataset(t.files[0]); t.value = ''; },
   stop: () => cancelRun(),
@@ -46,7 +48,7 @@ const SHELL = `
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="row">
-        <span class="mode" id="mode" hidden></span>
+        <button type="button" class="mode" id="mode" data-act="cfg" title="Сменить режим оценки: модель, ключи, обезличивание, второе мнение" hidden></button>
         <span class="muted small" id="roleLbl">Роль</span>
         <div class="seg" role="group" aria-labelledby="roleLbl">
           <button type="button" data-act="role" data-role="qa" aria-pressed="true">Специалист КК</button>
@@ -100,7 +102,7 @@ class CqaApp extends HTMLElement {
     mode.hidden = !S.mode;
     if (S.mode) {
       mode.textContent = modeText(S.mode);
-      mode.classList.toggle('warn', S.mode.where === 'external' || !S.mode.anonymized);
+      mode.classList.toggle('warn', S.mode.where === 'external' || (S.mode.where !== 'local' && !S.mode.anonymized));
     }
     if (S.checklist) {
       this.querySelector('#bQueue').textContent = S.dialogs.filter(d => groupOf(d, S.checklist, S.appeals) !== 'other').length || '';

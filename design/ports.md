@@ -52,6 +52,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
 | `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
 | `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
+| `set_answer` | `src/cqa/services/answers.py`, review-workflow | `set_answer(store, *, dlg, cid, a, reason, by) -> CriterionResult`, `model = MANUAL = "вручную"`; `NotFound`, `Invalid`, `Conflict` |
+| `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
 | `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |

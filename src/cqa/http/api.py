@@ -7,17 +7,21 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from cqa.domain.models import Appeal, Checklist
+from cqa.compose import build_evaluator
+from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import save_owners, set_reviewed
 from cqa.services.errors import Unavailable
+from cqa.services.llm_config import configure, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import build_state
+from cqa.services.state import build_state, mode_from_settings
 from cqa.services.sync import Syncer
+from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
 
@@ -35,6 +39,24 @@ class DatasetIn(BaseModel):
 class SourceIn(BaseModel):
     url: str
     group_id: str
+
+
+class AnswerIn(BaseModel):
+    a: Answer
+    reason: str = ""
+    by: str
+
+
+class ConfigIn(BaseModel):
+    llm_base_url: str
+    llm_model: str
+    llm_profile: str
+    llm_api_key: str = ""  # пусто — оставить сохранённый ключ
+    data_where: Literal["kz", "local", "external"]
+    anonymize: bool
+    verifier: Literal["jev"] | None = None
+    jev_api_key: str = ""
+    allow_real_data: bool
 
 
 class RunIn(BaseModel):
@@ -131,6 +153,31 @@ async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
     fields = body.model_dump(exclude={"from_"})
     record = record_review(request.app.state.store, frm=body.from_, **fields, now=datetime.now(ASTANA))
     return _appeal_out(record)
+
+
+@router.put("/dialogs/{dialog_id}/answers/{cid}")
+async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request) -> dict[str, Any]:
+    result = set_answer(
+        request.app.state.store, dlg=dialog_id, cid=cid, a=body.a, reason=body.reason, by=body.by
+    )
+    return result.model_dump(mode="json", exclude_none=True)
+
+
+@router.get("/config")
+async def get_config(request: Request) -> dict[str, Any]:
+    return view(request.app.state.settings)
+
+
+@router.put("/config")
+async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
+    """Режим оценки из интерфейса: оценщик пересобирается без перезапуска, во время запуска — 409."""
+    state = request.app.state
+
+    def apply(settings: Settings) -> None:
+        _runner(request).use(build_evaluator(settings))
+        state.settings, state.mode = settings, mode_from_settings(settings)
+
+    return view(configure(state.store, state.settings, body.model_dump(), apply))
 
 
 @router.post("/datasets")

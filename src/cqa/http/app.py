@@ -16,6 +16,7 @@ from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
+from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.runs import Runner
 from cqa.services.state import mode_from_settings
@@ -71,6 +72,7 @@ def create_app(
         return {"ok": True}
 
     store = Store(conn if conn is not None else connect(settings.db_path))
+    settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
     if store.current_checklist() is None:
         store.add_checklist(
