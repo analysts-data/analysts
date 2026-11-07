@@ -78,6 +78,13 @@ def test_put_checklist_channel_without_na_is_422(client: TestClient) -> None:
     assert response.json() == {"detail": "Критерий 05: для канала chat нужен na: true"}
 
 
+def test_put_checklist_scale_without_steps_is_422(client: TestClient) -> None:
+    response = client.put("/api/checklist", json=draft(client, {"01": {"type": "scale"}}))
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Критерий 01: у шкалы нет ступеней"}
+
+
 def test_put_checklist_rejects_bad_model_without_new_version(client: TestClient) -> None:
     response = client.put("/api/checklist", json=draft(client, {"05": {"type": "stars"}}))
 

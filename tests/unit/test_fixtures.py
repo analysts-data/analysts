@@ -45,3 +45,15 @@ def test_dialogs_fixture_carries_all_ten_prototype_dialogs() -> None:
     assert dialogs[0].ch == "call" and dialogs[0].dur is not None
     assert any(getattr(line, "fold", None) for line in dialogs[0].lines or [])
     assert sum(1 for d in dialogs if d.lines is None) == 6
+
+
+def test_call_line_time_is_its_start_in_the_recording() -> None:
+    """Контракт: у звонка `t` равно `s`, как отдаёт ingest; так время в расшифровке совпадает с плеером."""
+    for name in ("dialogs_prototype.json", "state_prototype.json"):
+        raw = load_fixture(name)
+        dialogs = raw if isinstance(raw, list) else raw["dialogs"]  # type: ignore[index]
+        for d in dialogs:
+            if d["ch"] == "call":
+                assert [ln["t"] for ln in d["lines"] if "n" in ln] == [
+                    ln["s"] for ln in d["lines"] if "n" in ln
+                ], name
