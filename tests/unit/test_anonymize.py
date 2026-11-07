@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from cqa.domain.anonymize import anonymize
-from cqa.domain.models import Dialog, Line
+from cqa.domain.models import Dialog, Fold, Line
 
 
 def anonymized(text: str) -> str:
@@ -101,3 +104,32 @@ def test_clients_are_numbered_and_hints_work_in_kz_and_en() -> None:
 def test_stop_word_is_not_captured_as_second_name_word() -> None:
     out = anonymized_texts(("client", "моё имя алия и я ваш клиент"))
     assert out[0] == "моё имя [ИМЯ_КЛИЕНТА_1] и я ваш клиент"
+
+
+def _prototype_dialog(dialog_id: str) -> Dialog:
+    dialogs = [
+        Dialog.model_validate(raw)
+        for raw in json.loads(Path("tests/fixtures/dialogs_prototype.json").read_text())
+    ]
+    return next(d for d in dialogs if d.id == dialog_id)
+
+
+def test_anonymize_preserves_structure_of_prototype_call() -> None:
+    """call-024: меняется только текст, вход не меняется, результат детерминирован."""
+    dialog = _prototype_dialog("call-024")
+    untouched = dialog.model_copy(deep=True)
+
+    first = anonymize(dialog)
+    second = anonymize(dialog)
+
+    assert first == second
+    assert dialog == untouched
+    assert first is not dialog
+    assert len(first.lines or []) == len(dialog.lines or [])
+    for source, anonymized_line in zip(dialog.lines or [], first.lines or [], strict=True):
+        assert type(source) is type(anonymized_line)
+        for field in ("n", "who", "seg", "t", "s"):
+            if hasattr(source, field):
+                assert getattr(anonymized_line, field) == getattr(source, field)
+        if isinstance(source, Fold):
+            assert anonymized_line == source
