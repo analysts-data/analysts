@@ -10,6 +10,7 @@ from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import save_owners, set_reviewed
 from cqa.services.errors import Unavailable
 from cqa.services.ports import DialogSource
+from cqa.services.runs import Runner
 from cqa.services.state import build_state
 
 router = APIRouter(prefix="/api")
@@ -23,6 +24,18 @@ class ReviewedIn(BaseModel):
 
 class DatasetIn(BaseModel):
     group_id: str
+
+
+class RunIn(BaseModel):
+    dialogs: list[str] | None = None  # порядок очереди: диалоги для демо первыми
+    criteria: list[str] | None = None
+
+
+def _runner(request: Request) -> Runner:
+    runner: Runner | None = request.app.state.runner
+    if runner is None:
+        raise Unavailable("Оценка моделью не подключена")
+    return runner
 
 
 def _source(request: Request) -> DialogSource:
@@ -57,3 +70,18 @@ async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
 async def post_upload(request: Request) -> dict[str, int]:
     """Сырое тело файла: без `UploadFile` и зависимости `python-multipart`."""
     return load_upload(request.app.state.store, _source(request), await request.body())
+
+
+@router.post("/runs")
+async def post_run(body: RunIn, request: Request) -> dict[str, int]:
+    return {"run_id": _runner(request).start(body.dialogs, body.criteria)}
+
+
+@router.get("/runs/{run_id}")
+async def get_run(run_id: int, request: Request) -> dict[str, Any]:
+    return _runner(request).progress(run_id)
+
+
+@router.post("/runs/{run_id}/cancel")
+async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
+    return _runner(request).cancel(run_id)
