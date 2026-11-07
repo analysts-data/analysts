@@ -3,12 +3,13 @@
 import asyncio
 import itertools
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Dialog
+from cqa.domain.models import Checklist, Criterion, Dialog
 from cqa.domain.review import fingerprint
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.runs import Runner, eta_seconds, plan_run
@@ -294,3 +295,13 @@ def test_cancel_of_a_running_row_without_a_task_marks_it_cancelled(store: Store)
     runner = Runner(store, FakeEvaluator(), parallel=1)
     assert runner.cancel(run_id) == {"status": "cancelled"}
     assert runner.progress(run_id)["status"] == "cancelled"
+
+
+class SilentTimeout(FakeEvaluator):
+    async def evaluate(self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]) -> Any:
+        raise TimeoutError  # asyncio.wait_for raises it without a message
+
+
+async def test_error_without_a_message_names_the_exception(store: Store) -> None:
+    run = store.get_run(await _execute(store, SilentTimeout(), ["call-024"]))
+    assert run is not None and run.errors == ["call-024: TimeoutError"]
