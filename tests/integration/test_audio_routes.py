@@ -1,5 +1,6 @@
 """Роутер записи: свежая ссылка и запасной плеер; адреса не утекают в ответы и журнал."""
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -253,3 +254,20 @@ async def test_app_without_injected_source_builds_its_own(tmp_path: Path) -> Non
 
     assert response.status_code == 302
     assert response.headers["location"] == "https://storage.test/rec.mp3?token=abc"
+
+
+async def test_player_reads_the_store_on_the_event_loop_thread() -> None:
+    """Одно соединение SQLite только из потока цикла событий (review-workflow, решение 17)."""
+    threads: list[int] = []
+
+    class ThreadStore(FakeStore):
+        def audio_url(self, dialog_id: str) -> str | None:
+            threads.append(threading.get_ident())
+            return super().audio_url(dialog_id)
+
+    response = await get(
+        "/api/dialogs/syn-call-hold/player", ThreadStore({"syn-call-hold": PLAYER_URL}), None
+    )
+
+    assert response.status_code == 302
+    assert threads == [threading.get_ident()]
