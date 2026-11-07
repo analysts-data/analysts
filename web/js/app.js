@@ -1,0 +1,97 @@
+// <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
+import { S, reload, render, toast } from './state.js';
+import { parseHash } from './router.js';
+import * as queue from './views/queue.js';
+import * as card from './views/card.js';
+import * as appeals from './views/appeals.js';
+import * as checklist from './views/checklist.js';
+import * as analytics from './views/analytics.js';
+import * as coaching from './views/coaching.js';
+
+const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
+const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
+const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
+
+const ACTS = Object.assign({
+  role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
+}, ...Object.values(VIEWS).map(v => v.actions || {}));
+
+const SHELL = `
+  <aside class="side">
+    <div class="brand"><i aria-hidden="true">CQ</i><div><b>CQA</b><span>Качество диалогов</span></div></div>
+    <div class="navgroup">Работа</div>
+    <nav class="nav" aria-label="Работа">
+      <a href="#/queue" data-page="queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Диалоги<span class="badge" id="bQueue"></span></a>
+      <a href="#/appeals" data-page="appeals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M6 21h12M4 7h16M7 7l-3 7c1.5 1.3 4.5 1.3 6 0L7 7zM17 7l-3 7c1.5 1.3 4.5 1.3 6 0l-3-7z"/></svg>Апелляции<span class="badge" id="bAppeals"></span></a>
+      <a href="#/coaching" data-page="coaching"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v15H6a2 2 0 0 0-2 2V5zM4 20a2 2 0 0 0 2 2h14v-4"/></svg>Обучение</a>
+    </nav>
+    <div class="navgroup">Обзор и настройка</div>
+    <nav class="nav" aria-label="Обзор и настройка">
+      <a href="#/analytics" data-page="analytics"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16M9 16v-5M14 16V7M19 16v-3"/></svg>Аналитика</a>
+      <a href="#/checklist" data-page="checklist"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>Чек-лист</a>
+    </nav>
+    <div class="sidefoot"><span id="clVer"></span></div>
+  </aside>
+  <div>
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="row">
+        <span class="muted small" id="roleLbl">Роль</span>
+        <div class="seg" role="group" aria-labelledby="roleLbl">
+          <button type="button" data-act="role" data-role="qa" aria-pressed="true">Специалист КК</button>
+          <button type="button" data-act="role" data-role="operator" aria-pressed="false">Оператор</button>
+          <button type="button" data-act="role" data-role="reviewer" aria-pressed="false">Проверяющий</button>
+        </div>
+      </div>
+    </header>
+    <main id="view" class="content" tabindex="-1"></main>
+  </div>
+  <dialog id="dlg" aria-labelledby="dlgTitle"><form method="dialog" id="dlgForm"></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>`;
+
+class CqaApp extends HTMLElement {
+  connectedCallback() {
+    S.app = this;
+    S.base = this.dataset.api || '/api';
+    this.innerHTML = SHELL;
+    this.view = this.querySelector('#view');
+    // click — кнопки и ссылки, change — поля ввода и списки
+    this.addEventListener('click', e => this.act(e, false));
+    this.addEventListener('change', e => this.act(e, true));
+    window.addEventListener('hashchange', () => { this.render(true); window.scrollTo(0, 0); });
+    if (!location.hash) history.replaceState(null, '', '#/queue');
+    this.render();
+    reload();
+  }
+
+  act(e, fieldEvent) {
+    const t = e.target.closest('[data-act]');
+    if (!t || t.matches('input, select, textarea') !== fieldEvent) return;
+    ACTS[t.dataset.act]?.(t, e);
+  }
+
+  render(focusView) {
+    const ae = document.activeElement, aid = ae && ae.id, sel = ae && ae.selectionStart;
+    const r = S.r = parseHash(location.hash);
+    this.dataset.role = S.role;
+    this.view.dataset.view = r.page;
+    if (S.error) {
+      this.view.innerHTML = '<div class="box risk" role="alert"></div>';
+      this.view.firstChild.textContent = `Не удалось загрузить данные: ${S.error}`;
+    } else {
+      this.view.innerHTML = S.loading ? '<div class="card empty">Загрузка данных…</div>' : VIEWS[r.page].view(S, r.id);
+    }
+    const navPage = r.page === 'd' ? 'queue' : r.page;
+    this.querySelectorAll('.nav a').forEach(a => a.dataset.page === navPage ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+    this.querySelector('#crumb').innerHTML = `CQA / <b>${NAMES[r.page]}</b>`;
+    this.querySelector('#clVer').textContent = S.checklist ? `Чек-лист v${S.checklist.version}` : '';
+    this.querySelectorAll('[data-act=role]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.role === S.role)));
+    if (focusView) this.view.focus({ preventScroll: true });
+    else if (aid) {
+      const el = document.getElementById(aid);
+      if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(sel, sel); } catch { /* не текстовое поле */ } }
+    }
+  }
+}
+
+customElements.define('cqa-app', CqaApp);
