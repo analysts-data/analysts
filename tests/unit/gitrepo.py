@@ -63,11 +63,14 @@ def clone_with_origin(tmp_path: Path, branch: str = "feat/test") -> Path:
     return clone
 
 
-def run_script(name: str, *args: str, cwd: Path, **env: str) -> subprocess.CompletedProcess[str]:
+def run_script(
+    name: str, *args: str, cwd: Path, input: str | None = None, **env: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPTS / name), *args],
         cwd=cwd,
         capture_output=True,
         text=True,
+        input=input,
         env=base_env(**env),
     )
