@@ -21,7 +21,7 @@ eval-holdout:
 	@echo "нет эталона: make eval-holdout появится в eval-and-delivery"
 
 record:
-	@echo "запись ответов модели появится в llm-evaluation"
+	CQA_LLM_MODE=record uv run pytest -m "cassette or e2e"
 
 run:
 	uv run uvicorn cqa.http.app:create_app --factory --reload --port 8000
