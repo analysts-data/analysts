@@ -1,4 +1,4 @@
-"""Оценка диалога: вызов модели на критерий и на подвопрос флага (design.md, п. 1, 8–10, 20)."""
+"""Оценка диалога: вызов модели на критерий и на подвопрос флага (design.md, п. 1, 8–10, 16–20)."""
 
 import asyncio
 import logging
@@ -52,14 +52,38 @@ class ModelUnavailable(Exception):
 
 _NO_JSON = {False: "нет объекта JSON с полем answer", True: "нет объекта JSON с полем violation_found"}
 
+_LOG = logging.getLogger(__name__)
+
+
+def _apply_verdict(criterion: Criterion, result: CriterionResult, answer: Any) -> None:
+    """alt и правило флага «нашла любая модель»; нет ответа Jev на подвопрос — evFail."""
+    if answer is None:
+        if criterion.type == "flag":
+            result.evFail = True  # нет ответа ни по одному подвопросу: флаг на проверку
+        return
+    result.alt = answer
+    if criterion.type != "flag" or not isinstance(answer, dict):
+        return
+    questions = criterion.questions or []
+    current = result.a
+    if not isinstance(current, dict):
+        return
+    only_jev = [q.label for q in questions if answer.get(q.k) and not current.get(q.k)]
+    result.a = {k: bool(current.get(k)) or bool(answer.get(k)) for k in current}
+    if any(q.k not in answer for q in questions):
+        result.evFail = True
+    if only_jev:
+        notes = "; ".join(
+            f"Нарушение «{label}» нашло только второе мнение, основная модель его не подтвердила."
+            for label in only_jev
+        )
+        result.why = f"{result.why}; {notes}" if result.why else notes
+
 
 def _allowed(raw: dict[str, Any], criterion: Criterion, sub: bool) -> bool:
     if sub:
         return isinstance(raw.get("violation_found"), bool)
     return allowed_answer(raw, criterion) is not None
-
-
-_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -116,16 +140,18 @@ class LlmEvaluator:
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
         prompts = [build_messages(text, checklist.rules, c) for c in asked]
         failures: list[tuple[str, ModelUnavailable]] = []
-        answers = asyncio.gather(
+        found_future = asyncio.gather(
             *(self._criterion(m, c, lines, failures) for m, c in zip(prompts, asked, strict=True))
         )
         verdict: Verdict | None = None
         if self.verifier and asked:
-            found, verdict = await asyncio.gather(answers, self.verifier.verify(text, checklist.rules, asked))
-        else:
-            found = await answers
-        for cid, exc in failures:
-            _log.warning("Диалог %s, критерий %s: модель недоступна: %s", dialog.id, cid, exc)
+            try:
+                verdict = await self.verifier.verify(text, checklist.rules, asked)
+            except Exception as exc:  # сбой второго мнения не рушит оценку и не попадает в результаты
+                _LOG.warning("Второе мнение не ответило: %s: %s", type(exc).__name__, exc)
+        found = await found_future
+        for cid, err in failures:
+            _LOG.warning("Диалог %s, критерий %s: модель недоступна: %s", dialog.id, cid, err)
         if failures and len(failures) == sum(map(len, prompts)):
             raise failures[0][1]  # провайдер недоступен совсем: сбой всего диалога
         by_id = dict(zip((c.id for c in asked), found, strict=True))
@@ -133,6 +159,8 @@ class LlmEvaluator:
         for c in criteria:
             result = by_id[c.id] if c.id in by_id else self._other_channel()
             if result is not None:  # None: допустимого ответа нет, критерий ждёт оценки
+                if verdict is not None and c.id in by_id:
+                    _apply_verdict(c, result, verdict.answers.get(c.id))
                 results.append(Evaluation(c.id, result))
         return DialogEvaluation(
             results=results,

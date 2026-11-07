@@ -654,3 +654,12 @@ def test_gate_passes_when_within_three_points_of_baseline() -> None:
     )
 
     assert problems == []
+
+
+def test_gate_passes_a_drop_of_exactly_three_points() -> None:
+    from cqa.domain.agreement import gate
+
+    baseline = report(agree_total=0.90, per_lang={"RU": 1.0, "KZ": 0.90})
+    now = report(agree_total=0.87, per_lang={"RU": 0.92, "KZ": 0.87}, kz_gap_pts=5.0)
+
+    assert gate(now, thresholds(), baseline) == []

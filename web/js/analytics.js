@@ -104,14 +104,14 @@ export function resultsCsv(dialogs, checklist, appeals) {
   const lines = [
     ['Диалог', 'Канал', 'Язык', 'Итог', 'Грубые ошибки', ...cols.map(c => c.id)].join(';'),
     ...dialogs.map(d =>
-      [
+      csvRow([
         d.id,
         d.ch,
         d.lang,
         calc(d, checklist, appeals).total ?? '—',
         flagsOf(d, checklist).join(', '),
         ...cols.map(c => cell(ans(d, c.id, appeals))),
-      ].join(';')
+      ])
     ),
   ];
   return `\uFEFF${lines.join('\n')}`;
@@ -128,13 +128,17 @@ export function reasonsCsv(S) {
   const lines = [
     ['Причина', 'Разговоров', 'Критерии', 'Языки', 'Что менять', 'Диалоги'].join(';'),
     ...reasonsStats(S).recurring.map(g =>
-      [g.tag, g.dialogs.length, g.criteria.join(','), g.langs.join(','), g.owner, g.dialogs.join(', ')].join(';')
+      csvRow([g.tag, g.dialogs.length, g.criteria.join(','), g.langs.join(','), g.owner, g.dialogs.join(', ')])
     ),
   ];
   return `\uFEFF${lines.join('\n')}`;
 }
 
 const LANGS = ['RU', 'KZ', 'EN'];
+
+// Строка CSV: поле с «;», кавычкой или переводом строки — в кавычках (RFC 4180), остальные как есть.
+const csvRow = fields =>
+  fields.map(v => (/[;"\n\r]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(';');
 
 // Счётчики одного набора ответов: n — применимые, na — «не применим», pend — записи в res нет.
 function tally(S, c, dialogs = S.dialogs) {

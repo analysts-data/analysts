@@ -10,6 +10,7 @@ from cqa.domain.events import classify_event, normalize
         ("Chat transferred to an agent", "info"),
         ("Эскалация на оператора", "info"),
         ("Agent closed the chat", "end"),
+        ("Клиент чаттан кетті", "end"),
         ("Клиент покинул чат", "end"),
         ("Соединение с клиентом прервано", "end"),
         ("Клиент находится на удержании", "hold_start"),
