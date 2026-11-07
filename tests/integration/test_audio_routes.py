@@ -50,7 +50,7 @@ class ApiSource:
 
 
 def app(store: FakeStore, source: object) -> httpx.AsyncClient:
-    application = create_app(Settings(_env_file=None))
+    application = create_app(Settings(_env_file=None, db_path=":memory:"))
     application.state.store = store
     application.state.source = source
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="http://test")
@@ -203,7 +203,7 @@ async def test_player_for_chat_and_unknown_id_is_404(dialog_id: str) -> None:
 
 
 def test_audio_routes_are_connected_in_create_app() -> None:
-    paths = set(create_app(Settings(_env_file=None)).openapi()["paths"])
+    paths = set(create_app(Settings(_env_file=None, db_path=":memory:")).openapi()["paths"])
     assert "/api/dialogs/{id}/audio" in paths
     assert "/api/dialogs/{id}/player" in paths
 
