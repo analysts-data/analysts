@@ -5,13 +5,14 @@ check:
 	uv run ruff format --check src tests
 	uv run mypy
 	uv run pytest -q
-	@if ls web/js/*.test.js web/js/*/*.test.js tests/*/*.test.js >/dev/null 2>&1; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
+	@if find web tests -name '*.test.js' | grep -q .; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
 	@if [ -x scripts/secret_scan.sh ]; then scripts/secret_scan.sh; fi
 	@if [ -x scripts/protected_paths.sh ]; then scripts/protected_paths.sh; fi
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
 
 e2e:
-	uv run pytest -q -m e2e tests/e2e
+	# код 5 — e2e-тестов пока нет: цель не должна ломать CI пустым набором
+	uv run pytest -q -m e2e tests/e2e || [ $$? -eq 5 ]
 
 eval:
 	@echo "нет эталона: make eval появится в eval-and-delivery"
