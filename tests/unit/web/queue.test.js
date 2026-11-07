@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { groupOf, queueOrder, reasonOf } from '../../../web/js/queue.js';
+import { groupOf, queueOrder, reasonOf, syncNote } from '../../../web/js/queue.js';
 
 const CL = {
   sections: ['Раздел'],
@@ -52,4 +52,15 @@ test('reasonOf explains the prototype dialogs in words', () => {
   assert.match(why('p1-en-008').text, /разошлись: 07/);
   assert.match(why('p1-kz-003').text, /06.*не найдена/);
   assert.match(why('p1-ru-003').text, /Корректная и полная консультация: 5 из 20/);
+});
+
+test('syncNote tells the group, the last sync and its error, never a link', () => {
+  assert.equal(syncNote(null), '');
+  assert.equal(syncNote({ group_id: 'DEV' }), 'Автосинхронизация DEV раз в 5 минут');
+  const at = '2026-11-07T07:05:00+00:00';
+  const time = new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  assert.equal(syncNote({ group_id: 'DEV', synced_at: at, added: 3, skipped: 62, error: null }),
+    `Автосинхронизация DEV раз в 5 минут, последняя в ${time}: добавлено 3`);
+  assert.equal(syncNote({ group_id: 'DEV', synced_at: at, added: 0, skipped: 0, error: 'набор DEV: API организаторов недоступен' }),
+    `Автосинхронизация DEV раз в 5 минут, последняя в ${time}: ошибка — набор DEV: API организаторов недоступен`);
 });

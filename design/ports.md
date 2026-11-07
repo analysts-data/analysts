@@ -32,7 +32,7 @@ class DialogEvaluation:
 
 # src/cqa/services/ports.py — bootstrap-harness
 class DialogSource(Protocol):     # реализует OrgDialogSource (dialog-ingest)
-    async def fetch(self, group_id: str) -> IngestResult: ...      # Invalid | Upstream
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult: ...  # Invalid | Upstream; url важнее CQA_ORG_API_URL
     def upload(self, raw: bytes) -> IngestResult: ...              # Invalid
     async def audio_link(self, audio_url: str) -> str | None: ...  # свежий MP3 из плеера; None — не вышло
 
@@ -100,6 +100,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
 
 | Строка в `create_app` | Трек |
 | --- | --- |

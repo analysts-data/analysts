@@ -1,6 +1,6 @@
 // Экран очереди: группы приоритета, плитки-фильтры из хеша, поиск и панель оценки. DOM-модуль.
-import { S, startRun, cancelRun, postDataset, uploadDataset, render } from '../state.js';
-import { groupOf, queueOrder, reasonOf } from '../queue.js';
+import { S, startRun, cancelRun, postDataset, uploadDataset, saveSource, render } from '../state.js';
+import { groupOf, queueOrder, reasonOf, syncNote } from '../queue.js';
 import { calc, flagsOf, r2, frac, ans } from '../scoring.js';
 import { esc, titleOf, f2, fn, ansTxt } from '../format.js';
 import { href, parseHash } from '../router.js';
@@ -100,9 +100,11 @@ export function view() {
   <div class="head"><div><h1 class="h1">Диалоги</h1><p class="sub">Сначала разговоры с нарушениями и спорными ответами модели</p></div>
     <div class="row only-qa">
       <label class="sr" for="gid">Набор по group_id</label><input id="gid" class="fld" value="DEV" style="width:110px">
+      <label class="sr" for="orgurl">Ссылка API организаторов</label><input id="orgurl" type="url" class="fld" placeholder="Ссылка API организаторов (необязательно)" autocomplete="off" style="width:240px">
       <button type="button" class="btn" data-act="load">Получить набор</button>
       <label class="btn" for="jsonf">Загрузить JSON</label><input id="jsonf" type="file" accept="application/json" class="sr" data-act="jsonf">
     </div></div>
+  ${S.source ? `<p class="muted small only-qa">${esc(syncNote(S.source))}</p>` : ''}
   <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}</section>
   <section class="tiles" aria-label="Быстрые фильтры">
     ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.dialogs.filter(d => d.reviewed && flagsOf(d, S.checklist).length).length} проверено`)}
@@ -141,7 +143,11 @@ export const actions = {
   open: (t, e) => { if (e.target.closest('a')) return; location.hash = href('d', t.dataset.id); },
   fl: t => go(setParam('lang', t.value)),
   fc: t => go(setParam('ch', t.value)),
-  load: () => postDataset(document.getElementById('gid')?.value || ''),
+  load: () => {
+    const gid = document.getElementById('gid')?.value || '';
+    const url = document.getElementById('orgurl')?.value.trim();
+    return url ? saveSource(url, gid) : postDataset(gid); // ссылка сохраняется на сервере и включает автосинхронизацию
+  },
   jsonf: t => { const f = t.files?.[0]; if (f) uploadDataset(f); },
   run: () => startRun({ dialogs: visible(), criteria: null }),
   stop: () => cancelRun(),

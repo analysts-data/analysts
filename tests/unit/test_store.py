@@ -419,3 +419,13 @@ def test_set_owners_upserts_each_tag():
         "Не назван срок ответа": "Не назначено",
         "Переспрос известного": "Сервис",
     }
+
+
+def test_org_source_is_saved_and_replaced():
+    store = Store(connect(":memory:"))
+    assert store.org_source() is None
+
+    store.set_org_source("https://org.test/api?token=a", "DEV")
+    store.set_org_source("https://org.test/api?token=b", "CTRL1")
+
+    assert store.org_source() == ("https://org.test/api?token=b", "CTRL1")

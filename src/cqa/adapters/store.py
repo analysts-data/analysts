@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS appeals (
 CREATE TABLE IF NOT EXISTS owners (
   tag TEXT PRIMARY KEY,
   owner TEXT NOT NULL CHECK (owner IN ('Не назначено', 'Инструкция', 'Сервис', 'Продукт')));
+CREATE TABLE IF NOT EXISTS org_source (
+  id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -309,6 +311,19 @@ class Store:
     def get_owners(self) -> dict[str, str]:
         rows = self._conn.execute("SELECT tag, owner FROM owners").fetchall()
         return {row["tag"]: row["owner"] for row in rows}
+
+    def org_source(self) -> tuple[str, str] | None:
+        """Ссылка API организаторов и group_id автосинхронизации, сохранённые из интерфейса."""
+        row = self._conn.execute("SELECT url, group_id FROM org_source").fetchone()
+        return (row["url"], row["group_id"]) if row else None
+
+    def set_org_source(self, url: str, group_id: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO org_source (id, url, group_id) VALUES (1, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET url = excluded.url, group_id = excluded.group_id",
+                (url, group_id),
+            )
 
     def set_owners(self, owners: Mapping[str, str]) -> None:
         with self._conn:

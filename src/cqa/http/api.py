@@ -17,6 +17,7 @@ from cqa.services.errors import Unavailable
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import build_state
+from cqa.services.sync import Syncer
 
 router = APIRouter(prefix="/api")
 
@@ -28,6 +29,11 @@ class ReviewedIn(BaseModel):
 
 
 class DatasetIn(BaseModel):
+    group_id: str
+
+
+class SourceIn(BaseModel):
+    url: str
     group_id: str
 
 
@@ -50,9 +56,18 @@ def _source(request: Request) -> DialogSource:
     return source
 
 
+def _syncer(request: Request) -> Syncer:
+    syncer: Syncer | None = request.app.state.syncer
+    if syncer is None:
+        raise Unavailable("Загрузка наборов не подключена")
+    return syncer
+
+
 @router.get("/state")
 async def get_state(request: Request) -> dict[str, Any]:
-    return build_state(request.app.state.store, request.app.state.mode)
+    syncer: Syncer | None = request.app.state.syncer
+    state = build_state(request.app.state.store, request.app.state.mode)
+    return {**state, "source": syncer.status() if syncer else None}
 
 
 @router.post("/dialogs/{dialog_id}/reviewed")
@@ -121,6 +136,12 @@ async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
 @router.post("/datasets")
 async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
     return await load_group(request.app.state.store, _source(request), body.group_id)
+
+
+@router.put("/source")
+async def put_source(body: SourceIn, request: Request) -> dict[str, int]:
+    """Ссылка API организаторов из интерфейса: сразу загрузка набора, затем автосинхронизация."""
+    return await _syncer(request).configure(body.url, body.group_id)
 
 
 @router.post("/datasets/upload")

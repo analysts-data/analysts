@@ -95,9 +95,10 @@
 | Метод и путь | Тело | Ответ |
 | --- | --- | --- |
 | `GET /api/health` | — | `{ok: true}`; корень `/` отдаёт `web/index.html` с `<cqa-app>` |
-| `GET /api/state` | — | `{checklist, versions: [{v, note}], dialogs, appeals, owners: {"<tag>": "Не назначено" \| "Инструкция" \| "Сервис" \| "Продукт"}, mode}` — всё, что нужно интерфейсу |
+| `GET /api/state` | — | `{checklist, versions: [{v, note}], dialogs, appeals, owners: {"<tag>": "Не назначено" \| "Инструкция" \| "Сервис" \| "Продукт"}, mode, source}` — всё, что нужно интерфейсу |
 | `POST /api/datasets` | `{"group_id": "DEV"}` | `{added, skipped}` |
 | `POST /api/datasets/upload` | файл JSON в формате API организаторов | `{added, skipped}` |
+| `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `POST /api/runs` | `{"dialogs": [..] или null, "criteria": [..] или null}` | `{run_id}` |
 | `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled"}` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
@@ -115,5 +116,9 @@
 Ссылки организаторов на записи подписаны и живут около часа, поэтому в браузер они не уходят: интерфейс ходит только в `/audio` и `/player`. Сервер хранит `audio_url` в колонке таблицы `dialogs` и не отдаёт её ни в одном ответе. Если ссылку получить не удалось, `/audio` отвечает 502.
 
 `POST /api/datasets` и `/upload`: битые записи входят в `skipped`, их идентификаторы и причины пишутся в журнал сервера.
+
+`PUT /api/source`: ссылка API организаторов из интерфейса. Нужен `https://`, иначе 422; сбой API организаторов — 502, прежняя ссылка остаётся. Сервер хранит ссылку в базе, она важнее `CQA_ORG_API_URL`, в том числе для `POST /api/datasets`, и не уходит ни в один ответ. Сервер забирает сохранённый `group_id` при старте и раз в 5 минут, новые диалоги добавляются, дубли по `id` пропускаются, оценка сама не запускается.
+
+`source` в `GET /api/state`: `null`, пока ссылки нет, иначе `{"group_id": "DEV", "synced_at": "<ISO>", "added": 0, "skipped": 65, "error": null | "<текст>"}`; до первого прохода после старта есть только `group_id`.
 
 `mode` описывает режим данных для плашки в интерфейсе: `{"where": "kz" | "local" | "external", "anonymized": true, "model": "qwen3-6", "verifier": "jev" | "self" | null}`.
