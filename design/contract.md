@@ -98,7 +98,6 @@
 | `GET /api/state` | — | `{checklist, versions: [{v, note}], dialogs, appeals, owners: {"<tag>": "Не назначено" \| "Инструкция" \| "Сервис" \| "Продукт"}, mode, source}` — всё, что нужно интерфейсу |
 | `POST /api/datasets` | `{"group_id": "DEV"}` | `{added, skipped}` |
 | `POST /api/datasets/upload` | файл JSON в формате API организаторов | `{added, skipped}` |
-| `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `POST /api/runs` | `{"dialogs": [..] или null, "criteria": [..] или null}` | `{run_id}` |
 | `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled"}` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
@@ -112,6 +111,7 @@
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
+| `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
 | `GET /api/config` | — | `{llm_mode, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, has_jev_key, allow_real_data}` — режим оценки без ключей |
 | `PUT /api/config` | `{llm_base_url, llm_model, llm_profile, llm_api_key, data_where, anonymize, verifier, jev_api_key, allow_real_data}` | то же, что `GET /api/config`, после применения |
