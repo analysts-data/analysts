@@ -280,3 +280,77 @@ def test_typed_text_enables_save_before_the_field_loses_focus(page: Page, web_ur
     page.locator('[data-act="csave"]').click()
     expect(item(page, "04")).to_contain_text("ждёт оценки")
     assert [next(c for c in d["criteria"] if c["id"] == "04")["text"] for d in api.puts] == [TEXT_04]
+
+
+CHECKLIST = json.loads(STATE)["checklist"]
+XSS = "<img src=x onerror=alert(1)>"
+NOT_CHECKLIST = "Файл не похож на чек-лист"
+
+
+def import_file(page: Page, body: bytes) -> None:
+    page.set_input_files(
+        '[data-act="cimport"]', files=[{"name": "cl.json", "mimeType": "application/json", "buffer": body}]
+    )
+
+
+def test_export_downloads_applied_version(page: Page, web_url: str) -> None:
+    open_checklist(page, web_url)
+    item(page, "01").click()
+    page.locator("#cf-w").fill("20")
+    page.locator("#cf-w").press("Tab")
+    with page.expect_download() as d:
+        page.locator('[data-act="cexport"]').click()
+    assert d.value.suggested_filename == "checklist-v3.json"
+    assert json.loads(Path(d.value.path()).read_text(encoding="utf-8")) == CHECKLIST  # rules и вес 01 = 10
+    expect(page.locator('[data-act="cexport"]')).to_have_text("Скачать v3 (JSON)")
+    page.locator('[data-act="role"][data-role="operator"]').click()
+    expect(page.locator('[data-act="cexport"]')).to_be_visible()
+
+
+def test_import_fills_draft_and_save_sends_it(page: Page, web_url: str) -> None:
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    api = open_checklist(page, web_url, {"version": 4, "pending": []})
+    cl = json.loads(STATE)["checklist"]
+    cl["version"], cl["rules"] = 1, "Новые общие правила."
+    cl["criteria"][0]["w"], cl["criteria"][1]["name"] = 15, XSS
+    cl["criteria"][2]["call"] = "На звонке достаточно устного согласия."
+    import_file(page, json.dumps(cl, ensure_ascii=False).encode())
+    expect(page.locator("#toast")).to_have_text(
+        "Чек-лист из файла в черновике. Проверьте изменения и сохраните как v4."
+    )
+    expect(page.get_by_text("Есть несохранённые изменения")).to_be_visible()
+    expect(item(page, "01")).to_contain_text("изменён")
+    expect(item(page, "02")).to_contain_text(XSS)
+    expect(item(page, "02").locator("img")).to_have_count(0)
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 4 применяется")
+    [draft] = api.puts
+    assert draft["version"] == 3
+    assert draft["criteria"][0]["w"] == 15
+    assert draft["rules"] == "Новые общие правила."
+    assert draft["criteria"][2]["call"] == "На звонке достаточно устного согласия."
+    assert errors == []
+
+
+@pytest.mark.parametrize("body", [b'{"foo": 1}', "не json".encode()])
+def test_import_rejects_non_checklist(page: Page, web_url: str, body: bytes) -> None:
+    open_checklist(page, web_url)
+    import_file(page, body)
+    expect(page.locator("#toast")).to_contain_text(NOT_CHECKLIST)
+    expect(page.get_by_text("Есть несохранённые изменения")).to_have_count(0)
+
+
+def test_import_disabled_while_draft_dirty(page: Page, web_url: str) -> None:
+    open_checklist(page, web_url)
+    cimport = page.locator('[data-act="cimport"]')
+    expect(cimport).to_be_enabled()
+    item(page, "01").click()
+    page.locator("#cf-w").fill("20")
+    page.locator("#cf-w").press("Tab")
+    expect(cimport).to_be_disabled()
+    page.locator('[data-act="creset"]').click()
+    expect(cimport).to_be_enabled()
+    page.locator("#cf-name").fill("Приветствие")  # без ухода из поля: только syncSave, без перерисовки
+    expect(cimport).to_be_disabled()
+    expect(page.locator("#cf-name")).to_have_value("Приветствие")
