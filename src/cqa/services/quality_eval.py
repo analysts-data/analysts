@@ -1,24 +1,60 @@
 """make eval: два прогона оценщика по эталону, метрики, пороги и лучший прогон (eval-and-delivery)."""
 
+import argparse
 import asyncio
 import json
+import subprocess
+import sys
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 import yaml
 
+from cqa.compose import build_source
 from cqa.domain.agreement import (
     Disagreement,
     GoldLabel,
     Report,
     RunMetrics,
     Thresholds,
+    gate,
+    load_gold,
     score_run,
     stability,
 )
 from cqa.domain.models import Checklist, CriterionResult, Dialog
+from cqa.domain.prompt import PROMPT_VERSION
+from cqa.services.errors import ConfigError
+from cqa.services.evaluation import RealDataBlocked
 from cqa.services.ports import Evaluator
+from cqa.settings import Settings
+
+# пути от корня репозитория: make eval запускается из него
+CHECKLIST = Path("tests/fixtures/checklist_v3.json")
+GOLD = Path("eval/gold/labels.jsonl")
+THRESHOLDS = Path("eval/thresholds.yaml")
+BASELINE = Path("eval/baseline.json")
+REPORTS = Path("eval/reports")
+# поля Report, по которым gate сравнивает с лучшим прогоном; в baseline.json только они, без текстов
+_GATE = (
+    "agree_total",
+    "per_lang",
+    "per_cid",
+    "missing",
+    "kz_gap_pts",
+    "gross_recall",
+    "gross_recall_lang",
+    "gross_missed",
+    "na_precision",
+    "na_recall",
+    "stability",
+    "evidence_ok",
+    "holdout_agreement",
+)
 
 
 def load_thresholds(text: str) -> Thresholds:
@@ -104,3 +140,121 @@ async def run_eval(
         verifier=first.verifier,
         disagreements=_disagreements(metrics),
     )
+
+
+def _build_evaluator(settings: Settings) -> Evaluator:
+    # ponytail: build_evaluator приходит с llm-evaluation 4.6 (после слияния клиента модели), тогда импорт
+    # переедет наверх модуля.
+    from cqa.compose import build_evaluator  # type: ignore[attr-defined]
+
+    evaluator: Evaluator = build_evaluator(settings)
+    return evaluator
+
+
+def _git_sha() -> str:
+    out = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=Path(__file__).parent, check=False
+    )
+    return out.stdout.strip()
+
+
+def _load_baseline() -> Report | None:
+    if not BASELINE.exists():
+        return None
+    data = json.loads(BASELINE.read_text(encoding="utf-8"))["report"]
+    return Report(**{k: data[k] for k in _GATE} | {"gross_missed": [tuple(m) for m in data["gross_missed"]]})
+
+
+def _num(value: float | None, digits: int = 2) -> str:
+    return "—" if value is None else f"{value:.{digits}f}".replace(".", ",")
+
+
+def _table(report: Report) -> str:
+    rows = [
+        f"Совпадение: всего {_num(report.agree_total)}"
+        + "".join(f" · {lang} {_num(v)}" for lang, v in report.per_lang.items())
+        + f" · разрыв RU−KZ {_num(report.kz_gap_pts, 1)} п.",
+        "По критериям: " + " · ".join(f"{cid} {_num(v)}" for cid, v in sorted(report.per_cid.items())),
+        "Полнота флагов: "
+        + " · ".join(f"{k} {_num(v)}" for k, v in report.gross_recall.items())
+        + f" · ложных {report.false_flags}",
+        f"N/A: точность {_num(report.na_precision)} · полнота {_num(report.na_recall)}",
+        f"Стабильность {_num(report.stability)} · основания {_num(report.evidence_ok)}"
+        f" · ждут оценки {report.missing} · расхождений {len(report.disagreements)}",
+        f"Цена ${report.cost:.4f} · вызовов {report.calls} · на диалог ${report.cost_per_dialog or 0:.4f}"
+        f" и {_num(report.calls_per_dialog, 1)} · {report.seconds:.0f} с · модель {report.model or '—'}",
+    ]
+    return "\n".join(rows)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """make eval: 0 — прошло, 1 — порог или регресс, 2 — ошибка конфигурации."""
+    parser = argparse.ArgumentParser(prog="python -m cqa.services.quality_eval")
+    parser.add_argument(
+        "--checklist", type=Path, default=CHECKLIST, help="чек-лист или выгрузка GET /api/state"
+    )
+    parser.add_argument(
+        "--accept", action="store_true", help="записать eval/baseline.json, если прогон прошёл"
+    )
+    args = parser.parse_args(argv)
+
+    settings = Settings()
+    if not settings.eval_dataset.exists():
+        print(f"Нет набора {settings.eval_dataset}: положите снимок DEV или задайте CQA_EVAL_DATASET")
+        return 2
+    raw = json.loads(args.checklist.read_text(encoding="utf-8"))
+    checklist = Checklist.model_validate(raw.get("checklist", raw))
+    gold = load_gold(GOLD.read_text(encoding="utf-8").splitlines(), checklist)
+    ids = {g.dlg for g in gold}
+    dialogs = [
+        d for d in build_source(settings).upload(settings.eval_dataset.read_bytes()).dialogs if d.id in ids
+    ]
+    calls = sorted(d.id for d in dialogs if d.ch == "call")
+    if calls and not settings.allow_real_data:
+        print(f"Звонки в эталоне без CQA_ALLOW_REAL_DATA=1, оценка не запущена: {', '.join(calls)}")
+        return 2
+    if absent := sorted(ids - {d.id for d in dialogs}):
+        print(f"Нет в снимке, пары считаются «ждёт оценки»: {', '.join(absent)}")
+
+    try:
+        report = asyncio.run(run_eval(dialogs, gold, checklist, _build_evaluator(settings)))
+    except (ConfigError, RealDataBlocked) as exc:
+        print(f"Оценка не запущена: {exc}")
+        return 2
+    problems = gate(report, load_thresholds(THRESHOLDS.read_text(encoding="utf-8")), _load_baseline())
+
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    path = REPORTS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
+    body: dict[str, Any] = asdict(report) | {
+        "cost_per_dialog": report.cost_per_dialog,
+        "calls_per_dialog": report.calls_per_dialog,
+        "problems": problems,
+    }
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(_table(report))
+    print("\n".join(f"НЕ ПРОШЛО: {p}" for p in problems) or "Все пороги пройдены")
+    print(f"Отчёт: {path}")
+    if problems:
+        return 1
+    if args.accept:
+        baseline = {
+            "report": {k: body[k] for k in _GATE},
+            "model": report.model,
+            "scenario": {
+                "model": settings.llm_model,
+                "profile": settings.llm_profile,
+                "reasoning": settings.llm_reasoning,
+                "verifier": settings.verifier,
+                "anonymize": settings.anonymize,
+            },
+            "prompt_version": PROMPT_VERSION,
+            "checklist_version": checklist.version,
+            "git_sha": _git_sha(),
+        }
+        BASELINE.write_text(json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"Лучший прогон записан: {BASELINE}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

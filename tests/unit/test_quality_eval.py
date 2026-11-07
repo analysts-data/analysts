@@ -1,3 +1,4 @@
+import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -6,6 +7,8 @@ import pytest
 
 from cqa.domain.agreement import GoldLabel, Thresholds
 from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog, DialogEvaluation, Evaluation
+from cqa.domain.prompt import PROMPT_VERSION
+from cqa.services import quality_eval
 from cqa.services.quality_eval import load_thresholds, run_eval
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -109,3 +112,124 @@ async def test_report_takes_worst_of_two_runs_and_measures_stability() -> None:
     assert report.kz_gap_pts == pytest.approx(16.67)
     assert report.stability == pytest.approx(3 / 5)
     assert [(d.dlg, d.cid, d.got) for d in report.disagreements] == [("k2", "01", "no"), ("r1", "04", None)]
+
+
+CHATS = ("syn-chat-ru", "syn-chat-kz", "syn-chat-en")
+
+
+@pytest.fixture
+def workdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Пустой каталог с порогами, эталоном по синтетическим чатам и снимком в формате организаторов."""
+    monkeypatch.chdir(tmp_path)
+    for key in ("CQA_ALLOW_REAL_DATA", "CQA_LLM_MODE"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("CQA_EVAL_DATASET", str(ROOT / "tests/fixtures/org_payload.json"))
+    (tmp_path / "eval/gold").mkdir(parents=True)
+    (tmp_path / "eval/thresholds.yaml").write_text(
+        (ROOT / "eval/thresholds.yaml").read_text(encoding="utf-8")
+    )
+    write_gold(tmp_path, CHATS)
+    return tmp_path
+
+
+def write_gold(root: Path, dialogs: Sequence[str]) -> None:
+    rows = [{"dlg": d, "cid": "01", "ok": ["yes"], "by": "team", "note": ""} for d in dialogs]
+    (root / "eval/gold/labels.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+
+def use(monkeypatch: pytest.MonkeyPatch, fake: FakeEvaluator) -> FakeEvaluator:
+    monkeypatch.setattr(quality_eval, "_build_evaluator", lambda settings: fake)
+    return fake
+
+
+def answers(**got: Any) -> dict[str, dict[str, CriterionResult]]:
+    return {d: {"01": got.get(d.replace("-", "_"), res("yes"))} for d in CHATS}
+
+
+ARGS = ["--checklist", str(ROOT / "tests/fixtures/checklist_v3.json")]
+
+
+def test_clean_run_returns_zero_and_saves_report(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main(ARGS) == 0
+    [path] = (workdir / "eval/reports").glob("*.json")
+    out = capsys.readouterr().out
+    assert str(Path("eval/reports") / path.name) in out
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert (report["agree_total"], report["disagreements"], report["problems"]) == (1.0, [], [])
+    assert report["cost"] == pytest.approx(0.0036) and report["calls_per_dialog"] == 1
+    assert sorted(d for d, _ in fake.calls) == sorted(CHATS * 2)
+    assert not (workdir / "eval/baseline.json").exists()
+
+
+def test_call_in_gold_without_permission_returns_two_without_any_call(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_gold(workdir, [*CHATS, "syn-call-hold"])
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main(ARGS) == 2
+    assert "syn-call-hold" in capsys.readouterr().out
+    assert fake.calls == []
+
+
+def test_missing_dataset_returns_two(workdir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CQA_EVAL_DATASET", str(workdir / "нет.json"))
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main(ARGS) == 2
+    assert fake.calls == []
+
+
+def test_kazakh_gap_returns_one_and_lists_disagreement(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    miss = res("no", why="Не представился", quote="Сәлеметсіз бе")
+    use(monkeypatch, FakeEvaluator([answers(syn_chat_kz=miss)]))
+    assert quality_eval.main(ARGS) == 1
+    assert "разрыв RU−KZ" in capsys.readouterr().out
+    [path] = (workdir / "eval/reports").glob("*.json")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["disagreements"] == [
+        {
+            "dlg": "syn-chat-kz",
+            "cid": "01",
+            "gold": ["yes"],
+            "got": "no",
+            "why": "Не представился",
+            "quote": "Сәлеметсіз бе",
+        }
+    ]
+
+
+def test_accept_writes_baseline_only_after_passing_run(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    unstable = FakeEvaluator([answers(), answers(syn_chat_ru=res(20))])
+    use(monkeypatch, unstable)
+    assert quality_eval.main([*ARGS, "--accept"]) == 1
+    assert not (workdir / "eval/baseline.json").exists()
+
+    use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main([*ARGS, "--accept"]) == 0
+    baseline = json.loads((workdir / "eval/baseline.json").read_text(encoding="utf-8"))
+    assert baseline["report"]["agree_total"] == 1.0
+    assert baseline["prompt_version"] == PROMPT_VERSION and baseline["checklist_version"] == 3
+    assert {"model", "scenario", "git_sha"} <= set(baseline)
+    assert "disagreements" not in baseline["report"]
+
+
+def test_drop_against_baseline_returns_one(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main([*ARGS, "--accept"]) == 0
+    use(monkeypatch, FakeEvaluator([answers(syn_chat_en=res("no"))]))
+    assert quality_eval.main(ARGS) == 1
+    assert "к лучшему прогону" in capsys.readouterr().out
+
+
+def test_checklist_option_accepts_state_export(workdir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main(["--checklist", str(ROOT / "tests/fixtures/state_prototype.json")]) == 0
+    assert fake.calls
