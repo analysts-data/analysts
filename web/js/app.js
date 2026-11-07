@@ -1,5 +1,6 @@
 // <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
-import { S, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { S, api, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { modeText } from './config.js';
 import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
 import { parseHash } from './router.js';
@@ -14,10 +15,6 @@ import { openConfig } from './views/config.js';
 
 const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
-const WHERE = { kz: 'Казахстан', local: 'локально', external: 'внешний провайдер' };
-// Плашка режима данных: скрыть нельзя, это ответ про трансграничную передачу на защите.
-const modeText = m => [`Обработка: ${WHERE[m.where] || m.where}`, m.anonymized ? 'транскрипты обезличены' : 'без обезличивания',
-  `модель ${m.model}`, m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
 const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
 const ACTS = Object.assign({
@@ -76,6 +73,8 @@ class CqaApp extends HTMLElement {
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
     reload();
+    // llm_mode задаёт .env и из интерфейса не меняется: хватит одного запроса
+    api.getConfig().then(c => { S.llmMode = c.llm_mode; this.render(); }, () => {});
   }
 
   act(e, fieldEvent) {
@@ -101,7 +100,7 @@ class CqaApp extends HTMLElement {
     const mode = this.querySelector('#mode');
     mode.hidden = !S.mode;
     if (S.mode) {
-      mode.textContent = modeText(S.mode);
+      mode.textContent = modeText(S.mode, S.llmMode);
       mode.classList.toggle('warn', S.mode.where === 'external' || (S.mode.where !== 'local' && !S.mode.anonymized));
     }
     if (S.checklist) {

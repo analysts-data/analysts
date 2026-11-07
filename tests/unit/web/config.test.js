@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configBody, presetOf, risks } from '../../../web/js/config.js';
+import { configBody, modeText, presetOf, risks } from '../../../web/js/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
 const FIELDS = { llm_base_url: ' https://kz.test/v1 ', llm_model: ' qwen ', llm_profile: 'plain', llm_api_key: '', jev: false, jev_api_key: '', allow_real_data: false };
@@ -27,4 +27,12 @@ test('risks asks to confirm raw text abroad and real calls, but not a local mode
   assert.equal(risks(CFG, { data_where: 'local', anonymize: false, allow_real_data: false }).length, 0);
   assert.equal(risks(CFG, { data_where: 'kz', anonymize: true, allow_real_data: true }).length, 1);
   assert.deepEqual(risks({ ...CFG, allow_real_data: true }, { data_where: 'kz', anonymize: true, allow_real_data: true }), []);
+});
+
+test('modeText tells recorded answers from a live model', () => {
+  const m = { where: 'kz', anonymized: true, model: 'qwen3-6', verifier: null };
+  assert.equal(modeText(m, 'replay'), 'Обработка: Казахстан · транскрипты обезличены · Записанные ответы');
+  assert.equal(modeText(m, 'live'), 'Обработка: Казахстан · транскрипты обезличены · модель qwen3-6');
+  assert.equal(modeText({ ...m, where: 'local', anonymized: false, verifier: 'jev' }, 'record'),
+    'Обработка: локально · без обезличивания · модель qwen3-6 · второе мнение: jev');
 });

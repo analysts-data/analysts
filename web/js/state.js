@@ -3,7 +3,7 @@ import { createApi } from './api.js';
 
 export const S = {
   r: null, loading: true, error: null,
-  checklist: null, versions: [], dialogs: [], appeals: [], owners: {}, mode: null, source: null,
+  checklist: null, versions: [], dialogs: [], appeals: [], owners: {}, mode: null, llmMode: null, source: null,
   role: 'qa', q: '', open: {}, run: null,
 };
 

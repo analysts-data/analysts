@@ -5,6 +5,14 @@ export const PRESETS = {
   raw: 'Внешний API без обезличивания',
 };
 
+const WHERE = { kz: 'Казахстан', local: 'локально', external: 'внешний провайдер' };
+// Плашка режима данных: скрыть нельзя, это ответ про трансграничную передачу на защите.
+// llm_mode из GET /api/config: replay — ответы из записей, модель не вызывается.
+export const modeText = (m, llmMode) => [`Обработка: ${WHERE[m.where] || m.where}`,
+  m.anonymized ? 'транскрипты обезличены' : 'без обезличивания',
+  llmMode === 'replay' ? 'Записанные ответы' : `модель ${m.model}`,
+  m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
+
 export const presetOf = cfg => (cfg.data_where === 'local' ? 'local' : cfg.anonymize ? 'anon' : 'raw');
 
 // Локальная модель не выводит данные наружу, поэтому обезличивание ей не нужно.

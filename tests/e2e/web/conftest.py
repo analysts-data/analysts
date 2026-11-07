@@ -26,6 +26,15 @@ def web_url() -> Iterator[str]:
     server.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def live_config(page: Page) -> None:
+    """GET /api/config для плашки режима: у статического сервера нет API, а 404 — ошибка в консоли."""
+    page.route(
+        "**/api/config",
+        lambda r: r.fulfill(status=200, content_type="application/json", body='{"llm_mode": "live"}'),
+    )
+
+
 @pytest.fixture
 def open_card(page: Page, web_url: str) -> Callable[..., list[str]]:
     """Open `#/d/{id}` on the prototype state; `edit(dialog)` may change that dialog first.
