@@ -133,10 +133,10 @@ def test_latest_decision_overrides_model_answer_rationale_and_score() -> None:
 
 
 def test_latest_flag_decision_clears_critical_value_and_flag_but_not_score() -> None:
-    dialog = proto("p1-ru-022")
+    dialog, none = proto("p1-ru-022"), {"insult": False, "paid": False, "leak": False}
     clear = Appeal.model_validate(
         {"id": "a1", "kind": "appeal", "dlg": "p1-ru-022", "cid": "08", "from": dialog.res["08"].a,
-         "ask": {"insult": False, "paid": False, "leak": False}, "to": {"insult": False, "paid": False, "leak": False},
+         "ask": none, "to": none,
          "by": "Оператор", "at": "08.11 11:10", "status": "changed", "reason": "Платной услуги не было"}
     )  # fmt: skip
 
