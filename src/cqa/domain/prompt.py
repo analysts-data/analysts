@@ -85,10 +85,12 @@ def criterion_block(criterion: Criterion, question: Question | None = None) -> s
     """Смысловые поля критерия или подвопроса флага, без id, названия, веса и раздела."""
     if question is not None:
         return f"Нарушение для проверки:\n{question.text or question.label}\n\n{_FLAG_JSON}"
-    na = f'"na" — неприменимо, только если: {criterion.naCond}' if criterion.na else None
+    cond = f", только если: {criterion.naCond}" if criterion.naCond else ""
+    na = f'"na" — неприменимо{cond}' if criterion.na else None
     if criterion.type == "scale":
         steps, texts = criterion.steps or [], criterion.stepText or {}
-        rows = [f"{s} — {texts[str(s)]}" for s in steps]
+        # save_checklist требует текст каждой ступени; .get — чтобы старая версия не роняла весь диалог
+        rows = [f"{s} — {texts[str(s)]}" if texts.get(str(s)) else str(s) for s in steps]
         answer = "\n".join(["Ответ answer — одно число из шкалы:", *rows, *([na] if na else [])])
     else:
         answer = 'Ответ answer: "yes" — да, "no" — нет' + (f", {na}" if na else "") + "."

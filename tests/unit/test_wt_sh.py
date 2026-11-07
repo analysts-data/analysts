@@ -124,3 +124,15 @@ def test_rm_missing_worktree_fails(tmp_path: Path) -> None:
     result = run_script("wt.sh", "rm", "x", "one", cwd=main)
 
     assert result.returncode != 0
+
+
+def test_rm_keeps_worktree_with_uncommitted_work(tmp_path: Path) -> None:
+    main = main_copy(tmp_path)
+    assert run_script("wt.sh", "new", "x", "one", cwd=main, WT_SKIP_SYNC="1").returncode == 0
+    wt = main / ".worktrees" / "x-one"
+    (wt / "README.md").write_text("несохранённая работа агента\n", encoding="utf-8")
+
+    result = run_script("wt.sh", "rm", "x", "one", cwd=main)
+
+    assert result.returncode != 0
+    assert (wt / "README.md").read_text(encoding="utf-8") == "несохранённая работа агента\n"

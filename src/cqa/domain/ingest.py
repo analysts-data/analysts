@@ -19,6 +19,8 @@ from cqa.domain.models import Dialog, Fold, IngestResult, Line
 
 _MMSS_RE = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})$")
 _EXCESS_FRACTION_RE = re.compile(r"(\.\d{6})\d+")
+# Реплика целиком скрыта маской организаторов: «[...]» без распознанного текста.
+_WHOLE_MASK_RE = re.compile(r"\s*\[[^\[\]]+\]\W*")
 
 
 class OrgTurn(BaseModel):
@@ -195,7 +197,14 @@ def build_dialog(
     segs, seg_warnings = segments(who, kinds)
     warnings += seg_warnings
     norms = [normalize(turn.text) for turn in turns]
-    dup = [i > 0 and who[i] == who[i - 1] and norms[i] == norms[i - 1] for i in range(len(turns))]
+    # две подряд реплики-маски — разные фразы, а не повтор распознавания
+    dup = [
+        i > 0
+        and who[i] == who[i - 1]
+        and norms[i] == norms[i - 1]
+        and not _WHOLE_MASK_RE.fullmatch(turns[i].text)
+        for i in range(len(turns))
+    ]
     warnings += [f"реплика {i + 1} повторяет {i}" for i, d in enumerate(dup) if d]
 
     starts: list[float | None] = [None] * len(turns)

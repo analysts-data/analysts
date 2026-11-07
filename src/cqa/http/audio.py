@@ -20,7 +20,7 @@ async def fresh_audio(id: str, request: Request) -> Response:
 
 
 @router.get("/api/dialogs/{id}/player")
-def org_player(id: str, request: Request) -> Response:
+async def org_player(id: str, request: Request) -> Response:
     """302 на плеер организаторов, без запросов наружу; запасной путь для реплик без `s`."""
     audio_url = request.app.state.store.audio_url(id)
     if audio_url is None:

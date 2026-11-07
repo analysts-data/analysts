@@ -3,6 +3,7 @@ import { S, cancelRun, init, postDataset, reload, render, toast, uploadDataset }
 import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
 import { parseHash } from './router.js';
+import * as appealForm from './appeal_form.js';
 import * as queue from './views/queue.js';
 import * as card from './views/card.js';
 import * as appeals from './views/appeals.js';
@@ -23,7 +24,7 @@ const ACTS = Object.assign({
   load: () => postDataset(document.getElementById('gid').value.trim()),
   jsonf: t => { if (t.files[0]) uploadDataset(t.files[0]); t.value = ''; },
   stop: () => cancelRun(),
-}, ...Object.values(VIEWS).map(v => v.actions || {}));
+}, appealForm.actions, ...Object.values(VIEWS).map(v => v.actions || {}));
 
 const SHELL = `
   <aside class="side">
@@ -65,9 +66,10 @@ class CqaApp extends HTMLElement {
     init(resolveBase(location.search, this.dataset.api));
     this.innerHTML = SHELL;
     this.view = this.querySelector('#view');
-    // click — кнопки и ссылки, change — поля ввода и списки
+    // click — кнопки и ссылки, change — поля ввода и списки; input — только поля с data-input (на каждый ввод, без перерисовки)
     this.addEventListener('click', e => this.act(e, false));
     this.addEventListener('change', e => this.act(e, true));
+    this.addEventListener('input', e => e.target.matches('[data-input]') && this.act(e, true));
     window.addEventListener('hashchange', () => { this.render(true); window.scrollTo(0, 0); });
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
