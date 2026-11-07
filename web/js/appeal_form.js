@@ -25,7 +25,8 @@ function choice(d, cid) {
   const ask = c.type === 'flag'
     ? `<div class="field" role="group" aria-labelledby="aFq"><span id="aFq">Какие нарушения были на самом деле</span>${(c.questions || []).map(q => `<label class="opt"><input type="checkbox" name="fq" value="${esc(q.k)}" ${a[q.k] ? 'checked' : ''}>${esc(q.label)}</label>`).join('')}</div>`
     : `<label class="field"><span>Какой ответ вы считаете верным</span><select name="ask" class="fld">${allowed(c).filter(v => v !== a).map(v => `<option value="${esc(v)}">${esc(ansTxt(c, v))}</option>`).join('')}</select></label>`;
-  return { now: `Сейчас: <b>${esc(ansTxt(c, a))}</b>. ${esc(d.res[cid].why || '')}`, ask };
+  // у флага причины по вопросам — в карточке, здесь только найденные нарушения
+  return { now: `Сейчас: <b>${esc(ansTxt(c, a))}</b>. ${c.type === 'flag' ? '' : esc(d.res[cid].why || '')}`, ask };
 }
 
 // Просимый ответ из формы: у флага объект по всем вопросам, иначе значение списка.
