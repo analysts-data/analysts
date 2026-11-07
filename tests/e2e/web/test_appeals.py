@@ -104,6 +104,31 @@ def test_appeal_from_card_posts_answer_comment_and_line(page: Page, web_url: str
     assert api.errors == []
 
 
+def test_appeal_comment_typed_key_by_key_keeps_text_focus_and_enables_send(page: Page, web_url: str) -> None:
+    Api(page)
+    page.goto(f"{web_url}/#/d/p1-ru-003")
+    open_criterion(page, "04")
+    page.locator('[data-act="appeal"][data-cid="04"]').click()
+    form = page.locator("#dlg")
+    comment = form.get_by_label("Комментарий, обязательно")
+    typed = "Срок вывода назван, это существенная часть ответа."
+    comment.press_sequentially(typed)
+    expect(comment).to_have_value(typed)
+    expect(comment).to_be_focused()
+    expect(form.get_by_role("button", name="Отправить апелляцию")).to_be_enabled()
+
+
+def test_decision_reason_typed_key_by_key_keeps_text_focus_and_enables_save(page: Page, web_url: str) -> None:
+    Api(page)
+    as_reviewer(page, web_url, "#/appeals/a1")
+    reason = page.get_by_label("Причина решения, обязательно")
+    typed = "Регламент не позволяет называть срок"
+    reason.press_sequentially(typed)
+    expect(reason).to_have_value(typed)
+    expect(reason).to_be_focused()
+    expect(page.locator('[data-act="decide"]')).to_be_enabled()
+
+
 def test_appeal_form_offers_only_scored_criteria_and_other_answers(page: Page, web_url: str) -> None:
     Api(page)
     page.goto(f"{web_url}/#/d/call-024")
