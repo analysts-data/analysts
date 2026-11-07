@@ -64,15 +64,14 @@ def test_owner_change_rejected_restores_previous_value(page: Page, web_url: str)
     expect(page.locator('select[data-tag="Не назван срок ответа"]')).to_have_value("Инструкция")
 
 
-@pytest.mark.xfail(reason="фильтры очереди и карточка — cqa-web-ui, группы 4 и 5", strict=False)
 def test_three_clicks_from_number_to_reasoning(page: Page, web_url: str) -> None:
     open_page(page, web_url, "#/analytics")
     page.click('a[href="#/queue?lost=07&lang=KZ"]')
     expect(page.locator('[data-act="open"]')).to_have_count(1)
     page.click('[data-act="open"][data-id="p1-kz-015"]')
     expect(page).to_have_url(f"{page.url.split('#')[0]}#/d/p1-kz-015")
-    page.click('[data-cid="07"] .crit-row')
-    expect(page.locator('[data-cid="07"]')).to_contain_text("Чат закрыт без итога и прощания.")
+    page.click('article[data-cid="07"] .crit-row')
+    expect(page.locator('article[data-cid="07"]')).to_contain_text("Чат закрыт без итога и прощания.")
 
 
 def test_coaching_moments_from_state_only(page: Page, web_url: str) -> None:

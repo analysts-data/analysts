@@ -91,3 +91,11 @@ def test_put_checklist_rejects_bad_model_without_new_version(client: TestClient)
     assert response.status_code == 422  # 422 от Pydantic: Literal["bool", "scale", "flag"]
     versions = client.get("/api/state").json()["versions"]
     assert versions == [{"v": 3, "note": "начальная версия"}]
+
+
+def test_put_checklist_scale_with_missing_step_text_is_422(client: TestClient) -> None:
+    texts = {"20": "Всё", "15": "Почти", "10": "Часть", "0": "Нет"}
+    response = client.put("/api/checklist", json=draft(client, {"04": {"stepText": texts}}))
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Критерий 04: нет текста ступени 5"}

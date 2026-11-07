@@ -41,3 +41,26 @@ def test_normalize_folds_case_yo_spaces_and_trailing_punctuation() -> None:
 
 def test_hold_end_is_not_taken_for_hold_start() -> None:
     assert classify_event("Клиент больше не находится на удержании") == "hold_end"
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("Личность клиента подтверждена.", "info"),
+        ("Клиенттің жеке басы расталды.", "info"),
+        ("Customer identity verified.", "info"),
+        ("Клиент переведен от агента на представителя службы поддержки", "info"),
+        ("Агент присоединился к разговору с клиентом.", "info"),
+        (
+            "Bot dialog and transcription languages have been updated. "
+            "The dialog language changed from en-US to ru-RU, with transcription now aligned to ru-RU.",
+            "info",
+        ),
+        ("Оператор чатты жапты.", "end"),
+        ("Клиентпен байланыс үзілді.", "end"),
+        ("Connection to customer lost.", "end"),
+        ("Началась консультация с агентом.", "consult_start"),
+    ],
+)
+def test_platform_events_of_dev_snapshot_are_classified(text: str, kind: str) -> None:
+    assert classify_event(text) == kind
