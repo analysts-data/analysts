@@ -61,7 +61,7 @@ h1,h2,h3,p{margin:0}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.pri:hover{background:var(--accent-ink)}
 .btn.sm{min-height:32px;padding:0 10px;font-size:13px}
-.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled,.btn:has(:disabled){opacity:.45;cursor:not-allowed}
 .seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg button{border:0;background:none;padding:0 12px;min-height:36px;cursor:pointer;font-size:13px;font-weight:500;color:var(--ink2)}
 .seg button+button{border-left:1px solid var(--line)}

@@ -30,9 +30,11 @@ export function view(S) {
   };
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
-    <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
-      <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
-      <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+    <div class="row">${dirty ? '<span class="chip c-ev only-qa">Есть несохранённые изменения</span>' : ''}
+      <button type="button" class="btn" data-act="cexport">Скачать v${cl.version} (JSON)</button>
+      <label class="btn only-qa">Загрузить из файла<input type="file" accept=".json,application/json" data-act="cimport" class="sr" ${dirty ? 'disabled' : ''}></label>
+      <button type="button" class="btn only-qa" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn pri only-qa" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
   ${pend.length || run || errs ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
@@ -111,6 +113,7 @@ function syncSave() {
   const dirty = JSON.stringify(S.draft) !== JSON.stringify(S.checklist);
   S.app.querySelector('[data-act="creset"]').disabled = !dirty;
   S.app.querySelector('[data-act="csave"]').disabled = !dirty || S.busy;
+  S.app.querySelector('[data-act="cimport"]').disabled = dirty; // импорт не стирает несохранённые правки
 }
 
 // csave и crun неактивны, пока запрос в пути: двойной клик не создаёт две версии или два запуска
@@ -143,4 +146,25 @@ export const actions = {
     }
   }),
   crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
+  // в файл — применяемая версия, по которой оценены диалоги, а не черновик
+  cexport: () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(S.checklist, null, 2)], { type: 'application/json' }));
+    a.download = `checklist-v${S.checklist.version}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  },
+  // файл — в черновик с текущей версией (иначе view() сбросит черновик, а сервер ответит 409); остальное проверит сервер при сохранении
+  cimport: async t => {
+    const f = t.files[0];
+    t.value = '';
+    if (!f) return;
+    let cl = null;
+    try { cl = JSON.parse(await f.text()); } catch { /* не JSON */ }
+    if (!Array.isArray(cl?.sections) || !Array.isArray(cl?.criteria)) return toast('Файл не похож на чек-лист: нужны поля sections и criteria.');
+    S.draft = { ...cl, version: S.checklist.version };
+    S.cSel = null;
+    render();
+    toast(`Чек-лист из файла в черновике. Проверьте изменения и сохраните как v${S.checklist.version + 1}.`);
+  },
 };
