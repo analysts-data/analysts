@@ -218,9 +218,7 @@ async def run_holdout(
 
 
 def _build_evaluator(settings: Settings) -> Evaluator:
-    # ponytail: build_evaluator приходит с llm-evaluation 4.6 (после слияния клиента модели), тогда импорт
-    # переедет наверх модуля.
-    from cqa.compose import build_evaluator  # type: ignore[attr-defined]
+    from cqa.compose import build_evaluator  # local import keeps module import free of adapters
 
     evaluator: Evaluator = build_evaluator(settings)
     return evaluator
