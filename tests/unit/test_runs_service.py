@@ -155,6 +155,14 @@ async def _drain(runner: Runner) -> None:
     await asyncio.gather(*runner._tasks)
 
 
+async def _first_in_flight(evaluator: FakeEvaluator) -> None:
+    for _ in range(100):
+        if evaluator.order:
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("evaluate was never called")
+
+
 async def test_start_rejects_unknown_dialogs(store: Store) -> None:
     with pytest.raises(NotFound, match="^Диалоги не найдены: nope, nope2$"):
         Runner(store, FakeEvaluator(), parallel=1).start(["call-024", "nope", "nope2"], None)
@@ -200,3 +208,89 @@ async def test_started_run_evaluates_the_plan_in_the_background(store: Store) ->
     run = store.get_run(run_id)
     assert run is not None and (run.total, run.done, run.status) == (16, 16, "done")
     assert evaluator.order == ["p1-ru-003", "call-024"]
+
+
+async def test_cancel_lets_the_dialog_in_flight_finish_and_starts_no_new_one(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    assert runner.cancel(run_id) == {"status": "cancelled"}
+    gate.set()
+    await _drain(runner)
+    assert evaluator.order == ["call-024"]
+    assert sorted(store.current_results(FPS)) == ["call-024"]
+    progress = runner.progress(run_id)
+    assert (progress["status"], progress["done"], progress["total"], progress["eta_s"]) == (
+        "cancelled",
+        8,
+        16,
+        None,
+    )
+
+
+async def test_new_start_after_cancel_resumes_where_the_run_stopped(store: Store) -> None:
+    gate = asyncio.Event()
+    first = FakeEvaluator(gate=gate)
+    runner = Runner(store, first, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(first)
+    runner.cancel(run_id)
+    gate.set()
+    await _drain(runner)
+    evaluator = FakeEvaluator()
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _drain(runner)
+    assert evaluator.order == ["p1-ru-003"]
+    assert runner.progress(run_id)["total"] == 8
+
+
+async def test_cancel_of_a_finished_or_unknown_run_is_refused(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(None, None)
+    await _drain(runner)
+    with pytest.raises(Conflict, match=f"^Запуск {run_id} уже завершён: done$"):
+        runner.cancel(run_id)
+    with pytest.raises(NotFound, match="^Запуск 999 не найден$"):
+        runner.cancel(999)
+    with pytest.raises(NotFound, match="^Запуск 999 не найден$"):
+        runner.progress(999)
+
+
+def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store) -> None:
+    run_id = store.add_run(16, 100.0)
+    store.record_progress(run_id, 4, 0.004, 4, ["p1-ru-003: timeout"])
+    runner = Runner(store, FakeEvaluator(), parallel=1, clock=lambda: 110.0)
+    assert runner.progress(run_id) == {
+        "done": 4,
+        "total": 16,
+        "cost": pytest.approx(0.004),
+        "calls": 4,
+        "eta_s": 30,
+        "errors": ["p1-ru-003: timeout"],
+        "status": "running",
+    }
+
+
+async def test_progress_of_a_finished_run(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(None, None)
+    await _drain(runner)
+    assert runner.progress(run_id) == {
+        "done": 16,
+        "total": 16,
+        "cost": pytest.approx(0.016),
+        "calls": 16,
+        "eta_s": 0,
+        "errors": [],
+        "status": "done",
+    }
+
+
+def test_cancel_of_a_running_row_without_a_task_marks_it_cancelled(store: Store) -> None:
+    run_id = store.add_run(16, 100.0)
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    assert runner.cancel(run_id) == {"status": "cancelled"}
+    assert runner.progress(run_id)["status"] == "cancelled"

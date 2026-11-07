@@ -3,8 +3,9 @@
 import asyncio
 import time
 from collections.abc import Callable
+from typing import Any
 
-from cqa.adapters.store import Store
+from cqa.adapters.store import RunRow, Store
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog
 from cqa.domain.review import fingerprint
 from cqa.services.errors import Conflict, NotFound
@@ -81,6 +82,40 @@ class Runner:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return run_id
+
+    def progress(self, run_id: int) -> dict[str, Any]:
+        row = self._run(run_id)
+        eta = (
+            None
+            if row.status == "cancelled"
+            else eta_seconds(row.done, row.total, self._clock() - row.started)
+        )
+        return {
+            "done": row.done,
+            "total": row.total,
+            "cost": row.cost,
+            "calls": row.calls,
+            "eta_s": eta,
+            "errors": row.errors,
+            "status": row.status,
+        }
+
+    def cancel(self, run_id: int) -> dict[str, str]:
+        """Новые диалоги не начинаются; диалоги в полёте завершаются и сохраняются."""
+        row = self._run(run_id)
+        if row.status != "running":
+            raise Conflict(f"Запуск {run_id} уже завершён: {row.status}")
+        if run_id == self._active:
+            self._cancel.set()
+        else:  # строка без задачи в этом процессе: закрыть сразу
+            self._store.finish_run(run_id, self._clock(), "cancelled")
+        return {"status": "cancelled"}
+
+    def _run(self, run_id: int) -> RunRow:
+        row = self._store.get_run(run_id)
+        if row is None:
+            raise NotFound(f"Запуск {run_id} не найден")
+        return row
 
     async def execute(
         self, run_id: int, checklist: Checklist, plan: list[tuple[Dialog, list[Criterion]]]
