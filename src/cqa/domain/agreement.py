@@ -379,3 +379,112 @@ def _check_answer(answer: object, criterion: Criterion, bad) -> None:
             raise bad(f"критерий {cid}: ступень {answer} вне шкалы {criterion.steps}")
         return
     raise bad(f"критерий {cid}: неизвестный тип {criterion.type}")
+
+
+# --- пороги и лучший прогон -----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Thresholds:
+    """Пороги eval/thresholds.yaml; совпадения — доли, разрывы — пункты."""
+
+    gross_recall_min: float
+    kz_gap_max_pts: float
+    na_precision_min: float
+    na_recall_min: float
+    stability_min: float
+    evidence_ok_min: float
+    holdout_agreement_min: float
+    baseline_drop_max_pts: float
+
+
+@dataclass(frozen=True)
+class Report:
+    """Худшие значения двух прогонов: совпадение, грубые ошибки и N/A; остальное — как есть."""
+
+    agree_total: float | None
+    per_lang: dict[str, float | None]
+    per_cid: dict[str, float | None]
+    missing: int
+    kz_gap_pts: float | None
+    gross_recall: dict[str, float | None]
+    gross_recall_lang: dict[str, float | None]
+    gross_missed: list[tuple[str, str]]
+    na_precision: float | None
+    na_recall: float | None
+    stability: float
+    evidence_ok: float
+    holdout_agreement: float | None = None
+
+
+def _frac(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
+
+
+def _pts(value: float) -> str:
+    return f"{value:.1f}".replace(".", ",")
+
+
+def gate(report: Report, thresholds: Thresholds, baseline: Report | None) -> list[str]:
+    """Список нарушений; пустой список — прогон прошёл все проверки."""
+    problems: list[str] = []
+
+    for key, recall in report.gross_recall.items():
+        if recall is not None and recall < thresholds.gross_recall_min:
+            missed = ", ".join(f"{dlg}/{key}" for dlg, sub in report.gross_missed if sub == key)
+            problems.append(
+                f"полнота грубых ошибок {key} {_frac(recall)} ниже {_frac(thresholds.gross_recall_min)}"
+                + (f": пропущены {missed}" if missed else "")
+            )
+    for lang, recall in report.gross_recall_lang.items():
+        if recall is not None and recall < thresholds.gross_recall_min:
+            problems.append(
+                f"полнота грубых ошибок на {lang} {_frac(recall)} ниже {_frac(thresholds.gross_recall_min)}"
+            )
+    if report.kz_gap_pts is not None and report.kz_gap_pts > thresholds.kz_gap_max_pts:
+        problems.append(
+            f"разрыв RU−KZ {_pts(report.kz_gap_pts)} пункта выше {_pts(thresholds.kz_gap_max_pts)}"
+        )
+    if report.na_precision is not None and report.na_precision < thresholds.na_precision_min:
+        problems.append(
+            f"точность N/A {_frac(report.na_precision)} ниже {_frac(thresholds.na_precision_min)}"
+        )
+    if report.na_recall is not None and report.na_recall < thresholds.na_recall_min:
+        problems.append(f"полнота N/A {_frac(report.na_recall)} ниже {_frac(thresholds.na_recall_min)}")
+    if report.stability < thresholds.stability_min:
+        problems.append(f"стабильность {_frac(report.stability)} ниже {_frac(thresholds.stability_min)}")
+    if report.evidence_ok < thresholds.evidence_ok_min:
+        problems.append(
+            f"доля прошедших оснований {_frac(report.evidence_ok)} ниже {_frac(thresholds.evidence_ok_min)}"
+        )
+    if report.holdout_agreement is not None and report.holdout_agreement < thresholds.holdout_agreement_min:
+        problems.append(
+            f"совпадение отложенных критериев {_frac(report.holdout_agreement)} "
+            f"ниже {_frac(thresholds.holdout_agreement_min)}"
+        )
+
+    if baseline is not None:
+        gross_now = _min_defined(report.gross_recall, report.gross_recall_lang)
+        gross_best = _min_defined(baseline.gross_recall, baseline.gross_recall_lang)
+        if gross_now is not None and gross_best is not None and gross_now < gross_best:
+            problems.append(
+                f"полнота грубых ошибок {_frac(gross_now)} ниже лучшего прогона {_frac(gross_best)}"
+            )
+        for name, now, best in (
+            ("всего", report.agree_total, baseline.agree_total),
+            ("KZ", report.per_lang.get("KZ"), baseline.per_lang.get("KZ")),
+        ):
+            if now is None or best is None:
+                continue
+            drop = (best - now) * 100
+            if drop > thresholds.baseline_drop_max_pts:
+                problems.append(
+                    f"совпадение {name} упало на {_pts(drop)} пункта к лучшему прогону "
+                    f"(допуск {_pts(thresholds.baseline_drop_max_pts)})"
+                )
+    return problems
+
+
+def _min_defined(*metric_dicts: dict[str, float | None]) -> float | None:
+    values = [v for metrics in metric_dicts for v in metrics.values() if v is not None]
+    return min(values) if values else None

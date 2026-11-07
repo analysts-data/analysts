@@ -534,3 +534,123 @@ def test_run_metrics_verifier_block_absent_without_alt() -> None:
 
 def checklist_of_ten_bools():
     return checklist(*[criterion(f"c{i:02d}") for i in range(10)])
+
+
+# --- gate: пороги и лучший прогон -----------------------------------------------------------
+
+
+def thresholds(**overrides) -> "object":
+    from cqa.domain.agreement import Thresholds
+
+    base = dict(
+        gross_recall_min=1.0,
+        kz_gap_max_pts=5.0,
+        na_precision_min=0.90,
+        na_recall_min=0.90,
+        stability_min=0.95,
+        evidence_ok_min=0.92,
+        holdout_agreement_min=0.85,
+        baseline_drop_max_pts=3.0,
+    )
+    base.update(overrides)
+    return Thresholds(**base)
+
+
+def report(**overrides) -> "object":
+    from cqa.domain.agreement import Report
+
+    base = dict(
+        agree_total=1.0,
+        per_lang={"RU": 1.0, "KZ": 0.95},
+        per_cid={"01": 1.0},
+        missing=0,
+        kz_gap_pts=5.0,
+        gross_recall={"insult": 1.0, "paid": 1.0, "leak": 1.0},
+        gross_recall_lang={"RU": 1.0, "KZ": 1.0},
+        gross_missed=[],
+        na_precision=1.0,
+        na_recall=1.0,
+        stability=0.96,
+        evidence_ok=0.95,
+    )
+    base.update(overrides)
+    return Report(**base)
+
+
+def test_gate_passes_clean_report() -> None:
+    from cqa.domain.agreement import gate
+
+    assert gate(report(), thresholds(), None) == []
+
+
+def test_gate_flags_every_threshold() -> None:
+    from cqa.domain.agreement import gate
+
+    violations = {
+        "gross_recall": report(gross_recall={"leak": 2 / 3}, gross_missed=[("p1-kz-015", "leak")]),
+        "na": report(na_recall=0.8),
+        "stability": report(stability=0.94),
+        "evidence": report(evidence_ok=0.90),
+        "holdout": report(holdout_agreement=0.84),
+    }
+    for name, bad_report in violations.items():
+        problems = gate(bad_report, thresholds(), None)
+        assert problems, name
+        assert all(isinstance(p, str) for p in problems)
+
+
+def test_gate_gross_miss_names_dialog_and_subquestion() -> None:
+    from cqa.domain.agreement import gate
+
+    problems = gate(
+        report(gross_recall={"leak": 2 / 3}, gross_missed=[("p1-kz-015", "leak")]),
+        thresholds(),
+        None,
+    )
+
+    assert any("p1-kz-015" in p and "leak" in p for p in problems)
+
+
+def test_gate_kz_gap_in_points() -> None:
+    from cqa.domain.agreement import gate
+
+    problems = gate(report(per_lang={"RU": 1.0, "KZ": 0.85}, kz_gap_pts=15.0), thresholds(), None)
+
+    assert any("15,0" in p and "KZ" in p for p in problems)
+
+
+def test_gate_baseline_drop_of_four_points() -> None:
+    from cqa.domain.agreement import gate
+
+    baseline = report(agree_total=0.97, per_lang={"RU": 1.0, "KZ": 0.97})
+    problems = gate(report(agree_total=0.93), thresholds(), baseline)
+
+    assert any("4,0" in p and "пункта" in p for p in problems)
+
+
+def test_gate_gross_recall_below_baseline() -> None:
+    from cqa.domain.agreement import gate
+
+    baseline = report(gross_recall={"leak": 1.0}, gross_recall_lang={"KZ": 1.0})
+    problems = gate(report(gross_recall={"leak": 0.875}), thresholds(), baseline)
+
+    assert any("грубы" in p and "лучшего" in p for p in problems)
+
+
+def test_gate_without_baseline_has_no_drop_messages() -> None:
+    from cqa.domain.agreement import gate
+
+    assert gate(report(agree_total=0.93), thresholds(), None) == []
+
+
+def test_gate_passes_when_within_three_points_of_baseline() -> None:
+    from cqa.domain.agreement import gate
+
+    baseline = report(agree_total=0.97, per_lang={"RU": 1.0, "KZ": 0.96})
+    problems = gate(
+        report(agree_total=0.95, per_lang={"RU": 1.0, "KZ": 0.94}, kz_gap_pts=6.0),
+        thresholds(kz_gap_max_pts=10.0),
+        baseline,
+    )
+
+    assert problems == []
