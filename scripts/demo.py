@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -40,6 +41,10 @@ FALLBACK = {
         "В контрольном наборе нет сниженной шкалы с основанием, показываем диалог из DEV",
     ),
     "call": ("p4-ru-002", "В контрольном наборе звонков нет, показываем звонок из DEV"),
+    "slide10": (
+        "p1-ru-010",
+        "В контрольном наборе нет передачи специалистам без срока, показываем диалог из DEV",
+    ),
 }
 MANUAL = [
     "роль переключается: Специалист КК → Оператор → Проверяющий",
@@ -93,7 +98,27 @@ def _call(d: Dialog, cl: Checklist, ap: list[dict[str, Any]]) -> str | None:
     return None
 
 
-RULES: dict[str, Rule] = {"gross": _gross, "na": _na, "appeal": _appeal, "call": _call}
+HANDOFF = re.compile(r"переда|специалист", re.IGNORECASE)
+DEADLINE = re.compile(r"срок", re.IGNORECASE)
+
+
+def _slide10(d: Dialog, cl: Checklist, ap: list[dict[str, Any]]) -> str | None:
+    """Пример слайда 10: чат, оператор передаёт вопрос специалистам, решение запроса снижено за срок."""
+    if d.get("ch") == "call" or not any(
+        x.get("who") == "operator" and HANDOFF.search(x.get("text") or "") for x in _lines(d)
+    ):
+        return None
+    for c in cl["criteria"]:
+        r = d["res"].get(c["id"])
+        if c.get("signal") != "resolution" or not r or not DEADLINE.search(f"{r.get('why')} {r.get('tag')}"):
+            continue
+        a = r["a"]
+        if a == "no" or (isinstance(a, int) and c["type"] == "scale" and a < max(c["steps"])):
+            return str(c["id"])
+    return None
+
+
+RULES: dict[str, Rule] = {"gross": _gross, "na": _na, "appeal": _appeal, "call": _call, "slide10": _slide10}
 
 
 def pick(state: dict[str, Any], dev_ids: set[str]) -> dict[str, dict[str, Any]]:

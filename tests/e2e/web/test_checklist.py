@@ -24,6 +24,7 @@ class Api:
         self.runs: list[dict[str, Any]] = []
         self.cancels = 0
         self.finish = False
+        self.errors: list[str] = []
         page.route("**/api/state", lambda route: route.fulfill(json=self.state))
         page.route("**/api/checklist", self.on_checklist)
         page.route("**/api/runs", self.on_run)
@@ -50,6 +51,10 @@ class Api:
             return route.fulfill(json={**RUNNING, "status": "cancelled"})
         if not self.finish:
             return route.fulfill(json=RUNNING)
+        if self.errors:  # as replay without a recording: done, answers still missing
+            return route.fulfill(
+                json={**RUNNING, "done": 10, "eta_s": 0, "errors": self.errors, "status": "done"}
+            )
         for d in self.state["dialogs"]:  # оценка готова: записи по pending снова есть
             for cid in self.put_reply["pending"] if self.put_reply else []:
                 d["res"][cid] = {"a": "na", "why": "Новая оценка."}
@@ -169,6 +174,7 @@ def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: 
     save_text_change(page)
     page.locator('[data-act="crun"]').click()
     view = page.locator('[data-view="checklist"]')
+    expect(page.locator("#toast")).to_have_text("Оценка запущена.")
     expect(view).to_contain_text("Оценено 3 из 10 ответов по критериям")
     expect(view).to_contain_text("$0,02")
     expect(view).to_contain_text("40 с")
@@ -176,7 +182,46 @@ def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: 
     api.finish = True
     expect(item(page, "04")).not_to_contain_text("ждёт оценки")
     expect(page.locator('[data-act="crun"]')).to_have_count(0)
+    expect(page.locator("#toast")).to_have_text("Оценка завершена: оценено 10 из 10 ответов по критериям.")
     assert api.runs == [{"dialogs": None, "criteria": ["04"]}]
+
+
+def test_run_with_errors_is_reported_on_the_checklist(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    api.finish = True
+    api.errors = ["p1-ru-003: Нет записи ответа модели"]
+    page.locator('[data-act="crun"]').click()
+    view = page.locator('[data-view="checklist"]')
+    note = "Оценка завершена с ошибками: 1, в диалогах: 1"
+    expect(page.locator("#toast")).to_contain_text(note)
+    expect(view).to_contain_text(note)
+    view.get_by_text("Показать ошибки").click()
+    expect(view.get_by_role("link", name="p1-ru-003")).to_have_attribute("href", "#/d/p1-ru-003")
+    expect(view).to_contain_text("Нет записи ответа модели")
+    expect(page.locator('[data-act="crun"]')).to_be_enabled()  # 04 всё ещё ждёт оценки
+    api.put_reply = {"version": 5, "pending": []}  # новая версия: ошибки прошлого запуска уже не про неё
+    item(page, "06").click()
+    page.locator("#cf-w").fill("10")
+    page.locator("#cf-w").press("Tab")
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 5 применяется")
+    expect(view).not_to_contain_text("с ошибками")
+
+
+def test_deleted_pending_criterion_leaves_the_banner(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["09"]})
+    page.locator('[data-act="cadd"]').click()
+    page.locator('[data-act="csave"]').click()
+    expect(item(page, "09")).to_contain_text("ждёт оценки")
+    expect(page.locator('[data-act="crun"]')).to_be_visible()
+    api.put_reply = {"version": 5, "pending": []}
+    item(page, "09").click()
+    page.locator('[data-act="cdel"]').click()
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 5 применяется")
+    expect(page.locator('[data-act="crun"]')).to_have_count(0)
+    expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
 
 
 def test_stop_cancels_pending_run(page: Page, web_url: str) -> None:

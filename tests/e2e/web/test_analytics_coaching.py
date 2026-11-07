@@ -24,7 +24,8 @@ def open_page(page: Page, web_url: str, route: str) -> list[str]:
 
 def test_analytics_tiles_and_tables_from_state_only(page: Page, web_url: str) -> None:
     requests = open_page(page, web_url, "#/analytics")
-    expect(page.locator(".lens a strong")).to_have_text(["1", "4", "56%", "5"])
+    # «Качество сервиса» 2: передача специалистам на 15 из 20 тоже без следующего шага
+    expect(page.locator(".lens a strong")).to_have_text(["2", "4", "56%", "5"])
     expect(page.locator('[aria-label="Результат по критериям"] tbody tr')).to_have_count(7)
     expect(page.locator('[aria-label="Критерий и язык"] tbody tr')).to_have_count(7)
     expect(page.locator('[aria-label="Повторяющиеся причины"] tbody tr')).to_have_count(4)

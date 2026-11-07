@@ -28,7 +28,9 @@ def demo() -> ModuleType:
 def run_check(api: httpx.Client, call: str | None = None) -> list[tuple[bool, str]]:
     d, s = demo(), Settings()
     picked = d.pick(api.get("/api/state").raise_for_status().json(), dev_ids=set())
-    return d.check(api, picked, ["1"], call, s.llm_model, s.data_where, DRAFT)
+    # DEV в наборе защиты нет: запасной диалог DEV (пример слайда 10) проверяет прогон на DEV
+    own = {step: p for step, p in picked.items() if not p["fallback"]}
+    return d.check(api, own, ["1"], call, s.llm_model, s.data_where, DRAFT)
 
 
 def test_everything_ready(defence_api: httpx.Client) -> None:

@@ -7,6 +7,8 @@ const open = (d, appeals, pick) => c => { const r = d.res[c.id]; return r && pic
 const disagree = (d, cl, ap) => scored(cl).filter(open(d, ap, r => r.alt != null && r.alt !== r.a));
 const evFail = (d, cl, ap) => scored(cl).filter(open(d, ap, r => r.evFail));
 const resolution = cl => scored(cl).find(c => c.signal === 'resolution');
+// Подписи про две модели: второе мнение включено или уже есть в ответах (режим могли сменить после оценки).
+export const twoModels = S => S.mode?.verifier != null || S.dialogs.some(d => Object.values(d.res).some(r => r.alt != null));
 
 export function groupOf(d, checklist, appeals) {
   if (!d.reviewed && flagsOf(d, checklist).length) return 'risk';
@@ -14,7 +16,7 @@ export function groupOf(d, checklist, appeals) {
   const nextStep = scored(checklist).some(c => {
     if (c.signal !== 'resolution') return false;
     const f = frac(c, ans(d, c.id, appeals));
-    return f != null && f <= 0.25;
+    return f != null && f < 1; // любая ступень ниже верхней: «передам специалистам» без срока — 15 из 20
   });
   return nextStep ? 'next' : 'other';
 }
