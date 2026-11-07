@@ -230,3 +230,4 @@ dialog footer{display:flex;gap:10px;justify-content:flex-end;padding-top:6px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media print{.side,.top,.no-print{display:none!important}.app{display:block}body{background:#fff}.card{box-shadow:none}}
+tr.sel td{background:var(--accent-soft)}

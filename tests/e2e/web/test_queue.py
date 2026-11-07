@@ -73,7 +73,7 @@ def test_lost_and_lang_filters_come_from_hash(page: Page, web_url: str) -> None:
 
 def test_search_filters_rows_without_changing_hash(page: Page, web_url: str) -> None:
     open_queue(page, web_url)
-    page.fill("#q", "вывод средств")
+    page.fill("#q", "подал заявку")
     rows = page.locator('[data-act="open"]')
     expect(rows).to_have_count(1)
     assert rows.first.get_attribute("data-id") == "p1-ru-003"
