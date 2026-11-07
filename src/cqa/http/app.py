@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -45,6 +46,14 @@ def create_app(
     conn: sqlite3.Connection | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CQA")
+    # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https://[a-z0-9-]+(\.[a-z0-9-]+)*\.dynamics\.com",
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT"],
+        allow_headers=["Content-Type"],
+    )
     settings = settings or Settings()
     app.state.settings = settings
     for exc_class in STATUS:
