@@ -97,7 +97,7 @@ function detail(a) {
         ${allowed(c).map(v => `<button type="button" class="step" data-act="dval" data-id="${a.id}" data-v="${v}" aria-pressed="${v === st.val}">${step(v)}</button>`).join('')}</div>
         ${c.type === 'scale' && c.stepText && c.stepText[st.val] ? `<span class="muted xs">${st.val}: ${esc(c.stepText[st.val])}</span>` : ''}
         <span class="muted xs">Доступны только ${c.type === 'scale' ? 'ступени шкалы' : 'ответы «Да» и «Нет»'}${c.na ? ' и N/A, он разрешён у этого критерия' : ''}.</span></div>` : ''}
-      <label class="field"><span>Причина решения, обязательно</span><textarea id="decReason" class="fld" data-act="dreason" data-id="${a.id}" placeholder="Например: регламент не позволяет называть срок, следующий шаг дан полностью">${esc(st.reason)}</textarea></label>
+      <label class="field"><span>Причина решения, обязательно</span><textarea id="decReason" class="fld" data-act="dreason" data-input data-id="${a.id}" placeholder="Например: регламент не позволяет называть срок, следующий шаг дан полностью">${esc(st.reason)}</textarea></label>
       <div class="row" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:12px">
         <span>Итог разговора: <s class="muted">${f2(before)}</s> → <b style="font-size:20px">${f2(after)}</b></span>
         <button type="button" class="btn pri" data-act="decide" data-id="${a.id}" ${st.reason.trim().length < MIN_REASON ? 'disabled' : ''}>Сохранить решение</button>

@@ -36,7 +36,7 @@ export function openAppeal(d, cid) {
     <label class="field"><span>Критерий</span><select name="cid" class="fld" data-act="acid">${cs.map(c => `<option value="${esc(c.id)}" ${c.id === cid ? 'selected' : ''}>${esc(c.id)} ${esc(c.name)}</option>`).join('')}</select></label>
     <p class="box na" id="aNow">${ch.now}</p>
     <label class="field"><span>Какой ответ вы считаете верным</span><select name="ask" class="fld" id="aAsk">${ch.opts}</select></label>
-    <label class="field"><span>Комментарий, обязательно</span><textarea name="comment" class="fld" data-act="acomment" placeholder="Почему оценка неверна, со ссылкой на реплику, не короче ${MIN_COMMENT} символов"></textarea></label>
+    <label class="field"><span>Комментарий, обязательно</span><textarea name="comment" class="fld" data-act="acomment" data-input placeholder="Почему оценка неверна, со ссылкой на реплику, не короче ${MIN_COMMENT} символов"></textarea></label>
     ${lines.length ? `<label class="field"><span>Реплика в подтверждение</span><select name="ev" class="fld"><option value="">Не выбрана</option>${lines.map(l => `<option value="${l.n}">${l.n}: ${esc(l.text.slice(0, 60))}${l.text.length > 60 ? '…' : ''}</option>`).join('')}</select></label>` : ''}
     <p class="box risk" id="aErr" role="alert" hidden></p>
     <p class="muted small">Апелляцию рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.</p>

@@ -19,8 +19,6 @@ const modeText = m => [`Обработка: ${WHERE[m.where] || m.where}`, m.ano
   `модель ${m.model}`, m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
 const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
-const TEXT = 'textarea, input:not([type=checkbox], [type=radio], [type=file])';
-
 const ACTS = Object.assign({
   role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
   load: () => postDataset(document.getElementById('gid').value.trim()),
@@ -68,10 +66,10 @@ class CqaApp extends HTMLElement {
     init(resolveBase(location.search, this.dataset.api));
     this.innerHTML = SHELL;
     this.view = this.querySelector('#view');
-    // click — кнопки и ссылки, change — поля ввода и списки; input — ещё и текстовые поля на каждый ввод
+    // click — кнопки и ссылки, change — поля ввода и списки; input — только поля с data-input (на каждый ввод, без перерисовки)
     this.addEventListener('click', e => this.act(e, false));
     this.addEventListener('change', e => this.act(e, true));
-    this.addEventListener('input', e => e.target.matches(TEXT) && this.act(e, true));
+    this.addEventListener('input', e => e.target.matches('[data-input]') && this.act(e, true));
     window.addEventListener('hashchange', () => { this.render(true); window.scrollTo(0, 0); });
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
