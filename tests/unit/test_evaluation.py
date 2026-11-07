@@ -134,3 +134,52 @@ async def test_same_evaluation_twice_sends_two_requests_and_keeps_no_cache_key()
     assert len(model.calls) == 2
     assert first == second
     assert [f.name for f in dataclasses.fields(first.results[0])] == ["cid", "result"]
+
+
+BAD_QUOTE = {"reason_ru": "Поздоровался", "turn_ids": [4], "quote": "Добрый вечер", "answer": "yes"}
+GOOD_QUOTE = {
+    "reason_ru": "Поздоровался",
+    "turn_ids": [4],
+    "quote": "Здравствуйте! Меня зовут",
+    "answer": "yes",
+}
+
+
+async def test_retry_sends_previous_answer_with_errors_and_accepts_fixed_answer() -> None:
+    model = FakeModel({"01": [BAD_QUOTE, GOOD_QUOTE]})
+    [ev] = (await evaluator(model).evaluate(CHAT, CHECKLIST, [CRITERIA["01"]])).results
+    assert (ev.result.calls, ev.result.evFail, ev.result.ev, ev.result.cost) == (2, False, [4], 0.02)
+    first, second = model.calls
+    assert second[:2] == first
+    assert second[2] == {"role": "assistant", "content": json.dumps(BAD_QUOTE, ensure_ascii=False)}
+    assert second[3]["role"] == "user"
+    assert second[3]["content"].startswith("Ответ не прошёл проверку: ")
+    assert "цитата" in second[3]["content"]
+    assert second[3]["content"].endswith("Исправь и верни один объект JSON целиком.")
+
+
+async def test_two_failed_checks_keep_allowed_answer_marked_for_review() -> None:
+    model = FakeModel({"01": [BAD_QUOTE, BAD_QUOTE]})
+    [ev] = (await evaluator(model).evaluate(CHAT, CHECKLIST, [CRITERIA["01"]])).results
+    assert (ev.result.a, ev.result.evFail, ev.result.ev, ev.result.quote, ev.result.calls) == (
+        "yes",
+        True,
+        [],
+        None,
+        2,
+    )
+
+
+async def test_criterion_without_json_twice_is_left_pending() -> None:
+    model = FakeModel({"05": ["Оператор вежлив, ответ — да", "Да"]})
+    out = await evaluator(model).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+    assert [e.cid for e in out.results] == ["01", "02", "03", "04", "06", "07", "08"]
+    assert model.keys().count("05") == 2
+
+
+async def test_flag_question_with_unproven_violation_keeps_it_and_marks_flag() -> None:
+    unproven = {"reason_ru": "Предложил", "violation_found": True}
+    model = FakeModel({"08:paid": [unproven, unproven]})
+    [flag] = (await evaluator(model).evaluate(CHAT, CHECKLIST, [FLAG])).results
+    assert flag.result.a == {"insult": False, "paid": True, "leak": False}
+    assert (flag.result.ev, flag.result.evFail, flag.result.calls) == ([], True, 4)

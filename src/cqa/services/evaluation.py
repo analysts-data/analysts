@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Protocol
 
-from cqa.domain.answer import check, merge_flag, parse_answer, to_result
+from cqa.domain.answer import allowed_answer, check, merge_flag, parse_answer, to_result
 from cqa.domain.models import (
     Checklist,
     Criterion,
@@ -41,6 +41,15 @@ class Verifier(Protocol):
 
 class RealDataBlocked(Exception):
     pass
+
+
+_NO_JSON = {False: "нет объекта JSON с полем answer", True: "нет объекта JSON с полем violation_found"}
+
+
+def _allowed(raw: dict[str, Any], criterion: Criterion, sub: bool) -> bool:
+    if sub:
+        return isinstance(raw.get("violation_found"), bool)
+    return allowed_answer(raw, criterion) is not None
 
 
 @dataclass
@@ -111,12 +120,27 @@ class LlmEvaluator:
         *,
         sub: bool,
     ) -> tuple[dict[str, Any] | None, bool]:
-        """Ответ модели и признак evFail; None — допустимого ответа нет."""
+        """Ответ и признак evFail: один повтор с текстом ошибок; None — допустимого ответа нет."""
+        reply = await self._complete(messages, usage)
+        first = parse_answer(reply.text)
+        errors = check(first, criterion, lines, sub=sub) if first else [_NO_JSON[sub]]
+        if not errors:
+            return first, False
+        fix = f"Ответ не прошёл проверку: {'; '.join(errors)}. Исправь и верни один объект JSON целиком."
+        retry: list[Message] = [
+            *messages,
+            {"role": "assistant", "content": reply.text},
+            {"role": "user", "content": fix},
+        ]
+        second = parse_answer((await self._complete(retry, usage)).text)
+        if second and not check(second, criterion, lines, sub=sub):
+            return second, False
+        allowed = next((r for r in (second, first) if r and _allowed(r, criterion, sub)), None)
+        return allowed, allowed is not None
+
+    async def _complete(self, messages: list[Message], usage: _Usage) -> Reply:
         reply = await self.model.complete(messages)
         usage.calls += 1
         usage.cost += reply.cost
         usage.ms += reply.ms
-        raw = parse_answer(reply.text)
-        if raw is not None and not check(raw, criterion, lines, sub=sub):
-            return raw, False
-        return None, False
+        return reply
