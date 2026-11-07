@@ -12,8 +12,8 @@ check:
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
 
 e2e:
-	# код 5 — e2e-тестов пока нет: цель не должна ломать CI пустым набором
-	uv run pytest -q -m e2e tests/e2e || [ $$? -eq 5 ]
+	# cassette вместе с e2e: test_every_cassette_is_replayed сверяет записи с журналом всего прогона
+	CQA_CASSETTE_AUDIT=1 uv run pytest -q -m "e2e or cassette" tests
 
 eval:
 	CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)
