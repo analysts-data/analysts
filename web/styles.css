@@ -230,6 +230,7 @@ dialog footer{display:flex;gap:10px;justify-content:flex-end;padding-top:6px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media print{.side,.top,.no-print{display:none!important}.app{display:block}body{background:#fff}.card{box-shadow:none}}
+tr.sel td{background:var(--accent-soft)}
 
 /* плашка режима данных (заменяет «Учебный макет» прототипа) */
 .mode{font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:999px;padding:3px 10px}
