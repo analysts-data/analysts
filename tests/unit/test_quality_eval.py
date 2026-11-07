@@ -1,4 +1,5 @@
 import json
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -233,3 +234,17 @@ def test_checklist_option_accepts_state_export(workdir: Path, monkeypatch: pytes
     fake = use(monkeypatch, FakeEvaluator([answers()]))
     assert quality_eval.main(["--checklist", str(ROOT / "tests/fixtures/state_prototype.json")]) == 0
     assert fake.calls
+
+
+def test_make_eval_runs_quality_eval_live_with_args() -> None:
+    out = subprocess.run(
+        ["make", "-n", "eval", "ARGS=--accept"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout
+    assert "CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval --accept" in out
+
+
+def test_eval_reports_are_ignored_by_git() -> None:
+    out = subprocess.run(
+        ["git", "check-ignore", "-q", "eval/reports/20261107T000000Z.json"], cwd=ROOT, check=False
+    )
+    assert out.returncode == 0
