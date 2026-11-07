@@ -32,6 +32,14 @@ def test_analytics_tiles_and_tables_from_state_only(page: Page, web_url: str) ->
     assert requests == ["GET /state"]
 
 
+@pytest.mark.parametrize("route", ["#/analytics", "#/coaching"])
+def test_screen_fits_390px_without_horizontal_scroll(page: Page, web_url: str, route: str) -> None:
+    page.set_viewport_size({"width": 390, "height": 800})
+    open_page(page, web_url, route)
+    expect(page.locator("main h1")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+
+
 def test_owner_change_puts_and_shows_server_answer(page: Page, web_url: str) -> None:
     bodies: list[object] = []
 
