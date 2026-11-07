@@ -150,4 +150,5 @@ class ChatClient:
             usage.get("prompt_tokens", 0) * self._settings.llm_price_in
             + usage.get("completion_tokens", 0) * self._settings.llm_price_out
         ) / 1_000_000
-        return Reply(text=data["choices"][0]["message"]["content"], cost=cost, ms=int(sum(http_ms)))
+        text = data["choices"][0]["message"]["content"] or ""  # только рассуждение: content null
+        return Reply(text=text, cost=cost, ms=int(sum(http_ms)))

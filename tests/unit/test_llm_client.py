@@ -300,3 +300,13 @@ async def test_complete_keeps_at_most_max_parallel_in_flight():
             replies = await asyncio.gather(*(client.complete(MSGS) for _ in range(6)))
     assert [reply.text for reply in replies] == ["ответ"] * 6
     assert peak == 2
+
+
+async def test_complete_turns_missing_content_into_empty_text():
+    """Модель с рассуждением иногда отдаёт только reasoning_content и content: null."""
+    body = {"choices": [{"message": {"content": None, "reasoning_content": "думаю"}}], "usage": {}}
+    with respx.mock(assert_all_called=False) as mock:
+        mock.post(URL).respond(200, json=body)
+        async with httpx.AsyncClient() as http:
+            reply = await ChatClient(_settings(), http).complete(MSGS)
+    assert reply.text == ""
