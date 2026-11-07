@@ -197,3 +197,5 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
     expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
     expect(page.locator('[data-act="crun"]')).to_have_count(0)
     assert api.runs == []
+    page.evaluate("location.hash = '#/queue'")
+    expect(page.locator('[data-act="open"][data-id="call-024"]')).to_contain_text("83,75")  # было 82,94 при весе 15
