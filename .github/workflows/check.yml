@@ -2,6 +2,7 @@ name: check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -23,9 +24,10 @@ jobs:
       - name: Protected paths
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
+          # label from the event payload: gh pr view without a number fails on the detached checkout
+          HUMAN_OK: ${{ contains(github.event.pull_request.labels.*.name, 'human-ok') }}
         run: |
-          if gh pr view --json labels --jq '.labels[].name' | grep -qx 'human-ok'; then
+          if [ "$HUMAN_OK" = "true" ]; then
             echo "PROTECTED_ALLOW=1" >> "$GITHUB_ENV"
             scripts/protected_paths.sh --allow
           else
