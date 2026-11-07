@@ -6,7 +6,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import save_owners, set_reviewed
+from cqa.services.errors import Unavailable
+from cqa.services.ports import DialogSource
 from cqa.services.state import build_state
 
 router = APIRouter(prefix="/api")
@@ -16,6 +19,17 @@ Owner = Literal["Не назначено", "Инструкция", "Сервис
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class DatasetIn(BaseModel):
+    group_id: str
+
+
+def _source(request: Request) -> DialogSource:
+    source: DialogSource | None = request.app.state.source
+    if source is None:
+        raise Unavailable("Загрузка наборов не подключена")
+    return source
 
 
 @router.get("/state")
@@ -32,3 +46,14 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
 @router.put("/owners")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     return save_owners(request.app.state.store, body)
+
+
+@router.post("/datasets")
+async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
+    return await load_group(request.app.state.store, _source(request), body.group_id)
+
+
+@router.post("/datasets/upload")
+async def post_upload(request: Request) -> dict[str, int]:
+    """Сырое тело файла: без `UploadFile` и зависимости `python-multipart`."""
+    return load_upload(request.app.state.store, _source(request), await request.body())
