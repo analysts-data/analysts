@@ -11,7 +11,8 @@ check:
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
 
 e2e:
-	uv run pytest -q -m e2e tests/e2e
+	# код 5 — e2e-тестов пока нет: цель не должна ломать CI пустым набором
+	uv run pytest -q -m e2e tests/e2e || [ $$? -eq 5 ]
 
 eval:
 	@echo "нет эталона: make eval появится в eval-and-delivery"
