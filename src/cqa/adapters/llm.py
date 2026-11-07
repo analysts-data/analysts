@@ -139,7 +139,8 @@ class ChatClient:
         async with self._semaphore:
             data = await post_json(
                 self._http,
-                f"{self._settings.llm_base_url}/chat/completions",
+                # replay never leaves the cassette transport, so CI without .env needs only a valid URL
+                f"{self._settings.llm_base_url or 'http://replay.invalid'}/chat/completions",
                 body,
                 headers,
                 gate=self._limiter.acquire,
@@ -150,4 +151,5 @@ class ChatClient:
             usage.get("prompt_tokens", 0) * self._settings.llm_price_in
             + usage.get("completion_tokens", 0) * self._settings.llm_price_out
         ) / 1_000_000
-        return Reply(text=data["choices"][0]["message"]["content"], cost=cost, ms=int(sum(http_ms)))
+        text = data["choices"][0]["message"]["content"] or ""  # только рассуждение: content null
+        return Reply(text=text, cost=cost, ms=int(sum(http_ms)))
