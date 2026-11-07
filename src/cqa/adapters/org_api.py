@@ -82,3 +82,16 @@ class OrgApi:
         if not 200 <= response.status_code < 300:
             raise OrgApiError(f"API организаторов ответил статусом {response.status_code}")
         return response.content
+
+    async def fresh_audio_link(self, audio_url: str) -> str | None:
+        """Свежая ссылка на MP3 из HTML плеера; `None`, если достать не удалось.
+
+        Каждый вызов — новый запрос, кэша нет: ссылки живут около часа.
+        """
+        try:
+            response = await self._http.get(audio_url, timeout=AUDIO_TIMEOUT_S)
+        except httpx.HTTPError:
+            return None
+        if not 200 <= response.status_code < 300:
+            return None
+        return extract_audio_src(response.text, str(response.url))
