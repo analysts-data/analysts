@@ -211,7 +211,8 @@ def test_flag_merges_found_questions() -> None:
         None,
         False,
     )
-    assert res.why == f"{INSULT}: Нет; {PAID}: Есть; {LEAK}: Нет"
+    # реплики найденного нарушения — в его причине: карточка показывает основание по каждому вопросу
+    assert res.why == f"{INSULT}: Нет; {PAID}: Есть (реплики 6); {LEAK}: Нет"
     assert (res.model, res.calls, res.cost, res.ms, res.better) == ("m", 3, 0.3, 30, None)
 
 
@@ -226,6 +227,7 @@ def test_flag_joins_evidence_of_all_found_and_takes_range_of_first_with_one() ->
     assert res.quote == "цитата 9"
     assert res.seg == "реплики 2–4"
     assert res.tag == f"{INSULT}, {PAID}, {LEAK}"
+    assert res.why == f"{INSULT}: А (реплики 9); {PAID}: Б (реплики 2, 9); {LEAK}: В (реплики 5)"
 
 
 def test_flag_question_without_answer_counts_as_not_found_and_marks_flag() -> None:
@@ -241,3 +243,4 @@ def test_flag_question_with_failed_evidence_keeps_finding_and_marks_flag() -> No
     res = merge_flag(crit(FLAG), subs, model="m", calls=4, cost=0, ms=0)
     assert res.a == {"insult": True, "paid": False, "leak": False}
     assert (res.ev, res.quote, res.evFail, res.tag) == ([], None, True, INSULT)
+    assert res.why == f"{INSULT}: Есть; {PAID}: Нет; {LEAK}: Нет"

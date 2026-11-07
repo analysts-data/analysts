@@ -46,3 +46,7 @@ def test_defence_3m00(defence: Defence) -> None:
 
 def test_total_not_computable_shows_dash(defence: Defence) -> None:
     steps.no_total(defence)
+
+
+def test_gross_error_appeal_is_decided_without_changing_total(defence: Defence) -> None:
+    steps.flag_appeal(defence)
