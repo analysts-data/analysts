@@ -169,7 +169,7 @@ def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: 
     save_text_change(page)
     page.locator('[data-act="crun"]').click()
     view = page.locator('[data-view="checklist"]')
-    expect(view).to_contain_text("3/10")
+    expect(view).to_contain_text("Оценено 3 из 10 ответов по критериям")
     expect(view).to_contain_text("$0,02")
     expect(view).to_contain_text("40 с")
     expect(page.locator('[data-act="crun"]')).to_be_disabled()
@@ -199,3 +199,27 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
     expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
     expect(page.locator('[data-act="crun"]')).to_have_count(0)
     assert api.runs == []
+    page.evaluate("location.hash = '#/queue'")
+    expect(page.locator('[data-act="open"][data-id="call-024"]')).to_contain_text(
+        "83,75"
+    )  # было 82,94 при весе 15
+
+
+@pytest.mark.parametrize(
+    ("cid", "field", "typed"),
+    [
+        ("04", "#cf-name", "Полная консультация по запросу"),
+        ("04", "#cf-text", "Оцените ответ, следующий шаг и срок."),
+        ("04", "#cf-steps", "10: Полностью\n5: Частично\n0: Нет"),
+        ("08", "#cf-q", "Оскорбление клиента\nПлатная услуга"),
+    ],
+)
+def test_typing_key_by_key_keeps_every_character_and_focus(
+    page: Page, web_url: str, cid: str, field: str, typed: str
+) -> None:
+    open_checklist(page, web_url)
+    item(page, cid).click()
+    page.locator(field).fill("")
+    page.locator(field).press_sequentially(typed)
+    expect(page.locator(field)).to_have_value(typed)
+    expect(page.locator(field)).to_be_focused()

@@ -53,8 +53,9 @@ rm)
     echo "ошибка: $wt не существует" >&2
     exit 1
   fi
-  # --force на случай незакоммиченных символических ссылок общих файлов
-  git worktree remove "$wt" 2>/dev/null || git worktree remove --force "$wt"
+  # без --force: незакоммиченная работа остаётся, git объясняет причину (ссылки общих файлов
+  # и .venv в .gitignore удалению не мешают)
+  git worktree remove "$wt"
   if ! git branch -d "$branch" 2>/dev/null; then
     echo "предупреждение: ветка $branch не слита, оставлена" >&2
   fi
