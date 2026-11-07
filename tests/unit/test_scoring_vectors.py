@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from cqa.domain.models import Checklist
+from cqa.domain.scoring import total
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 EXPECTED_VECTORS = 7
@@ -54,3 +55,9 @@ def test_vectors_keep_prototype_anchors() -> None:
     assert totals["нет применимых критериев: итог null"] is None
     # 100 × 7,7 / 16 = 48,125: половина вверх даёт 48,13, а не 48,12
     assert totals["шум двоичной записи: 48,125 → 48,13"] == 48.13
+
+
+def test_python_total_matches_every_vector() -> None:
+    for vector in vectors():
+        checklist = resolve_checklist(vector["checklist"])
+        assert total(checklist, vector["answers"]) == vector["total"], vector["name"]
