@@ -1,55 +1,17 @@
+from pathlib import Path
 from typing import Any
 
-from cqa.domain.models import Criterion, Dialog, Fold, Line
+from cqa.domain.models import Checklist, Criterion, Dialog, Fold, Line
 from cqa.domain.prompt import SYSTEM_PROMPT, build_messages, render_dialog
 
-# Синтетические критерии в форме контракта; сценарии по checklist_v3.json — после слияния фикстур
-SCALE = {
-    "id": "04",
-    "sec": 1,
-    "name": "Название шкалы",
-    "type": "scale",
-    "w": 20,
-    "na": True,
-    "naCond": "Условие неприменимости шкалы.",
-    "signal": "resolution",
-    "steps": [20, 15, 10, 5, 0],
-    "stepText": {
-        "0": "Ступень ноль.",
-        "5": "Ступень пять.",
-        "10": "Ступень десять.",
-        "15": "Ступень 15.",
-        "20": "Всё.",
-    },
-    "text": "Оцените ответ по шкале.",
-}
-BOOL = {
-    "id": "01",
-    "sec": 0,
-    "name": "Название да-нет",
-    "type": "bool",
-    "w": 10,
-    "na": False,
-    "text": "Да — поздоровался.",
-}
-FLAG = {
-    "id": "08",
-    "sec": 3,
-    "name": "Название флага",
-    "type": "flag",
-    "w": 0,
-    "signal": "risk",
-    "questions": [
-        {"k": "q1", "label": "Первое нарушение"},
-        {"k": "q2", "label": "Второе нарушение", "text": "Текст второго подвопроса"},
-        {"k": "q3", "label": "Третье нарушение"},
-    ],
-    "text": "Каждый вид нарушения — отдельный вопрос.",
-}
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
+CRITERIA = {c.id: c for c in CHECKLIST.criteria}
+SCALE, BOOL, FLAG = CRITERIA["04"], CRITERIA["01"], CRITERIA["08"]
 
 
-def crit(data: dict[str, Any], **changes: Any) -> Criterion:
-    return Criterion.model_validate(data | changes)
+def crit(criterion: Criterion, **changes: Any) -> Criterion:
+    return criterion.model_copy(update=changes)
 
 
 def line(n: int, t: float | str, who: Any, text: str, seg: Any = "conv") -> Line:
@@ -134,30 +96,34 @@ def test_scale_call_has_system_prompt_with_rules_and_every_step_without_name() -
     assert system["role"] == "system" and user["role"] == "user"
     assert system["content"] == SYSTEM_PROMPT + "\n\nОбщие правила чек-листа:\nПравило Р"
     assert user["content"].startswith("<dialog>\n[1] client: Привет\n</dialog>\n\n")
-    assert "Оцените ответ по шкале." in user["content"]
-    for step in SCALE["steps"]:
-        assert f"{step} — {SCALE['stepText'][str(step)]}" in user["content"]
-    assert user["content"].index("20 — ") < user["content"].index("0 — Ступень ноль.")
-    assert '"na" — неприменимо, только если: Условие неприменимости шкалы.' in user["content"]
-    assert "Название шкалы" not in user["content"] + system["content"]
+    assert SCALE.steps and SCALE.stepText
+    rows = [f"{step} — {SCALE.stepText[str(step)]}" for step in SCALE.steps]
+    assert all(row in user["content"] for row in rows)
+    assert [user["content"].index(row) for row in rows] == sorted(user["content"].index(row) for row in rows)
+    assert f'"na" — неприменимо, только если: {SCALE.naCond}' in user["content"]
+    assert f"Критерий:\n{SCALE.text}" in user["content"]
+    assert SCALE.name not in user["content"] + system["content"]
 
 
 def test_bool_without_na_offers_only_yes_and_no() -> None:
     [[_, user]] = build_messages("", "", crit(BOOL))
     assert '"yes"' in user["content"] and '"no"' in user["content"]
     assert '"na"' not in user["content"]
-    assert "Название да-нет" not in user["content"]
+    assert BOOL.name not in user["content"]
 
 
 def test_flag_makes_one_call_per_question_with_violation_found() -> None:
-    calls = build_messages("", "", crit(FLAG))
+    assert FLAG.questions
+    first, second, third = FLAG.questions
+    flag = crit(FLAG, questions=[first, second.model_copy(update={"text": "Текст подвопроса"}), third])
+    calls = build_messages("", "", flag)
     assert len(calls) == 3
-    expected = ["Первое нарушение", "Текст второго подвопроса", "Третье нарушение"]
+    expected = [first.label, "Текст подвопроса", third.label]
     for (_, user), mine in zip(calls, expected, strict=True):
         assert mine in user["content"]
-        assert [e for e in expected if e in user["content"]] == [mine]
+        assert [e for e in [*expected, second.label] if e in user["content"]] == [mine]
         assert "violation_found" in user["content"] and '"answer"' not in user["content"]
-        assert "Название флага" not in user["content"]
+        assert FLAG.name not in user["content"] and FLAG.text not in user["content"]
 
 
 def test_injected_closing_tag_does_not_close_dialog_block() -> None:
@@ -171,5 +137,5 @@ def test_messages_ignore_weight_name_section_signal_and_follow_meaning() -> None
     base = build_messages("d", "r", crit(SCALE))
     assert build_messages("d", "r", crit(SCALE, w=5, name="Другое", sec=0, signal=None)) == base
     assert build_messages("d", "r", crit(SCALE, naCond="Другое условие.")) != base
-    assert build_messages("d", "r", crit(SCALE, stepText=SCALE["stepText"] | {"15": "Иначе."})) != base
+    assert build_messages("d", "r", crit(SCALE, stepText=(SCALE.stepText or {}) | {"15": "Иначе."})) != base
     assert build_messages("d", "другие правила", crit(SCALE)) != base

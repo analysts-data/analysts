@@ -1,8 +1,18 @@
+from pathlib import Path
 from typing import Any
 
-from test_prompt import BOOL, FLAG, SCALE, crit
-
 from cqa.domain.answer import allowed_answer, check, merge_flag, normalize, parse_answer, to_result
+from cqa.domain.models import Checklist, Criterion
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
+CRITERIA = {c.id: c for c in CHECKLIST.criteria}
+SCALE, BOOL, FLAG = CRITERIA["04"], CRITERIA["01"], CRITERIA["08"]
+INSULT, PAID, LEAK = (q.label for q in FLAG.questions or [])
+
+
+def crit(criterion: Criterion, **changes: Any) -> Criterion:
+    return criterion.model_copy(update=changes)
 
 
 def test_parse_answer_skips_json_inside_think_and_unwraps_fence() -> None:
@@ -193,15 +203,15 @@ def sub(
 def test_flag_merges_found_questions() -> None:
     subs = [(sub(False, "Нет"), False), (sub(True, "Есть", [6]), False), (sub(False, "Нет"), False)]
     res = merge_flag(crit(FLAG), subs, model="m", calls=3, cost=0.3, ms=30)
-    assert res.a == {"q1": False, "q2": True, "q3": False}
+    assert res.a == {"insult": False, "paid": True, "leak": False}
     assert (res.ev, res.quote, res.tag, res.seg, res.evFail) == (
         [6],
         "цитата 6",
-        "Второе нарушение",
+        PAID,
         None,
         False,
     )
-    assert res.why == "Первое нарушение: Нет; Второе нарушение: Есть; Третье нарушение: Нет"
+    assert res.why == f"{INSULT}: Нет; {PAID}: Есть; {LEAK}: Нет"
     assert (res.model, res.calls, res.cost, res.ms, res.better) == ("m", 3, 0.3, 30, None)
 
 
@@ -215,19 +225,19 @@ def test_flag_joins_evidence_of_all_found_and_takes_range_of_first_with_one() ->
     assert res.ev == [2, 5, 9]
     assert res.quote == "цитата 9"
     assert res.seg == "реплики 2–4"
-    assert res.tag == "Первое нарушение, Второе нарушение, Третье нарушение"
+    assert res.tag == f"{INSULT}, {PAID}, {LEAK}"
 
 
 def test_flag_question_without_answer_counts_as_not_found_and_marks_flag() -> None:
     subs = [(sub(False, "Нет"), False), (sub(True, "Есть", [6]), False), (None, False)]
     res = merge_flag(crit(FLAG), subs, model="m", calls=2, cost=0, ms=0)
-    assert res.a == {"q1": False, "q2": True, "q3": False}
+    assert res.a == {"insult": False, "paid": True, "leak": False}
     assert res.ev == [6] and res.evFail is True
-    assert "Третье нарушение: не найдено" in (res.why or "")
+    assert f"{LEAK}: не найдено" in (res.why or "")
 
 
 def test_flag_question_with_failed_evidence_keeps_finding_and_marks_flag() -> None:
     subs = [(sub(True, "Есть", [6]), True), (sub(False, "Нет"), False), (sub(False, "Нет"), False)]
     res = merge_flag(crit(FLAG), subs, model="m", calls=4, cost=0, ms=0)
-    assert res.a == {"q1": True, "q2": False, "q3": False}
-    assert (res.ev, res.quote, res.evFail, res.tag) == ([], None, True, "Первое нарушение")
+    assert res.a == {"insult": True, "paid": False, "leak": False}
+    assert (res.ev, res.quote, res.evFail, res.tag) == ([], None, True, INSULT)
