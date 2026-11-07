@@ -7,10 +7,11 @@ from typing import Any
 import pytest
 
 from cqa.adapters.store import Store, connect
-from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.review import fingerprint
 from cqa.services.checklists import save_checklist
 from cqa.services.errors import Conflict, Invalid
+from cqa.services.state import build_state
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 SEED_NOTE = "начальная версия"
@@ -65,6 +66,11 @@ def res_of(store: Store, dialog_id: str) -> dict[str, CriterionResult]:
     return store.current_results(fps(store.current_checklist())).get(dialog_id, {})
 
 
+def state_res(store: Store, dialog_id: str) -> dict[str, Any]:
+    state = build_state(store, Mode(where="kz", anonymized=True, model="qwen3-6", verifier=None))
+    return next(d["res"] for d in state["dialogs"] if d["id"] == dialog_id)
+
+
 def appeal(dlg: str, cid: str, frm: Any = 15) -> Appeal:
     return Appeal.model_validate(
         {"id": "a0", "kind": "appeal", "dlg": dlg, "cid": cid, "from": frm, "ask": 20,
@@ -108,6 +114,16 @@ def test_text_change_hides_result_but_keeps_rows() -> None:
     assert "04" not in res_of(store, "call-024")
     assert len(res_of(store, "call-024")) == 7
     assert rows(store) == before
+
+
+def test_text_change_hides_result_in_state() -> None:
+    store = make_store()
+    add_results(store, ["call-024", "p1-ru-003"])
+
+    save_checklist(store, draft({"04": {"text": "Новый текст"}}))
+
+    assert "04" not in state_res(store, "call-024")
+    assert len(state_res(store, "call-024")) == 7
 
 
 def test_removed_criterion_disappears_from_results() -> None:
