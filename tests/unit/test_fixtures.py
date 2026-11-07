@@ -57,3 +57,11 @@ def test_call_line_time_is_its_start_in_the_recording() -> None:
                 assert [ln["t"] for ln in d["lines"] if "n" in ln] == [
                     ln["s"] for ln in d["lines"] if "n" in ln
                 ], name
+
+
+def test_rules_define_disclosure_of_account_data_before_identification() -> None:
+    # DEV-прогон: модель не считала раскрытием сведения о счёте до проверки личности,
+    # если клиент сам спрашивал о своём счёте
+    rules = Checklist.model_validate(load_fixture("checklist_v3.json")).rules
+    assert "Раскрытие конфиденциальной информации — " in rules
+    assert "до подтверждения личности" in rules
