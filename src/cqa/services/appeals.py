@@ -76,3 +76,20 @@ def file_appeal(
         }
     )
     return store.add_appeal(appeal, pair.fp)
+
+
+def decide(store: Store, appeal_id: str, *, to: Answer, reason: str, reviewer: str, now: datetime) -> Appeal:
+    found = store.get_appeal(appeal_id)
+    assert found is not None
+    appeal = found[0]
+    decided = appeal.model_copy(
+        update={
+            "to": to,
+            "reason": reason.strip(),
+            "reviewer": reviewer,
+            "decidedAt": stamp(now),
+            "status": "confirmed" if to == appeal.from_ else "changed",
+        }
+    )
+    store.save_decision(decided)
+    return decided
