@@ -364,7 +364,7 @@ async def test_run_holdout_swaps_each_criterion_in_place_and_asks_only_it(tmp_pa
         ]
     )
     assert report.rows == [HoldoutRow("h1", "bool", 2, 0.5), HoldoutRow("h2", "bool", 1, 1.0)]
-    assert (report.n, report.ok, report.agreement) == (3, 2, pytest.approx(2 / 3))
+    assert (report.n, report.hits, report.agreement) == (3, 2, pytest.approx(2 / 3))
 
 
 def holdout_run(root: Path, monkeypatch: pytest.MonkeyPatch, misses: int) -> Path:
@@ -389,3 +389,30 @@ def test_holdout_agreement_below_threshold_returns_one(
 def test_holdout_agreement_at_threshold_passes(workdir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     holdout_run(workdir, monkeypatch, misses=2)
     assert quality_eval.main([*ARGS, "--holdout"]) == 0
+
+
+def test_holdout_report_reveals_only_ids_types_and_numbers(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    holdout_run(workdir, monkeypatch, misses=2)
+    assert quality_eval.main([*ARGS, "--holdout"]) == 0
+    [path] = (workdir / "eval/reports").glob("holdout-*.json")
+    saved = path.read_text(encoding="utf-8")
+    report = json.loads(saved)
+    assert report["agreement"] == pytest.approx(13 / 15)
+    assert report["rows"][0] == {"cid": "h1", "type": "bool", "n": 3, "agree": pytest.approx(1 / 3)}
+    for text in (saved, capsys.readouterr().out):
+        assert HOLDOUT_TEXT not in text and "Отложенный" not in text
+        assert "syn-" not in text
+        assert '"ok"' not in text and '"a"' not in text
+
+
+def test_make_eval_holdout_runs_quality_eval_live_with_holdout_flag() -> None:
+    out = subprocess.run(
+        ["make", "-n", "eval-holdout", "ARGS=--checklist x.json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval --holdout --checklist x.json" in out

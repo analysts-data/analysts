@@ -188,11 +188,11 @@ class HoldoutRow:
 class HoldoutReport:
     rows: list[HoldoutRow]
     n: int
-    ok: int
+    hits: int
 
     @property
     def agreement(self) -> float | None:
-        return None if self.n == 0 else self.ok / self.n
+        return None if self.n == 0 else self.hits / self.n
 
 
 async def run_holdout(
@@ -292,6 +292,19 @@ def _evaluate[T](coro: Coroutine[Any, Any, T]) -> T:
         raise _Stop(f"Оценка не запущена: {exc}") from None
 
 
+def _save(body: dict[str, Any], prefix: str = "") -> Path:
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    path = REPORTS / f"{prefix}{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
+    path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def _verdict(problems: list[str], path: Path) -> int:
+    print("\n".join(f"НЕ ПРОШЛО: {p}" for p in problems) or "Все пороги пройдены")
+    print(f"Отчёт: {path}")
+    return 1 if problems else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """make eval и make eval-holdout: 0 — прошло, 1 — порог или регресс, 2 — ошибка конфигурации."""
     parser = argparse.ArgumentParser(prog="python -m cqa.services.quality_eval")
@@ -329,13 +342,17 @@ def _holdout_main(settings: Settings, checklist: Checklist) -> int:
     dialogs = _snapshot(settings, {g.dlg for g in labels}, quiet=True)
     report = _evaluate(run_holdout(dialogs, holdout, checklist, _build_evaluator(settings)))
     limit = load_thresholds(THRESHOLDS.read_text(encoding="utf-8")).holdout_agreement_min
+    problems = (
+        [f"совпадение отложенных критериев {_num(report.agreement)} ниже {_num(limit)}"]
+        if report.agreement is not None and report.agreement < limit
+        else []
+    )
+    body = asdict(report) | {"agreement": report.agreement, "problems": problems}
+    path = _save(body, "holdout-")
     for row in report.rows:
         print(f"{row.cid} ({row.type}): {row.n} ответов, совпадение {_num(row.agree)}")
-    print(f"Отложенные критерии вместе: {_num(report.agreement)} ({report.ok} из {report.n})")
-    if report.agreement is not None and report.agreement < limit:
-        print(f"НЕ ПРОШЛО: совпадение отложенных критериев {_num(report.agreement)} ниже {_num(limit)}")
-        return 1
-    return 0
+    print(f"Отложенные критерии вместе: {_num(report.agreement)} ({report.hits} из {report.n})")
+    return _verdict(problems, path)
 
 
 def _eval_main(settings: Settings, checklist: Checklist, accept: bool) -> int:
@@ -343,18 +360,14 @@ def _eval_main(settings: Settings, checklist: Checklist, accept: bool) -> int:
     dialogs = _snapshot(settings, {g.dlg for g in gold})
     report = _evaluate(run_eval(dialogs, gold, checklist, _build_evaluator(settings)))
     problems = gate(report, load_thresholds(THRESHOLDS.read_text(encoding="utf-8")), _load_baseline())
-    REPORTS.mkdir(parents=True, exist_ok=True)
-    path = REPORTS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
     body: dict[str, Any] = asdict(report) | {
         "cost_per_dialog": report.cost_per_dialog,
         "calls_per_dialog": report.calls_per_dialog,
         "problems": problems,
     }
-    path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    path = _save(body)
     print(_table(report))
-    print("\n".join(f"НЕ ПРОШЛО: {p}" for p in problems) or "Все пороги пройдены")
-    print(f"Отчёт: {path}")
-    if problems:
+    if _verdict(problems, path):
         return 1
     if accept:
         baseline = {
