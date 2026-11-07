@@ -71,4 +71,17 @@ export const actions = {
     await reload();
     toast(`Апелляция по критерию «${crit(cid).name}» отправлена проверяющему.`);
   },
+  reviewed: async t => {
+    const d = current(), on = !d.reviewed;
+    t.disabled = true;
+    try {
+      await api.postReviewed(d.id, on);
+    } catch (e) {
+      t.disabled = false;
+      toast(`Отметка не сохранена: ${e.message}`);
+      return;
+    }
+    await reload();
+    toast(on ? `${titleOf(d)} отмечен проверенным и уходит из верхних групп очереди.` : 'Отметка снята, диалог вернулся в очередь.');
+  },
 };
