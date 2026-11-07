@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.settings import Settings
@@ -44,6 +45,7 @@ def create_app(
         return {"ok": True}
 
     # routers of the tracks go here (review-workflow: cqa.http.api, dialog-ingest: cqa.http.audio)
+    app.include_router(audio_router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path
     return app
