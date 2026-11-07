@@ -1,0 +1,9 @@
+# Пороги make eval (eval-and-delivery, design.md п. 6). Защищённый путь: правка только с меткой human-ok.
+gross_recall_min: 1.0        # грубые ошибки, каждый подвопрос и каждый язык
+kz_gap_max_pts: 5            # KZ ниже RU не более чем на 5 пунктов
+na_precision_min: 0.90
+na_recall_min: 0.90
+stability_min: 0.95
+evidence_ok_min: 0.92        # предварительно: до повтора цитата не проходила в 2–8% случаев
+holdout_agreement_min: 0.85  # отложенные критерии, вместе
+baseline_drop_max_pts: 3     # падение совпадения всего или KZ к лучшему прогону
