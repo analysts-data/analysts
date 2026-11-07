@@ -62,7 +62,7 @@ def defence_api(defence_clock: None, tmp_path: Path) -> Iterator[httpx.Client]:
 def defence(defence_api: httpx.Client, page: Page) -> Defence:
     """Страница на сервере сценария; запись звонка подменена тишиной, ошибки консоли собираются."""
     d = Defence(page, defence_api)
-    page.set_default_timeout(5_000)  # localhost; xfail steps fail fast and fit the 120 s limit
+    page.set_default_timeout(5_000)  # localhost: a broken step fails fast and fits the 120 s limit
 
     def console(m: ConsoleMessage) -> None:
         if m.type == "error":

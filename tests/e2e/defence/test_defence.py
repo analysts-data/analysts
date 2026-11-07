@@ -32,20 +32,17 @@ def test_set_is_loaded_and_evaluated(defence_api: httpx.Client) -> None:
     assert {x["id"]: set(x["res"]) for x in state["dialogs"]} == {x["id"]: criteria for x in state["dialogs"]}
 
 
-@pytest.mark.xfail(reason="ждёт cqa-web-ui и analytics-coaching", strict=False)
 def test_defence_4m30(defence: Defence) -> None:
     steps.mode_and_roles(defence)
     for step, _ in VERSION_4M30:
         step(defence)
 
 
-@pytest.mark.xfail(reason="ждёт cqa-web-ui", strict=False)
 def test_defence_3m00(defence: Defence) -> None:
     steps.mode_and_roles(defence)
     for step, _ in VERSION_3M00:
         step(defence)
 
 
-@pytest.mark.xfail(reason="ждёт cqa-web-ui", strict=False)
 def test_total_not_computable_shows_dash(defence: Defence) -> None:
     steps.no_total(defence)
