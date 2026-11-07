@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Protocol
 
+from cqa.domain.anonymize import anonymize
 from cqa.domain.answer import allowed_answer, check, merge_flag, parse_answer, to_result
 from cqa.domain.models import (
     Checklist,
@@ -90,6 +91,14 @@ class LlmEvaluator:
     ) -> DialogEvaluation:
         if dialog.lines is None:
             raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
+        # реальный звонок уходит наружу только с разрешения человека (design.md п. 19)
+        if dialog.ch == "call" and self.sends_real_data and not self.allow_real_data:
+            raise RealDataBlocked(
+                f"Диалог {dialog.id}: реальный звонок можно отправлять модели только с CQA_ALLOW_REAL_DATA=1"
+            )
+        if self.anonymize:
+            dialog = anonymize(dialog)
+        assert dialog.lines is not None  # проверено выше, anonymize список реплик не меняет
         text = render_dialog(dialog)
         lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
