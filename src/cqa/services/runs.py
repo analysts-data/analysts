@@ -148,7 +148,7 @@ class Runner:
             out = await self._evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
             self._store.record_progress(
-                run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {exc or type(exc).__name__}"]
+                run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {str(exc) or type(exc).__name__}"]
             )
             return
         ms = round((self._clock() - started) * 1000)
