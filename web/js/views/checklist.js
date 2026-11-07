@@ -1,6 +1,6 @@
 // Редактор чек-листа: черновик — копия применяемой версии, правки живут в браузере до сохранения.
-import { S, render } from '../state.js';
-import { esc } from '../format.js';
+import { S, api, reload, render, startRun, toast } from '../state.js';
+import { esc, fn } from '../format.js';
 
 const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
 const TYPES = [['bool', 'Да / Нет'], ['scale', 'Шкала'], ['flag', 'Флаг нарушения, без баллов']];
@@ -11,10 +11,13 @@ const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
 const wsum = cs => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
 const selected = () => S.draft.criteria.find(x => x.id === S.cSel);
+// pending приходит только из ответа PUT /api/checklist и держится, пока у диалогов нет записи критерия
+const waiting = () => (S.pending || []).filter(cid => S.dialogs.some(d => !d.res[cid]));
 
 export function view(S) {
-  if (!S.draft) S.draft = structuredClone(S.checklist);
-  const cl = S.checklist, dr = S.draft;
+  // новая версия с сервера сбрасывает черновик; если сохранение упало, правки остаются
+  if (S.draft?.version !== S.checklist.version) S.draft = structuredClone(S.checklist);
+  const cl = S.checklist, dr = S.draft, pend = waiting(), run = S.run?.status === 'running' ? S.run : null;
   const c = selected() || dr.criteria[0];
   S.cSel = c?.id;
   const sum = wsum(scored(dr));
@@ -26,11 +29,17 @@ export function view(S) {
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
     <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
-      <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button></div></div>
+      <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn pri" data-act="csave" ${dirty ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+  ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
+    <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
+      ${run ? `Оценено <b>${run.done}/${run.total}</b>, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
+    <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
+      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
     <section class="card" style="padding:10px" aria-label="Структура чек-листа">
       ${dr.sections.map((s, si) => `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${wsum(scored(dr).filter(x => x.sec === si)) || ''}</span></p><div class="clist">
-        ${dr.criteria.filter(x => x.sec === si).map(x => `<button type="button" class="citem" data-act="csel" data-cid="${esc(x.id)}" aria-current="${x.id === S.cSel}"><span class="muted small">${esc(x.id)}</span><span>${esc(x.name)}${changed(x.id) ? ' <span class="chip c-ev">изменён</span>' : ''}${x.signal ? ` <span class="chip c-info">${esc(SIGNALS.find(s => s[0] === x.signal)?.[1] ?? x.signal)}</span>` : ''}</span><span class="muted xs">${TYPE_NAME[x.type] ?? esc(x.type)}${x.na ? ', N/A' : ''}</span><b class="num">${x.type === 'flag' ? '—' : esc(x.w)}</b></button>`).join('')}</div>`).join('')}
+        ${dr.criteria.filter(x => x.sec === si).map(x => `<button type="button" class="citem" data-act="csel" data-cid="${esc(x.id)}" aria-current="${x.id === S.cSel}"><span class="muted small">${esc(x.id)}</span><span>${esc(x.name)}${changed(x.id) ? ' <span class="chip c-ev">изменён</span>' : ''}${pend.includes(x.id) ? ' <span class="chip c-ev">ждёт оценки</span>' : ''}${x.signal ? ` <span class="chip c-info">${esc(SIGNALS.find(s => s[0] === x.signal)?.[1] ?? x.signal)}</span>` : ''}</span><span class="muted xs">${TYPE_NAME[x.type] ?? esc(x.type)}${x.na ? ', N/A' : ''}</span><b class="num">${x.type === 'flag' ? '—' : esc(x.w)}</b></button>`).join('')}</div>`).join('')}
       <div class="row" style="padding:12px 10px 4px;border-top:1px solid var(--line2);margin-top:8px">
         <span class="chip ${sum === 100 ? 'c-ok' : 'c-ev'}">Сумма весов ${sum}</span>${sum !== 100 ? '<span class="muted xs">Итог всё равно приводится к 100</span>' : ''}
         <button type="button" class="btn sm only-qa" data-act="cadd" style="margin-left:auto">Добавить критерий</button></div>
@@ -102,4 +111,15 @@ export const actions = {
   },
   cdel: () => { S.draft.criteria = S.draft.criteria.filter(c => c.id !== S.cSel); S.cSel = null; render(); },
   creset: () => { S.draft = null; render(); },
+  csave: async () => {
+    try {
+      const { version, pending } = await api.putChecklist(S.draft);
+      S.pending = [...new Set([...(S.pending || []), ...pending])];
+      await reload();
+      toast(pending.length ? `Сохранена версия v${version}. Критерии ${pending.join(', ')} ждут оценки.` : `Сохранена версия v${version}. Итоги пересчитаны без вызова модели.`);
+    } catch (e) {
+      toast(`Чек-лист не сохранён: ${e.message}`);
+    }
+  },
+  crun: () => startRun({ dialogs: null, criteria: waiting() }),
 };

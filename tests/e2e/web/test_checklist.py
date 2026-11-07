@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Route, expect
 
 pytestmark = pytest.mark.e2e
 STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json").read_text(
@@ -9,12 +11,58 @@ STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.jso
 )
 
 
-def open_checklist(page: Page, web_url: str) -> None:
-    page.route(
-        "**/api/state", lambda route: route.fulfill(status=200, content_type="application/json", body=STATE)
-    )
+RUNNING = {"done": 3, "total": 10, "cost": 0.02, "calls": 3, "eta_s": 40, "errors": [], "status": "running"}
+
+
+class Api:
+    """Перехват API: после PUT /api/checklist состояние меняется, как на сервере."""
+
+    def __init__(self, page: Page, put_reply: dict[str, Any] | None = None) -> None:
+        self.state = json.loads(STATE)
+        self.put_reply = put_reply
+        self.puts: list[dict[str, Any]] = []
+        self.runs: list[dict[str, Any]] = []
+        self.cancels = 0
+        self.finish = False
+        page.route("**/api/state", lambda route: route.fulfill(json=self.state))
+        page.route("**/api/checklist", self.on_checklist)
+        page.route("**/api/runs", self.on_run)
+        page.route("**/api/runs/r9", self.on_poll)
+        page.route("**/api/runs/r9/cancel", self.on_cancel)
+
+    def on_checklist(self, route: Route) -> None:
+        assert route.request.method == "PUT" and self.put_reply
+        draft, v, pending = route.request.post_data_json, self.put_reply["version"], self.put_reply["pending"]
+        self.puts.append(draft)
+        self.state["checklist"] = {**draft, "version": v}
+        self.state["versions"].append({"v": v, "note": f"изменены {', '.join(pending)}"})
+        for d in self.state["dialogs"]:
+            for cid in pending:
+                d["res"].pop(cid, None)
+        route.fulfill(json=self.put_reply)
+
+    def on_run(self, route: Route) -> None:
+        self.runs.append(route.request.post_data_json)
+        route.fulfill(json={"run_id": "r9"})
+
+    def on_poll(self, route: Route) -> None:
+        if not self.finish:
+            return route.fulfill(json=RUNNING)
+        for d in self.state["dialogs"]:  # оценка готова: записи по pending снова есть
+            for cid in self.put_reply["pending"] if self.put_reply else []:
+                d["res"][cid] = {"a": "na", "why": "Новая оценка."}
+        route.fulfill(json={**RUNNING, "done": 10, "cost": 0.07, "calls": 10, "eta_s": 0, "status": "done"})
+
+    def on_cancel(self, route: Route) -> None:
+        self.cancels += 1
+        route.fulfill(json={"status": "cancelled"})
+
+
+def open_checklist(page: Page, web_url: str, put_reply: dict[str, Any] | None = None) -> Api:
+    api = Api(page, put_reply)
     page.goto(f"{web_url}/#/checklist")
     expect(page.locator('[data-view="checklist"] h1')).to_have_text("Чек-лист качества")
+    return api
 
 
 def item(page: Page, cid: str) -> Locator:
@@ -63,3 +111,78 @@ def test_add_and_delete_criterion(page: Page, web_url: str) -> None:
     page.locator('[data-act="cdel"]').click()
     expect(item(page, "09")).to_have_count(0)
     expect(page.get_by_text("Сумма весов 100")).to_be_visible()
+
+
+TEXT_04 = "Оцените ответ и названный срок по шкале."
+TEXT_09 = "Да — оператор назвал срок ответа."
+
+
+def save_text_change(page: Page) -> None:
+    item(page, "04").click()
+    page.locator("#cf-text").fill(TEXT_04)
+    page.locator("#cf-text").press("Tab")
+    page.locator('[data-act="csave"]').click()
+    expect(item(page, "04")).to_contain_text("ждёт оценки")
+
+
+def test_save_applies_new_version_and_marks_pending(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 4 применяется")
+    expect(page.locator('[data-view="checklist"]')).to_contain_text("v4: изменены 04 применяется")
+    expect(item(page, "04")).not_to_contain_text("изменён")
+    expect(item(page, "03")).not_to_contain_text("ждёт оценки")
+    expect(page.locator('[data-act="csave"]')).to_have_text("Сохранить как v5")
+    [draft] = api.puts
+    assert draft["version"] == 3
+    assert next(c for c in draft["criteria"] if c["id"] == "04")["text"] == TEXT_04
+
+
+def test_new_criterion_is_sent_and_waits_for_evaluation(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["09"]})
+    page.locator('[data-act="cadd"]').click()
+    page.locator("#cf-text").fill(TEXT_09)
+    page.locator("#cf-text").press("Tab")
+    expect(page.locator('[data-act="csave"]')).to_have_text("Сохранить как v4")
+    page.locator('[data-act="csave"]').click()
+    expect(item(page, "09")).to_contain_text("ждёт оценки")
+    [draft] = api.puts
+    new = next(c for c in draft["criteria"] if c["id"] == "09")
+    assert (new["type"], new["w"], new["na"], new["text"]) == ("bool", 5, False, TEXT_09)
+
+
+def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    page.locator('[data-act="crun"]').click()
+    view = page.locator('[data-view="checklist"]')
+    expect(view).to_contain_text("3/10")
+    expect(view).to_contain_text("$0,02")
+    expect(view).to_contain_text("40 с")
+    expect(page.locator('[data-act="crun"]')).to_be_disabled()
+    api.finish = True
+    expect(item(page, "04")).not_to_contain_text("ждёт оценки")
+    expect(page.locator('[data-act="crun"]')).to_have_count(0)
+    assert api.runs == [{"dialogs": None, "criteria": ["04"]}]
+
+
+def test_stop_cancels_pending_run(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    page.locator('[data-act="crun"]').click()
+    page.locator('[data-view="checklist"] [data-act="stop"]').click()
+    expect(page.locator('[data-view="checklist"] [data-act="stop"]')).to_have_count(0)
+    assert api.cancels == 1
+
+
+def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": []})
+    item(page, "06").click()
+    page.locator("#cf-w").fill("10")
+    page.locator("#cf-w").press("Tab")
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 4 применяется")
+    expect(item(page, "06")).to_contain_text("10")
+    expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
+    expect(page.locator('[data-act="crun"]')).to_have_count(0)
+    assert api.runs == []
