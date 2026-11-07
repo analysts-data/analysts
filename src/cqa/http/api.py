@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api")
 
 Owner = Literal["Не назначено", "Инструкция", "Сервис", "Продукт"]
 # ответ bool или scale; флаг — объект {"<k>": true | false}, строгие bool: 0 и "false" дают 422
-AnswerIn = str | int | dict[str, StrictBool]
+AppealValue = str | int | dict[str, StrictBool]
 
 
 class ReviewedIn(BaseModel):
@@ -124,14 +124,14 @@ async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]
 class AppealIn(BaseModel):
     dlg: str
     cid: str
-    ask: AnswerIn
+    ask: AppealValue
     ev: list[int] = []
     comment: str
     by: str
 
 
 class DecisionIn(BaseModel):
-    to: AnswerIn
+    to: AppealValue
     reason: str
     reviewer: str
 
@@ -139,8 +139,8 @@ class DecisionIn(BaseModel):
 class ReviewIn(BaseModel):
     dlg: str
     cid: str
-    from_: AnswerIn = Field(alias="from")
-    to: AnswerIn
+    from_: AppealValue = Field(alias="from")
+    to: AppealValue
     reason: str
     reviewer: str
 
