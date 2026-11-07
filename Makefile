@@ -1,4 +1,4 @@
-.PHONY: check e2e eval eval-holdout record run fmt demo
+.PHONY: check e2e eval eval-holdout record run fmt backup demo
 
 check:
 	uv run ruff check --no-cache src tests
@@ -8,6 +8,7 @@ check:
 	@if find web tests -name '*.test.js' | grep -q .; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
 	@if [ -x scripts/secret_scan.sh ]; then scripts/secret_scan.sh; fi
 	@if [ -x scripts/protected_paths.sh ]; then scripts/protected_paths.sh; fi
+	@if [ -x scripts/stop_code.sh ]; then scripts/stop_code.sh; fi
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
 
 e2e:
@@ -33,3 +34,6 @@ demo:
 fmt:
 	uv run ruff format src tests
 	uv run ruff check --fix src tests
+
+backup:
+	uv run python scripts/backup_db.py
