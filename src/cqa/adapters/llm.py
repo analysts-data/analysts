@@ -139,7 +139,8 @@ class ChatClient:
         async with self._semaphore:
             data = await post_json(
                 self._http,
-                f"{self._settings.llm_base_url}/chat/completions",
+                # replay never leaves the cassette transport, so CI without .env needs only a valid URL
+                f"{self._settings.llm_base_url or 'http://replay.invalid'}/chat/completions",
                 body,
                 headers,
                 gate=self._limiter.acquire,

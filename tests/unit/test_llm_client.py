@@ -310,3 +310,18 @@ async def test_complete_turns_missing_content_into_empty_text():
         async with httpx.AsyncClient() as http:
             reply = await ChatClient(_settings(), http).complete(MSGS)
     assert reply.text == ""
+
+
+async def test_replay_without_base_url_still_builds_a_request() -> None:
+    # CI has no .env: replay must reach the cassette transport without a provider address
+    seen: list[httpx.URL] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    settings = Settings(_env_file=None, llm_mode="replay", llm_base_url=None)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        reply = await ChatClient(settings, http).complete([{"role": "user", "content": "x"}])
+    assert reply.text == "ok"
+    assert seen[0].host == "replay.invalid"
