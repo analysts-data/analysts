@@ -16,10 +16,10 @@ e2e:
 	uv run pytest -q -m e2e tests/e2e || [ $$? -eq 5 ]
 
 eval:
-	@echo "нет эталона: make eval появится в eval-and-delivery"
+	CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)
 
 eval-holdout:
-	@echo "нет эталона: make eval-holdout появится в eval-and-delivery"
+	CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval --holdout $(ARGS)
 
 record:
 	@echo "запись ответов модели появится в llm-evaluation"
