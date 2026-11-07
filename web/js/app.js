@@ -4,6 +4,7 @@ import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
 import { parseHash } from './router.js';
 import * as appealForm from './appeal_form.js';
+import * as paste from './views/paste.js';
 import * as queue from './views/queue.js';
 import * as card from './views/card.js';
 import * as appeals from './views/appeals.js';
@@ -24,7 +25,7 @@ const ACTS = Object.assign({
   load: () => postDataset(document.getElementById('gid').value.trim()),
   jsonf: t => { if (t.files[0]) uploadDataset(t.files[0]); t.value = ''; },
   stop: () => cancelRun(),
-}, appealForm.actions, ...Object.values(VIEWS).map(v => v.actions || {}));
+}, appealForm.actions, paste.actions, ...Object.values(VIEWS).map(v => v.actions || {}));
 
 const SHELL = `
   <aside class="side">
