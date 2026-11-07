@@ -5,7 +5,15 @@ from typing import Any
 import pytest
 
 from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
-from cqa.domain.review import allowed_answers, effective_answer, fingerprint, needs_review, stamp
+from cqa.domain.review import (
+    allowed_answers,
+    diff_checklists,
+    effective_answer,
+    fingerprint,
+    needs_review,
+    stamp,
+    version_note,
+)
 
 CL: dict[str, Any] = {
     "version": 3,
@@ -27,12 +35,21 @@ CL: dict[str, Any] = {
 }  # fmt: skip
 
 
-def edit(cid: str | None = None, **upd: Any) -> Checklist:
-    """Чек-лист CL; с cid — правка полей критерия, без cid — правка полей чек-листа."""
-    data = copy.deepcopy(CL)
-    target = next(c for c in data["criteria"] if c["id"] == cid) if cid else data
-    target.update(upd)
+def draft(
+    edits: dict[str, dict[str, Any]] | None = None,
+    remove: tuple[str, ...] = (),
+    add: tuple[dict[str, Any], ...] = (),
+    **top: Any,
+) -> Checklist:
+    """Черновик из CL: правки полей критериев по id, удаление, добавление и правки полей чек-листа."""
+    data = {**copy.deepcopy(CL), **top}
+    kept = [{**c, **(edits or {}).get(c["id"], {})} for c in data["criteria"] if c["id"] not in remove]
+    data["criteria"] = kept + list(add)
     return Checklist.model_validate(data)
+
+
+def edit(cid: str, **upd: Any) -> Checklist:
+    return draft({cid: upd})
 
 
 def by_id(cl: Checklist, cid: str) -> Criterion:
@@ -63,7 +80,7 @@ def test_allowed_answers_follow_criterion_type_and_na(kw: dict[str, Any], expect
 
 @pytest.mark.parametrize(("field", "value"), [("name", "Другое"), ("w", 5), ("sec", 1), ("signal", "risk")])
 def test_fingerprint_ignores_light_fields(field: str, value: Any) -> None:
-    assert fp(edit("04", **{field: value}), "04") == fp(edit(), "04")
+    assert fp(edit("04", **{field: value}), "04") == fp(draft(), "04")
 
 
 @pytest.mark.parametrize(
@@ -80,15 +97,53 @@ def test_fingerprint_ignores_light_fields(field: str, value: Any) -> None:
     ],
 )
 def test_fingerprint_changes_with_meaning(cid: str, field: str, value: Any) -> None:
-    assert fp(edit(cid, **{field: value}), cid) != fp(edit(), cid)
+    assert fp(edit(cid, **{field: value}), cid) != fp(draft(), cid)
 
 
 def test_fingerprint_changes_with_rules() -> None:
-    assert fp(edit(rules="Другие правила"), "06") != fp(edit(), "06")
+    assert fp(draft(rules="Другие правила"), "06") != fp(draft(), "06")
 
 
 def test_fingerprint_has_16_chars() -> None:
-    assert len(fp(edit(), "04")) == 16
+    assert len(fp(draft(), "04")) == 16
+
+
+NEW_09 = {"id": "09", "sec": 1, "name": "Новый", "type": "bool", "w": 5, "text": "Да — новое"}
+
+
+def test_weight_only_change_is_light() -> None:
+    d = diff_checklists(draft(), draft({"06": {"w": 10}}))
+    assert (d.pending, d.light, d.removed, d.rules, d.changed) == ([], ["06"], [], False, True)
+    assert version_note(d) == "веса или названия 06"
+
+
+def test_meaning_weight_and_removal_build_note_in_order() -> None:
+    d = diff_checklists(draft(), draft({"04": {"text": "Новый текст"}, "06": {"w": 10}}, remove=("07",)))
+    assert (d.pending, d.light, d.removed) == (["04"], ["06"], ["07"])
+    assert version_note(d) == "изменены 04; веса или названия 06; удалены 07"
+
+
+def test_new_criterion_is_pending() -> None:
+    d = diff_checklists(draft(), draft(add=(NEW_09,)))
+    assert d.pending == ["09"]
+    assert version_note(d) == "изменены 09"
+
+
+def test_rules_change_makes_every_criterion_pending() -> None:
+    d = diff_checklists(draft(), draft(rules="Другие правила"))
+    assert d.rules is True
+    assert d.pending == ["04", "06", "07", "08"]
+    assert version_note(d) == "изменены общие правила"
+
+
+def test_section_rename_changes_checklist_without_criteria() -> None:
+    d = diff_checklists(draft(), draft(sections=["Начало", "Конец"]))
+    assert (d.pending, d.light, d.removed, d.changed) == ([], [], [], True)
+    assert version_note(d) == "изменены секции"
+
+
+def test_version_only_difference_is_no_change() -> None:
+    assert diff_checklists(draft(), draft(version=4)).changed is False
 
 
 def result(**kw: Any) -> CriterionResult:
