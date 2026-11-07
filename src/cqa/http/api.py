@@ -1,11 +1,15 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from cqa.domain.models import Appeal
+from cqa.domain.review import ASTANA
+from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.dialogs import save_owners, set_reviewed
 from cqa.services.state import build_state
 
@@ -32,3 +36,50 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
 @router.put("/owners")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     return save_owners(request.app.state.store, body)
+
+
+class AppealIn(BaseModel):
+    dlg: str
+    cid: str
+    ask: str | int
+    ev: list[int] = []
+    comment: str
+    by: str
+
+
+class DecisionIn(BaseModel):
+    to: str | int
+    reason: str
+    reviewer: str
+
+
+class ReviewIn(BaseModel):
+    dlg: str
+    cid: str
+    from_: str | int = Field(alias="from")
+    to: str | int
+    reason: str
+    reviewer: str
+
+
+def _appeal_out(appeal: Appeal) -> dict[str, Any]:
+    return appeal.model_dump(mode="json", by_alias=True, exclude={"ask"} if appeal.kind == "review" else None)
+
+
+@router.post("/appeals")
+async def post_appeal(body: AppealIn, request: Request) -> dict[str, Any]:
+    appeal = file_appeal(request.app.state.store, **body.model_dump(), now=datetime.now(ASTANA))
+    return _appeal_out(appeal)
+
+
+@router.post("/appeals/{appeal_id}/decision")
+async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> dict[str, Any]:
+    appeal = decide(request.app.state.store, appeal_id, **body.model_dump(), now=datetime.now(ASTANA))
+    return _appeal_out(appeal)
+
+
+@router.post("/decisions")
+async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
+    fields = body.model_dump(exclude={"from_"})
+    record = record_review(request.app.state.store, frm=body.from_, **fields, now=datetime.now(ASTANA))
+    return _appeal_out(record)
