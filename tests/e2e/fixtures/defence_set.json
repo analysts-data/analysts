@@ -1,0 +1,574 @@
+{
+  "error": null,
+  "isSuccess": true,
+  "data": {
+    "dataset_group_id": "DEFENCE",
+    "total_records": 8,
+    "records": [
+      {
+        "conversation_id": "p1-ru-022",
+        "channel": "agent chat",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, вывод средств, инвестиции."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Инвестиции"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:41",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "client",
+            "text": "Хочу начать инвестировать, но не понимаю, с чего начать. Есть готовые портфели?"
+          },
+          {
+            "timestamp": "02:02",
+            "speaker": "operator",
+            "text": "Готовые портфели есть в приложении, раздел «Инвестиции». Но могу подобрать вам лично: напишите мне на личный номер, консультация 5 000 тенге."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Нет, спасибо, лучше через приложение."
+          },
+          {
+            "timestamp": "03:15",
+            "speaker": "operator",
+            "text": "Хорошо."
+          },
+          {
+            "timestamp": "03:16",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "p1-ru-025",
+        "channel": "agent chat",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Оператора"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Подскажите, пожалуйста, ваш вопрос."
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "system",
+            "text": "Клиент покинул чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "call-024",
+        "channel": "voice call",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "2026-11-07T14:52:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Звонок принят, оператор подключился"
+          },
+          {
+            "timestamp": "2026-11-07T14:52:04.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-07T14:52:12.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Неделю назад я оставил обращение по выводу средств, номер [Персональные данные скрыты]."
+          },
+          {
+            "timestamp": "2026-11-07T14:52:24.0000000+05:00",
+            "speaker": "operator",
+            "text": "Для проверки назовите, пожалуйста, ФИО и дату рождения."
+          },
+          {
+            "timestamp": "2026-11-07T14:52:41.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-07T14:52:52.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, личность подтверждена. Сейчас посмотрю обращение."
+          },
+          {
+            "timestamp": "2026-11-07T14:53:30.0000000+05:00",
+            "speaker": "operator",
+            "text": "Вижу ваше обращение, оно на рассмотрении в отделе расчётов."
+          },
+          {
+            "timestamp": "2026-11-07T14:54:08.0000000+05:00",
+            "speaker": "client",
+            "text": "Когда я получу ответ по обращению?"
+          },
+          {
+            "timestamp": "2026-11-07T14:54:18.0000000+05:00",
+            "speaker": "operator",
+            "text": "Я передам вопрос специалистам."
+          },
+          {
+            "timestamp": "2026-11-07T14:54:27.0000000+05:00",
+            "speaker": "client",
+            "text": "А сколько времени это займёт?"
+          },
+          {
+            "timestamp": "2026-11-07T14:54:40.0000000+05:00",
+            "speaker": "operator",
+            "text": "Одну минуту, уточню у коллег."
+          },
+          {
+            "timestamp": "2026-11-07T14:54:45.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-07T14:54:48.0000000+05:00",
+            "speaker": "system",
+            "text": "Инициирована консультация с агентом [Имя скрыто]"
+          },
+          {
+            "timestamp": "2026-11-07T14:55:00.0000000+05:00",
+            "speaker": "operator",
+            "text": "Привет, это [Имя скрыто] с первой линии. Клиент на удержании, вопрос по выводу средств."
+          },
+          {
+            "timestamp": "2026-11-07T14:55:06.0000000+05:00",
+            "speaker": "operator",
+            "text": "Привет. Какой номер обращения?"
+          },
+          {
+            "timestamp": "2026-11-07T14:55:14.0000000+05:00",
+            "speaker": "operator",
+            "text": "[Персональные данные скрыты], подано неделю назад."
+          },
+          {
+            "timestamp": "2026-11-07T14:55:25.0000000+05:00",
+            "speaker": "operator",
+            "text": "Вижу. Оно в отделе расчётов, ждёт сверки с банком."
+          },
+          {
+            "timestamp": "2026-11-07T14:55:34.0000000+05:00",
+            "speaker": "operator",
+            "text": "Клиент спрашивает, когда будет ответ. Какой срок назвать?"
+          },
+          {
+            "timestamp": "2026-11-07T14:55:48.0000000+05:00",
+            "speaker": "operator",
+            "text": "По регламенту срок называет сам отдел расчётов, мы клиенту срок не обещаем."
+          },
+          {
+            "timestamp": "2026-11-07T14:55:56.0000000+05:00",
+            "speaker": "operator",
+            "text": "А примерно? Он звонит уже второй раз."
+          },
+          {
+            "timestamp": "2026-11-07T14:56:09.0000000+05:00",
+            "speaker": "operator",
+            "text": "Обычно до пяти рабочих дней после сверки, но это не для клиента."
+          },
+          {
+            "timestamp": "2026-11-07T14:56:18.0000000+05:00",
+            "speaker": "operator",
+            "text": "Понял. Можно как-то ускорить?"
+          },
+          {
+            "timestamp": "2026-11-07T14:56:31.0000000+05:00",
+            "speaker": "operator",
+            "text": "Поставь пометку «повторное обращение», тогда отдел возьмёт его раньше."
+          },
+          {
+            "timestamp": "2026-11-07T14:56:38.0000000+05:00",
+            "speaker": "operator",
+            "text": "Поставил. От клиента ещё что-то нужно?"
+          },
+          {
+            "timestamp": "2026-11-07T14:56:48.0000000+05:00",
+            "speaker": "operator",
+            "text": "Нет, документов хватает. Пусть ждёт звонка от отдела."
+          },
+          {
+            "timestamp": "2026-11-07T14:56:55.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, выручил."
+          },
+          {
+            "timestamp": "2026-11-07T14:57:00.0000000+05:00",
+            "speaker": "operator",
+            "text": "Давай, удачи."
+          },
+          {
+            "timestamp": "2026-11-07T14:57:02.0000000+05:00",
+            "speaker": "system",
+            "text": "Агент вышел из разговора"
+          },
+          {
+            "timestamp": "2026-11-07T14:57:10.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-07T14:57:18.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо за ожидание. Обращение передано, специалисты свяжутся с вами."
+          },
+          {
+            "timestamp": "2026-11-07T14:57:31.0000000+05:00",
+            "speaker": "client",
+            "text": "Понятно. Ладно, буду ждать."
+          },
+          {
+            "timestamp": "2026-11-07T14:58:20.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          },
+          {
+            "timestamp": "2026-11-07T14:58:33.0000000+05:00",
+            "speaker": "operator",
+            "text": "Всего доброго, до свидания."
+          }
+        ],
+        "audio_url": "https://org.test/player/call-024"
+      },
+      {
+        "conversation_id": "p1-ru-003",
+        "channel": "agent chat",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему."
+          },
+          {
+            "timestamp": "00:03",
+            "speaker": "client",
+            "text": "Вывод средств. Подал заявку на вывод три дня назад, деньги так и не пришли."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:35",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Для проверки подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Спасибо. По какому вопросу обращаетесь?"
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "client",
+            "text": "Я же написал: вывод средств, деньги не пришли."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "operator",
+            "text": "Вывод обычно занимает до пяти рабочих дней. Статус можно посмотреть в приложении."
+          },
+          {
+            "timestamp": "03:20",
+            "speaker": "client",
+            "text": "А где именно? И что делать, если не придут?"
+          },
+          {
+            "timestamp": "04:10",
+            "speaker": "operator",
+            "text": "В приложении. Пожалуйста. Хорошего дня!"
+          },
+          {
+            "timestamp": "04:12",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "p1-ru-009",
+        "channel": "agent chat",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, вывод средств, инвестиции."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Счёт"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:32",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "01:02",
+            "speaker": "client",
+            "text": "Не могу купить акции, приложение пишет, что операция недоступна. Мой номер [Персональные данные скрыты]."
+          },
+          {
+            "timestamp": "01:45",
+            "speaker": "operator",
+            "text": "Вижу, на вашем счёте стоит ограничение: не загружены документы для проверки. Поэтому покупка недоступна."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "Какие документы нужны?"
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "operator",
+            "text": "Загрузите удостоверение личности в разделе «Профиль», вкладка «Документы». После проверки покупка станет доступна."
+          },
+          {
+            "timestamp": "03:40",
+            "speaker": "client",
+            "text": "Понял, спасибо."
+          },
+          {
+            "timestamp": "03:55",
+            "speaker": "operator",
+            "text": "Пожалуйста! Документы загружаются в «Профиле». Если появятся вопросы, пишите. Всего доброго!"
+          },
+          {
+            "timestamp": "03:56",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "p1-kz-015",
+        "channel": "agent chat",
+        "language": "KZ",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Мен виртуалды көмекшімін. Тақырыпты таңдаңыз: шот, қаражат шығару, инвестициялар."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Шот"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:40",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Қалай көмектесе аламын?"
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "client",
+            "text": "Шотыма ақша түсті ме, тексеріп беріңізші. Нөмірім [Персональные данные скрыты]."
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Иә, шотыңызға кеше 150 000 теңге түсті, қазір қалдық 312 000 теңге."
+          },
+          {
+            "timestamp": "02:10",
+            "speaker": "operator",
+            "text": "Айтпақшы, жеке басыңызды қосымшада растаңызшы."
+          },
+          {
+            "timestamp": "02:45",
+            "speaker": "client",
+            "text": "Жақсы, рахмет."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "p1-ru-029",
+        "channel": "agent chat",
+        "language": "RU",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Оператора"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:35",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "client",
+            "text": "Третий раз пишу! Где мои деньги? Вывод висит уже неделю, вы там вообще работаете?"
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "operator",
+            "text": "Если не умеете читать условия, это не наша проблема. Вывод идёт до пяти рабочих дней."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Какие условия? Неделя уже прошла!"
+          },
+          {
+            "timestamp": "03:20",
+            "speaker": "operator",
+            "text": "Заявка от 31.10 на проверке в отделе расчётов, деньги придут до 07.11. Статус — в разделе «Вывод средств»."
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "client",
+            "text": "Ладно."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "operator",
+            "text": "Ещё вопросы есть? Всего доброго."
+          },
+          {
+            "timestamp": "04:06",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "p1-en-006",
+        "channel": "agent chat",
+        "language": "EN",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. Choose a topic: account, withdrawal, investments."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Withdrawal"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто]. To help you, please confirm your identity in the app."
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "system",
+            "text": "Identity verified"
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "client",
+            "text": "I withdrew 500 USD to my bank card five days ago and it still hasn't arrived."
+          },
+          {
+            "timestamp": "02:10",
+            "speaker": "operator",
+            "text": "I can see the withdrawal, it was sent on 2 November. I have forwarded your request to our payments team to trace it."
+          },
+          {
+            "timestamp": "02:45",
+            "speaker": "client",
+            "text": "OK, thanks."
+          },
+          {
+            "timestamp": "03:00",
+            "speaker": "operator",
+            "text": "You're welcome! Is there anything else I can help with? Have a nice day!"
+          },
+          {
+            "timestamp": "03:02",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      }
+    ]
+  }
+}
