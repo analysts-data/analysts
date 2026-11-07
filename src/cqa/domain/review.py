@@ -13,7 +13,7 @@ ASTANA = timezone(timedelta(hours=5))
 Answer = str | int  # ответ критерия bool или scale; флаги не оспариваются
 
 # Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
-MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel"}
+MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel", "jev"}
 
 
 def allowed_answers(c: Criterion) -> list[Answer]:
@@ -24,7 +24,10 @@ def allowed_answers(c: Criterion) -> list[Answer]:
 
 
 def fingerprint(checklist: Checklist, c: Criterion) -> str:
-    payload = [checklist.rules, c.model_dump(mode="json", include=MEANING)]
+    meaning = c.model_dump(mode="json", include=MEANING)
+    if c.jev is None:
+        meaning.pop("jev", None)
+    payload = [checklist.rules, meaning]
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
 
 

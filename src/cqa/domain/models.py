@@ -22,6 +22,14 @@ class Question(BaseModel):
     text: str | None = None
 
 
+class JevQuestion(BaseModel):
+    type: Literal["noul", "choice", "score"]
+    instructions: str
+    criteria: dict[str, str] | list[str]
+    min: int | None = None
+    max: int | None = None
+
+
 class Criterion(BaseModel):
     id: str
     sec: int
@@ -36,6 +44,16 @@ class Criterion(BaseModel):
     questions: list[Question] | None = None
     text: str
     channel: Literal["all", "chat", "call"] = "all"
+    jev: JevQuestion | None = None
+
+    def jev_descriptions(self) -> dict[str, str]:
+        """Normalize source answer keys without changing the preserved Jev definition."""
+        if self.jev is None:
+            return {}
+        criteria = self.jev.criteria
+        items = criteria.items() if isinstance(criteria, dict) else ((key, key) for key in criteria)
+        aliases = {"true": "yes", "false": "no", "not_applicable": "na"}
+        return {aliases.get(key, key): text for key, text in items}
 
     def accepts(self, a: Answer) -> bool:
         """Whether `a` is a valid answer to this criterion (scale steps, N/A permission, flag keys)."""

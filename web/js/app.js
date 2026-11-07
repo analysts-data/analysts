@@ -7,7 +7,7 @@ import * as appealForm from './appeal_form.js';
 import * as queue from './views/queue.js';
 import * as card from './views/card.js';
 import * as appeals from './views/appeals.js';
-import * as checklist from './views/checklist.js';
+import * as checklist from './views/checklist.js?v=jev-json-2';
 import * as analytics from './views/analytics.js';
 import * as coaching from './views/coaching.js';
 
