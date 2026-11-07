@@ -110,7 +110,13 @@ async def test_scenario_5_calls_deepseek_with_thinking_and_jev_once(
         llm = net.post("https://llm.test/v1/chat/completions").respond(
             200, json={"choices": [{"message": {"content": json.dumps(answer)}}], "usage": usage}
         )
-        jev = net.post(JEV_URL).respond(200, json={"answers": {"q0": "no"}, "usage": {"input_tokens": 1000}})
+        jev = net.post(JEV_URL).respond(
+            200,
+            json={
+                "answers": {"q0": {"type": "choice", "choice": "no", "confidence": 0.8, "probabilities": {}}},
+                "usage": {"input_tokens": 1000},
+            },
+        )
         out = await build_evaluator(s).evaluate(CHAT, CHECKLIST, [FIRST])
     [e] = out.results
     assert (e.result.a, e.result.alt, e.result.calls) == ("yes", "no", 1)

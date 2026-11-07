@@ -1,4 +1,8 @@
-"""Второе мнение Jev: один запрос на диалог, choice на критерий, noul на подвопрос флага."""
+"""Второе мнение Jev: один запрос на диалог, choice на критерий, noul на подвопрос флага.
+
+Формат API v1 (docs.typesafe.ai/api): вопрос — instructions и criteria; ответ choice —
+{"choice": ключ criteria, ...}, ответ noul — {"noul": вероятность 0..1}.
+"""
 
 import asyncio
 from collections.abc import Sequence
@@ -25,13 +29,17 @@ def _text(body: str) -> str:
     return f"{_INSTRUCTION}\n\n{body}"
 
 
-def _choice_options(criterion: Criterion) -> list[str] | dict[str, str]:
+def _choice_criteria(criterion: Criterion) -> dict[str, str | None]:
+    """Ключ — ответ той же формы, что a; описание null — модель видит только ключ."""
     if criterion.type == "scale":
-        options = {str(s): (criterion.stepText or {})[str(s)] for s in criterion.steps or []}
-        if criterion.na:
-            options["na"] = criterion.naCond or ""
-        return options
-    return ["yes", "no"] + (["na"] if criterion.na else [])
+        options: dict[str, str | None] = {
+            str(s): (criterion.stepText or {}).get(str(s)) for s in criterion.steps or []
+        }
+    else:
+        options = {"yes": "Да", "no": "Нет"}
+    if criterion.na:
+        options["na"] = criterion.naCond or "Неприменимо"
+    return options
 
 
 def _choice_answer(value: Any, criterion: Criterion) -> str | int | None:
@@ -55,12 +63,15 @@ def _questions(criteria: Sequence[Criterion]) -> dict[str, dict[str, Any]]:
     for i, criterion in enumerate(criteria):
         if criterion.type == "flag":
             for j, question in enumerate(criterion.questions or []):
-                questions[f"q{i}_{j}"] = {"type": "noul", "text": _text(question.text or question.label)}
+                questions[f"q{i}_{j}"] = {
+                    "type": "noul",
+                    "instructions": _text(question.text or question.label),
+                }
             continue
         questions[f"q{i}"] = {
             "type": "choice",
-            "text": _text(criterion.text),
-            "options": _choice_options(criterion),
+            "instructions": _text(criterion.text),
+            "criteria": _choice_criteria(criterion),
         }
     return questions
 
@@ -75,13 +86,19 @@ def _found(value: Any) -> bool:
     return bool(value >= 0.5) if isinstance(value, int | float) else False
 
 
+def _field(raw: dict[str, Any], key: str, field: str) -> Any:
+    """Значение ответа v1 по ключу вопроса; нет ответа или чужая форма — None."""
+    answer = raw.get(key)
+    return answer.get(field) if isinstance(answer, dict) else None
+
+
 def _answers(raw: dict[str, Any], criteria: Sequence[Criterion]) -> dict[str, str | int | dict[str, bool]]:
     """Ключи ответа q{i} и q{i}_{j} обратно в id критерия; нет ключа — нет ответа."""
     answers: dict[str, str | int | dict[str, bool]] = {}
     for i, criterion in enumerate(criteria):
         if criterion.type == "flag":
             flags = {
-                question.k: _found(raw[f"q{i}_{j}"])
+                question.k: _found(_field(raw, f"q{i}_{j}", "noul"))
                 for j, question in enumerate(criterion.questions or [])
                 if f"q{i}_{j}" in raw
             }
@@ -90,7 +107,7 @@ def _answers(raw: dict[str, Any], criteria: Sequence[Criterion]) -> dict[str, st
             continue
         if f"q{i}" not in raw:
             continue
-        answer = _choice_answer(raw[f"q{i}"], criterion)
+        answer = _choice_answer(_field(raw, f"q{i}", "choice"), criterion)
         if answer is not None:
             answers[criterion.id] = answer
     return answers
