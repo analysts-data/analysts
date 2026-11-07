@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Route, expect
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 RUN_TIMEOUT_S = 60
@@ -265,6 +265,28 @@ def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
 
 def load_fixture(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text())
+
+
+def no_total(d: Defence) -> None:
+    """Репетиция «Итог не рассчитывается»: у NA все критерии с весом — N/A, итог «—», консоль чиста."""
+
+    def all_na(route: Route) -> None:
+        resp = route.fetch()
+        state = resp.json()
+        res = dialog(state, NA)["res"]
+        for c in scored(state["checklist"]):
+            if c["w"]:
+                res[c["id"]] = {**res[c["id"]], "a": "na", "alt": None}
+        route.fulfill(response=resp, json=state)
+
+    d.page.route("**/api/state", all_na)
+    d.go(f"#/d/{NA}")
+    d.page.reload()
+    assert d.total(NA) is None
+    expect(d.page.get_by_text("Итог", exact=True).first.locator("xpath=..")).to_contain_text("—")
+    d.go("#/queue")
+    expect(d.page.locator(f'[data-act="open"][data-id="{NA}"]')).to_contain_text("—")
+    assert d.console_errors == [], d.console_errors
 
 
 def dialog(state: dict[str, Any], dialog_id: str) -> dict[str, Any]:

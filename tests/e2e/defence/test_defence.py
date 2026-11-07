@@ -3,7 +3,8 @@
 import httpx
 import pytest
 
-from .steps import load_fixture
+from . import steps
+from .steps import Defence, load_fixture
 
 pytestmark = pytest.mark.e2e
 
@@ -14,3 +15,8 @@ def test_set_is_loaded_and_evaluated(defence_api: httpx.Client) -> None:
     assert sorted(x["id"] for x in state["dialogs"]) == sorted(r["conversation_id"] for r in records)
     criteria = {c["id"] for c in state["checklist"]["criteria"]}
     assert {x["id"]: set(x["res"]) for x in state["dialogs"]} == {x["id"]: criteria for x in state["dialogs"]}
+
+
+@pytest.mark.xfail(reason="ждёт cqa-web-ui", strict=False)
+def test_total_not_computable_shows_dash(defence: Defence) -> None:
+    steps.no_total(defence)
