@@ -223,3 +223,15 @@ def test_typing_key_by_key_keeps_every_character_and_focus(
     page.locator(field).press_sequentially(typed)
     expect(page.locator(field)).to_have_value(typed)
     expect(page.locator(field)).to_be_focused()
+
+
+def test_typed_text_enables_save_before_the_field_loses_focus(page: Page, web_url: str) -> None:
+    """На защите текст вводят и сразу жмут «Сохранить»: первый клик не должен пропасть."""
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    item(page, "04").click()
+    page.locator("#cf-text").fill(TEXT_04)
+
+    expect(page.locator('[data-act="csave"]')).to_be_enabled()
+    page.locator('[data-act="csave"]').click()
+    expect(item(page, "04")).to_contain_text("ждёт оценки")
+    assert [next(c for c in d["criteria"] if c["id"] == "04")["text"] for d in api.puts] == [TEXT_04]

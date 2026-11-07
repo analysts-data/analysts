@@ -50,7 +50,8 @@ export function view(S) {
 }
 
 function editor(S, c) {
-  const field = (k, id) => `id="cf-${id}" class="fld" data-act="cf" data-cf="${k}"`;
+  // текст — data-input: черновик меняется на каждый ввод, а не при уходе из поля (см. actions.cf)
+  const field = (k, id) => `id="cf-${id}" class="fld" data-act="cf" data-cf="${k}"${TYPED.has(k) ? ' data-input' : ''}`;
   return `<section class="card pad" aria-label="Редактор критерия"><fieldset class="stack" style="gap:16px" ${S.role === 'qa' ? '' : 'disabled'}>
       <legend class="row" style="justify-content:space-between;width:100%;margin-bottom:12px"><span class="h2">Критерий ${esc(c.id)}</span>${S.role !== 'qa' ? '<span class="chip c-na">Только просмотр: редактирует специалист КК</span>' : ''}</legend>
       <div class="grid2">
@@ -100,6 +101,16 @@ function setField(t) {
   } else c[k] = t.value;
 }
 
+const TYPED = new Set(['name', 'text', 'naCond']);
+
+// Текстовые поля не перерисовывают экран ни на ввод, ни на change: перерисовка по change
+// (уход из поля) приходится на нажатие «Сохранить» и съедает клик. Кнопки — по черновику.
+function syncSave() {
+  const dirty = JSON.stringify(S.draft) !== JSON.stringify(S.checklist);
+  S.app.querySelector('[data-act="creset"]').disabled = !dirty;
+  S.app.querySelector('[data-act="csave"]').disabled = !dirty || S.busy;
+}
+
 // csave и crun неактивны, пока запрос в пути: двойной клик не создаёт две версии или два запуска
 async function busy(request) {
   S.busy = true;
@@ -109,7 +120,7 @@ async function busy(request) {
 
 export const actions = {
   csel: t => { S.cSel = t.dataset.cid; render(); },
-  cf: t => { setField(t); render(); },
+  cf: t => { setField(t); if (TYPED.has(t.dataset.cf)) syncSave(); else render(); },
   cadd: () => {
     const dr = S.draft, id = String(Math.max(0, ...dr.criteria.map(c => Number(c.id)).filter(Number.isFinite)) + 1).padStart(2, '0');
     dr.criteria.push({ id, sec: Math.max(0, dr.sections.length - 2), name: 'Новый критерий', type: 'bool', w: 5, na: false, text: 'Да — …', channel: 'all' });
