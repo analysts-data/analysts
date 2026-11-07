@@ -1,0 +1,164 @@
+{"dlg": "p1-ru-009", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "03", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "04", "ok": [5, 10], "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "06", "ok": [4, 7], "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-009", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": true}], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "03", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "04", "ok": [5, 10], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "06", "ok": [4, 7], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-015", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": true}], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "03", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "04", "ok": [5, 10], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "06", "ok": [4, 7], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-014", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": true}], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "04", "ok": [0], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "06", "ok": [0, 4], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-022", "cid": "08", "ok": [{"insult": false, "paid": true, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "06", "ok": [7, 10], "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "07", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-023", "cid": "08", "ok": [{"insult": false, "paid": true, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "06", "ok": [7, 10], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-kz-013", "cid": "08", "ok": [{"insult": false, "paid": true, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "06", "ok": [7, 10], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-013", "cid": "08", "ok": [{"insult": false, "paid": true, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "04", "ok": [15, 20], "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "05", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "06", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "07", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-029", "cid": "08", "ok": [{"insult": true, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "02", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "04", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "07", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-025", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "01", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "02", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "04", "ok": [15, 20], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "06", "ok": [4, 7], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-kz-008", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "01", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "02", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "04", "ok": [15, 20], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "06", "ok": [4, 7], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-en-015", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "07", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-en-009", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "07", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-kz-011", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "02", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "03", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-006", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "02", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "03", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-kz-003", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "02", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "03", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-en-006", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "02", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "04", "ok": [20], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "07", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-028", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "02", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "04", "ok": [0, 5], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "06", "ok": [4], "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "07", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-003", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "02", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "03", "ok": ["na"], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "04", "ok": [0], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "05", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "06", "ok": [0, 4], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "07", "ok": ["no"], "by": "team", "note": ""}
+{"dlg": "p1-ru-018", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "01", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "02", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "03", "ok": null, "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "04", "ok": [15, 20], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "05", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "06", "ok": [10], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "07", "ok": ["yes"], "by": "team", "note": ""}
+{"dlg": "p1-ru-002", "cid": "08", "ok": [{"insult": false, "paid": false, "leak": false}], "by": "team", "note": ""}
+{"dlg": "p1-ru-010", "cid": "04", "ok": [15, 20], "by": "family", "note": ""}
+{"dlg": "p1-ru-012", "cid": "04", "ok": [15, 20], "by": "family", "note": ""}
+{"dlg": "p1-ru-014", "cid": "04", "ok": [15, 20], "by": "family", "note": ""}
+{"dlg": "p1-ru-026", "cid": "04", "ok": [15, 20], "by": "family", "note": ""}

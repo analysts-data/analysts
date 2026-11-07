@@ -1,7 +1,7 @@
 .PHONY: check e2e eval eval-holdout record run fmt
 
 check:
-	uv run ruff check src tests
+	uv run ruff check --no-cache src tests
 	uv run ruff format --check src tests
 	uv run mypy
 	uv run pytest -q
