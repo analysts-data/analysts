@@ -46,6 +46,8 @@ class Api:
         route.fulfill(json={"run_id": "r9"})
 
     def on_poll(self, route: Route) -> None:
+        if self.cancels:  # as the server: cancelled once the dialogs in flight are saved
+            return route.fulfill(json={**RUNNING, "status": "cancelled"})
         if not self.finish:
             return route.fulfill(json=RUNNING)
         for d in self.state["dialogs"]:  # оценка готова: записи по pending снова есть
