@@ -1,38 +1,20 @@
-"""Обезличивание диалога: шаблоны персональных данных (задачи 5.1–5.5).
-
-Пока bootstrap-harness не слил `src/cqa/domain/models.py`, тесты собирают
-минимальные подстановки `Line` и `Dialog` по design/contract.md.
-"""
+"""Обезличивание диалога: шаблоны персональных данных (задачи 5.1–5.5)."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from cqa.domain.anonymize import anonymize
-
-
-class Line(BaseModel):
-    """Подстановка Line из design/contract.md."""
-
-    n: int | None = None
-    t: float | str | None = None
-    who: str | None = None
-    text: str = ""
-    s: float | None = None
-    seg: str | None = None
-
-
-class Dialog(BaseModel):
-    """Подстановка Dialog из design/contract.md."""
-
-    id: str
-    ch: str = "chat"
-    lines: list[Line] | None = None
+from cqa.domain.models import Dialog, Line
 
 
 def anonymized(text: str) -> str:
     """Текст единственной реплики клиента после обезличивания."""
-    dialog = Dialog(id="d-1", lines=[Line(n=1, t="00:01", who="client", text=text)])
+    dialog = Dialog(
+        id="d-1",
+        ch="chat",
+        lang="RU",
+        at="07.11 13:49",
+        lines=[Line(n=1, t="00:01", who="client", text=text)],
+    )
     return anonymize(dialog).lines[0].text
 
 
@@ -72,8 +54,11 @@ def test_brands_tickers_and_amounts_are_untouched() -> None:
 
 def anonymized_texts(*entries: tuple[str, str]) -> list[str]:
     """Тексты реплик диалога после обезличивания; entries — пары (who, text)."""
-    lines = [Line(n=i + 1, t="00:01", who=who, text=text) for i, (who, text) in enumerate(entries)]
-    dialog = Dialog(id="d-1", lines=lines)
+    lines = [
+        Line(n=i + 1, t="00:01", who=who, text=text)  # type: ignore[arg-type]
+        for i, (who, text) in enumerate(entries)
+    ]
+    dialog = Dialog(id="d-1", ch="chat", lang="RU", at="07.11 13:49", lines=lines)
     return [line.text for line in anonymize(dialog).lines]
 
 

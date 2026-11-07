@@ -15,9 +15,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import replace as _dataclass_replace
 from difflib import SequenceMatcher
-from typing import Any
+
+from cqa.domain.models import Dialog, Fold, Line
 
 # Порядок шаблонов — design.md п. 18: почта, IBAN KZ, карта 16 цифр, ИИН 12 цифр, телефон.
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -136,7 +136,6 @@ _STOP = frozenset(
     }
 )
 
-
 _MAX_ANSWER_WORDS = 4
 _FUZZY_MIN_LEN = 4
 _FUZZY_RATIO = 0.8
@@ -152,14 +151,6 @@ def _apply_patterns(text: str) -> str:
         return segment
 
     return _OUTSIDE_BRACKETS.sub(substitute, text)
-
-
-def _copy(obj: Any, **updates: Any) -> Any:
-    """Новый объект pydantic или dataclass с обновлёнными полями."""
-    model_copy = getattr(obj, "model_copy", None)
-    if model_copy is not None:
-        return model_copy(update=updates)
-    return _dataclass_replace(obj, **updates)
 
 
 def _hint_name(first: str, second: str | None) -> str | None:
@@ -183,22 +174,23 @@ def _answer_name(text: str) -> str | None:
     return None
 
 
-def _discover_names(lines: list[Any]) -> list[tuple[str, str]]:
+def _discover_names(lines: list[Line | Fold]) -> list[tuple[str, str]]:
     """Пары (имя, метка роли) в порядке появления; метка — по who реплики с именем."""
     candidates: list[tuple[int, int, str, str]] = []  # индекс реплики, позиция, имя, who
     for index, line in enumerate(lines):
-        text = getattr(line, "text", None)
-        if not text:
+        if isinstance(line, Fold) or not line.text:
             continue
-        who = getattr(line, "who", None) or ""
-        for match in _HINT_RE.finditer(text):
+        who = line.who
+        for match in _HINT_RE.finditer(line.text):
             name = _hint_name(match.group(1), match.group(2))
             if name:
                 candidates.append((index, match.start(1), name, who))
-        if who == "operator" and _QUESTION_RE.search(text):
+        if who == "operator" and _QUESTION_RE.search(line.text):
             for later_index in range(index + 1, len(lines)):
                 later = lines[later_index]
-                if getattr(later, "who", None) == "client" and getattr(later, "text", None):
+                if isinstance(later, Fold):
+                    continue
+                if later.who == "client" and later.text:
                     name = _answer_name(later.text)
                     if name:
                         candidates.append((later_index, 0, name, "client"))
@@ -206,11 +198,11 @@ def _discover_names(lines: list[Any]) -> list[tuple[str, str]]:
 
     labels: dict[str, str] = {}
     clients = 0
-    for _, _, name, who in sorted(candidates, key=lambda c: (c[0], c[1])):
+    for _, _, name, name_who in sorted(candidates, key=lambda c: (c[0], c[1])):
         key = re.sub(r"\s+", " ", name).casefold()
         if key in labels:
             continue
-        if who == "operator":
+        if name_who == "operator":
             labels[key] = "[ИМЯ_ОПЕРАТОРА]"
         else:
             clients += 1
@@ -245,16 +237,15 @@ def _replace_names(text: str, names: list[tuple[str, str]]) -> str:
     return "".join(pieces)
 
 
-def anonymize(dialog: Any) -> Any:
+def anonymize(dialog: Dialog) -> Dialog:
     """Новый диалог с обезличенным текстом реплик; вход не меняется."""
-    lines = dialog.lines
-    if lines is None:
-        return _copy(dialog)
-    names = _discover_names(lines)
+    if dialog.lines is None:
+        return dialog.model_copy()
+    names = _discover_names(dialog.lines)
     new_lines = [
-        _copy(line, text=_apply_patterns(_replace_names(line.text, names)))
-        if getattr(line, "text", None) is not None
+        line.model_copy(update={"text": _apply_patterns(_replace_names(line.text, names))})
+        if isinstance(line, Line)
         else line
-        for line in lines
+        for line in dialog.lines
     ]
-    return _copy(dialog, lines=new_lines)
+    return dialog.model_copy(update={"lines": new_lines})
