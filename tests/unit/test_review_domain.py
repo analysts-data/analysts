@@ -1,16 +1,51 @@
+import copy
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from cqa.domain.review import allowed_answers, effective_answer, needs_review, stamp
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
+from cqa.domain.review import allowed_answers, effective_answer, fingerprint, needs_review, stamp
+
+CL: dict[str, Any] = {
+    "version": 3,
+    "rules": "Общие правила",
+    "sections": ["Начало", "Завершение"],
+    "criteria": [
+        {"id": "04", "sec": 0, "name": "Консультация", "type": "scale", "w": 20, "na": True,
+         "naCond": "Запроса нет", "signal": "resolution", "steps": [20, 15, 10, 5, 0],
+         "stepText": {"20": "a", "15": "b", "10": "c", "5": "d", "0": "e"},
+         "text": "Оцените ответ", "channel": "all"},
+        {"id": "06", "sec": 1, "name": "Шестой", "type": "bool", "w": 15, "na": False,
+         "text": "Да — сделал", "channel": "all"},
+        {"id": "07", "sec": 1, "name": "Седьмой", "type": "bool", "w": 5, "na": False,
+         "text": "Да — попрощался", "channel": "all"},
+        {"id": "08", "sec": 1, "name": "Грубые", "type": "flag", "w": 0, "signal": "risk",
+         "questions": [{"k": "insult", "label": "Оскорбление", "text": "Было?"}],
+         "text": "Нарушения", "channel": "all"},
+    ],
+}  # fmt: skip
 
 
-# TODO: заменить на Criterion.model_validate, когда models.py появится в main
-def crit(**kw: Any) -> Any:
-    base: dict[str, Any] = {"id": "04", "sec": 0, "name": "Критерий", "type": "bool", "w": 10, "na": False}
-    return SimpleNamespace(**{"steps": None, **base, **kw})
+def edit(cid: str | None = None, **upd: Any) -> Checklist:
+    """Чек-лист CL; с cid — правка полей критерия, без cid — правка полей чек-листа."""
+    data = copy.deepcopy(CL)
+    target = next(c for c in data["criteria"] if c["id"] == cid) if cid else data
+    target.update(upd)
+    return Checklist.model_validate(data)
+
+
+def by_id(cl: Checklist, cid: str) -> Criterion:
+    return next(c for c in cl.criteria if c.id == cid)
+
+
+def fp(cl: Checklist, cid: str) -> str:
+    return fingerprint(cl, by_id(cl, cid))
+
+
+def crit(**kw: Any) -> Criterion:
+    base = {"id": "04", "sec": 0, "name": "Критерий", "type": "bool", "w": 10, "text": "Текст"}
+    return Criterion.model_validate({**base, **kw})
 
 
 @pytest.mark.parametrize(
@@ -26,13 +61,45 @@ def test_allowed_answers_follow_criterion_type_and_na(kw: dict[str, Any], expect
     assert allowed_answers(crit(**kw)) == expected
 
 
-# TODO: заменить на CriterionResult и Appeal, когда models.py появится в main
-def result(**kw: Any) -> Any:
-    return SimpleNamespace(**{"a": 5, "alt": None, "evFail": None, **kw})
+@pytest.mark.parametrize(("field", "value"), [("name", "Другое"), ("w", 5), ("sec", 1), ("signal", "risk")])
+def test_fingerprint_ignores_light_fields(field: str, value: Any) -> None:
+    assert fp(edit("04", **{field: value}), "04") == fp(edit(), "04")
 
 
-def decision(kind: str, status: str, to: Any) -> Any:
-    return SimpleNamespace(kind=kind, status=status, to=to)
+@pytest.mark.parametrize(
+    ("cid", "field", "value"),
+    [
+        ("04", "text", "Новый текст"),
+        ("04", "type", "bool"),
+        ("04", "steps", [20, 10, 0]),
+        ("04", "stepText", {"20": "x", "15": "b", "10": "c", "5": "d", "0": "e"}),
+        ("04", "na", False),
+        ("04", "naCond", "Другое условие"),
+        ("08", "questions", [{"k": "threat", "label": "Угроза", "text": "Было?"}]),
+        ("04", "channel", "chat"),
+    ],
+)
+def test_fingerprint_changes_with_meaning(cid: str, field: str, value: Any) -> None:
+    assert fp(edit(cid, **{field: value}), cid) != fp(edit(), cid)
+
+
+def test_fingerprint_changes_with_rules() -> None:
+    assert fp(edit(rules="Другие правила"), "06") != fp(edit(), "06")
+
+
+def test_fingerprint_has_16_chars() -> None:
+    assert len(fp(edit(), "04")) == 16
+
+
+def result(**kw: Any) -> CriterionResult:
+    return CriterionResult.model_validate({"a": 5, **kw})
+
+
+def decision(kind: str, status: str, to: Any) -> Appeal:
+    return Appeal.model_validate(
+        {"id": "a1", "kind": kind, "dlg": "p1-ru-003", "cid": "04", "from": 5, "to": to,
+         "by": "Оператор", "at": "07.11 15:10", "status": status, "comment": "Комментарий"}
+    )  # fmt: skip
 
 
 def test_effective_answer_without_decisions_is_model_answer() -> None:

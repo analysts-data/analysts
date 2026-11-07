@@ -1,16 +1,18 @@
 """Чистый домен проверки: допустимые ответы, отпечаток смысла, разница версий, решения, время."""
 
-from __future__ import annotations
-
+import hashlib
+import json
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from cqa.domain.models import Appeal, Criterion, CriterionResult
+from cqa.domain.models import Answer as ResultAnswer
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
 
 ASTANA = timezone(timedelta(hours=5))
 Answer = str | int  # ответ критерия bool или scale; флаги не оспариваются
+
+# Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
+MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel"}
 
 
 def allowed_answers(c: Criterion) -> list[Answer]:
@@ -20,14 +22,19 @@ def allowed_answers(c: Criterion) -> list[Answer]:
     return base + ["na"] if c.na else base
 
 
-def effective_answer(result: CriterionResult, decided: Sequence[Appeal]) -> Answer:
+def fingerprint(checklist: Checklist, c: Criterion) -> str:
+    payload = [checklist.rules, c.model_dump(mode="json", include=MEANING)]
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def effective_answer(result: CriterionResult, decided: Sequence[Appeal]) -> ResultAnswer:
     """`to` последнего решения пары (appeal или review, confirmed или changed), иначе ответ модели."""
     tos = [d.to for d in decided if d.status in ("confirmed", "changed") and d.to is not None]
     return tos[-1] if tos else result.a
 
 
 def needs_review(c: Criterion, r: CriterionResult) -> bool:
-    return c.type in ("bool", "scale") and (bool(r.evFail) or (r.alt is not None and r.alt != r.a))
+    return c.type in ("bool", "scale") and (r.evFail or (r.alt is not None and r.alt != r.a))
 
 
 def stamp(dt: datetime) -> str:
