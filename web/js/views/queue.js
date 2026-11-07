@@ -102,6 +102,7 @@ export function view() {
       <label class="sr" for="gid">Набор по group_id</label><input id="gid" class="fld" value="DEV" style="width:110px">
       <button type="button" class="btn" data-act="load">Получить набор</button>
       <label class="btn" for="jsonf">Загрузить JSON</label><input id="jsonf" type="file" accept="application/json" class="sr" data-act="jsonf">
+      <button type="button" class="btn" data-act="paste">Вставить диалог</button>
     </div></div>
   <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}</section>
   <section class="tiles" aria-label="Быстрые фильтры">

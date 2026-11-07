@@ -12,7 +12,7 @@ from cqa.domain.review import ASTANA
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import save_owners, set_reviewed
+from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
@@ -27,6 +27,12 @@ AnswerIn = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class PasteIn(BaseModel):
+    title: str
+    ch: Literal["chat", "call"]
+    text: str
 
 
 class DatasetIn(BaseModel):
@@ -55,6 +61,11 @@ def _source(request: Request) -> DialogSource:
 @router.get("/state")
 async def get_state(request: Request) -> dict[str, Any]:
     return build_state(request.app.state.store, request.app.state.mode)
+
+
+@router.post("/dialogs/text")
+async def post_paste(body: PasteIn, request: Request) -> dict[str, str]:
+    return {"id": paste_text(request.app.state.store, title=body.title, ch=body.ch, text=body.text)}
 
 
 @router.post("/dialogs/{dialog_id}/reviewed")
