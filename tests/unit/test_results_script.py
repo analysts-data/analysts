@@ -6,12 +6,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
+import httpx
 import pytest
+import respx
 
 from cqa.adapters.store import Store, connect
 from cqa.domain.review import fingerprint
 from cqa.services.answers import set_answer
-from fakes import prototype_checklist, prototype_dialogs
+from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "results.py"
 IDS = [d.id for d in prototype_dialogs()]
@@ -143,6 +145,86 @@ def test_model_name_lists_every_model_that_answered_and_the_second_opinion() -> 
         d.res.update({cid: r.model_copy(update={"model": r.model or "qwen3-6"}) for cid, r in d.res.items()})
 
     assert results.model_names(dialogs) == "glm-4.5-flash, qwen3-6, jev-latest"  # alt есть у прототипа
+
+
+ORG_PAYLOAD = Path(__file__).resolve().parents[1] / "fixtures" / "org_payload.json"
+SYN = [r["conversation_id"] for r in json.loads(ORG_PAYLOAD.read_bytes())["data"]["records"]]
+ORG_API = "https://org.test/api/dialogs"
+
+
+@pytest.fixture
+def empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """База после первого запуска сервера: только чек-лист, диалогов нет."""
+    db = tmp_path / "cqa.db"
+    conn = connect(str(db))
+    Store(conn).add_checklist(prototype_checklist(), "начальная версия")
+    conn.close()
+    monkeypatch.setenv("CQA_DB_PATH", str(db))
+    monkeypatch.setenv("CQA_RAW_DIR", str(tmp_path / "raw"))
+    monkeypatch.setenv("CQA_ORG_API_URL", f"{ORG_API}?group_id=DEV&token=t")
+    return tmp_path
+
+
+def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> None:
+    monkeypatch.setattr(results, "build_evaluator", lambda settings: evaluator)
+
+
+def test_evaluate_loads_the_file_evaluates_missing_pairs_and_exports_them(
+    empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    evaluator = FakeEvaluator(fail_on=[SYN[0]])
+    fake_model(monkeypatch, evaluator)
+    out = empty / "dev.json"
+    args = ["dev", "--source", str(ORG_PAYLOAD), "--evaluate", "--model-name", "fake", "--out", str(out)]
+
+    assert results.main(args) == 0
+
+    printed = capsys.readouterr().out
+    total = len(SYN) * len(prototype_checklist().criteria)
+    assert f"оценка {total}/{total}, ошибок 1" in printed
+    assert f"{SYN[0]}: timeout" in printed
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert [r["conversation_id"] for r in doc["results"]] == SYN
+    assert [r["status"] for r in doc["results"]] == ["error", *["ok"] * (len(SYN) - 1)]
+    assert sorted(evaluator.order) == sorted(SYN)
+
+    again = FakeEvaluator()
+    fake_model(monkeypatch, again)
+    assert results.main(args) == 0
+    assert again.order == [SYN[0]]  # готовые ответы не пересчитываются
+
+
+@respx.mock
+def test_evaluate_fetches_the_group_and_exports_from_its_snapshot(
+    empty: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    route = respx.get(ORG_API).mock(return_value=httpx.Response(200, content=ORG_PAYLOAD.read_bytes()))
+    fake_model(monkeypatch, FakeEvaluator())
+    out = empty / "dev.json"
+
+    code = results.main(["dev", "--group", "CTRL1", "--evaluate", "--model-name", "fake", "--out", str(out)])
+
+    assert code == 0
+    assert str(route.calls.last.request.url) == f"{ORG_API}?group_id=CTRL1&token=t"
+    assert (empty / "raw" / "CTRL1.json").read_bytes() == ORG_PAYLOAD.read_bytes()
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert [(r["conversation_id"], r["status"]) for r in doc["results"]] == [(i, "ok") for i in SYN]
+
+
+@respx.mock
+def test_evaluate_stops_before_the_model_when_the_set_does_not_load(
+    empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    respx.get(ORG_API).mock(return_value=httpx.Response(500))
+    evaluator = FakeEvaluator()
+    fake_model(monkeypatch, evaluator)
+
+    code = results.main(["prod", "--group", "CTRL1", "--evaluate", "--out", str(empty / "prod.json")])
+
+    assert code == 2
+    assert evaluator.calls == 0
+    assert "статусом 500" in capsys.readouterr().err
+    assert not (empty / "prod.json").exists()
 
 
 def test_make_target_passes_set_and_group() -> None:
