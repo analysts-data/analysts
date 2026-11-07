@@ -1,10 +1,14 @@
 """Роутер записи: свежая ссылка и запасной плеер; адреса не утекают в ответы и журнал."""
 
+from datetime import UTC, datetime
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
 
 from cqa.adapters.org_api import OrgApi
+from cqa.domain.ingest import ingest_records, parse_payload
 from cqa.http.app import create_app
 from cqa.settings import Settings
 
@@ -201,3 +205,34 @@ def test_audio_routes_are_connected_in_create_app() -> None:
     paths = set(create_app(Settings(_env_file=None)).openapi()["paths"])
     assert "/api/dialogs/{id}/audio" in paths
     assert "/api/dialogs/{id}/player" in paths
+
+
+@respx.mock
+async def test_signed_links_never_leak_into_dialogs_or_logs(caplog: pytest.LogCaptureFixture) -> None:
+    body = Path("tests/fixtures/org_payload.json").read_bytes()
+    payload = parse_payload(body)
+    result, _ = ingest_records(
+        payload.records,
+        group_id="SYN",
+        now=datetime(2026, 1, 1, tzinfo=UTC),
+        shift_s=0.25,
+        shift_paused_s=4.5,
+    )
+    for player_id in result.audio:
+        respx.get(f"https://org.test/player/{player_id}").mock(
+            return_value=httpx.Response(200, text='<source src="https://storage.test/rec.mp3?sig=abc">')
+        )
+    store = FakeStore(dict(result.audio))
+
+    with caplog.at_level("DEBUG"):
+        for dialog_id in result.audio:
+            response = await get(
+                f"/api/dialogs/{dialog_id}/audio", store, ApiSource(OrgApi(TEMPLATE, httpx.AsyncClient()))
+            )
+            assert response.status_code == 302
+
+    dumps = [dialog.model_dump_json() for dialog in result.dialogs]
+    assert all("audio_url" not in dump for dump in dumps)
+    assert all("storage.test" not in dump for dump in dumps)
+    assert "audio_url" not in caplog.text
+    assert "storage.test" not in caplog.text
