@@ -114,11 +114,28 @@ class Disagreement:
 
 
 @dataclass(frozen=True)
+class GrossMetrics:
+    """Грубые ошибки: полнота флага по подвопросам и языкам."""
+
+    recall: dict[str, float | None]
+    by_lang: dict[str, float | None]
+    missed: list[tuple[str, str]]  # (dlg, подвопрос)
+    false_flags: int
+    positives_total: int
+    found_total: int
+
+    @property
+    def overall(self) -> float | None:
+        return None if self.positives_total == 0 else self.found_total / self.positives_total
+
+
+@dataclass(frozen=True)
 class RunMetrics:
     agree_total: Agreement
     per_lang: dict[str, Agreement]
     per_cid: dict[str, Agreement]
     missing: int
+    gross: GrossMetrics
     disagreements: list[Disagreement]
 
     @property
@@ -141,11 +158,18 @@ def score_run(
     Ответ совпал, если `a` входит в `ok` (для флага — равенство объекта).
     Спорные (`ok: null`) исключены; нет записи в `res` — несовпадение и `missing`.
     """
+    flag_keys = {c.id: [q.k for q in c.questions or []] for c in checklist.criteria if c.type == "flag"}
     total = _Counter()
     per_lang: dict[str, _Counter] = {}
     per_cid: dict[str, _Counter] = {}
     missing = 0
     disagreements: list[Disagreement] = []
+    pos_k: dict[str, int] = {k: 0 for keys in flag_keys.values() for k in keys}
+    found_k: dict[str, int] = dict(pos_k)
+    pos_lang: dict[str, int] = {}
+    found_lang: dict[str, int] = {}
+    missed: list[tuple[str, str]] = []
+    false_flags = 0
 
     for label in gold:
         if label.ok is None:
@@ -171,12 +195,42 @@ def score_run(
                     quote=res.quote if res is not None else None,
                 )
             )
+        keys = flag_keys.get(label.cid)
+        if keys is not None:
+            gold_true = {k for answer in label.ok if isinstance(answer, dict) for k, v in answer.items() if v}
+            got_true = (
+                {k for k, v in res.a.items() if v} if res is not None and isinstance(res.a, dict) else set()
+            )
+            for k in keys:
+                if k in gold_true:
+                    pos_k[k] += 1
+                    if lang is not None:
+                        pos_lang[lang] = pos_lang.get(lang, 0) + 1
+                    if k in got_true:
+                        found_k[k] += 1
+                        if lang is not None:
+                            found_lang[lang] = found_lang.get(lang, 0) + 1
+                    else:
+                        missed.append((label.dlg, k))
+                if res is not None and k in got_true and k not in gold_true:
+                    false_flags += 1
 
+    gross = GrossMetrics(
+        recall={k: (found_k[k] / pos_k[k] if pos_k[k] else None) for k in pos_k},
+        by_lang={
+            lang: (found_lang[lang] / pos_lang[lang] if pos_lang.get(lang) else None) for lang in pos_lang
+        },
+        missed=missed,
+        false_flags=false_flags,
+        positives_total=sum(pos_k.values()),
+        found_total=sum(found_k.values()),
+    )
     return RunMetrics(
         agree_total=total.agreement(),
         per_lang={lang: counter.agreement() for lang, counter in per_lang.items()},
         per_cid={cid: counter.agreement() for cid, counter in per_cid.items()},
         missing=missing,
+        gross=gross,
         disagreements=disagreements,
     )
 

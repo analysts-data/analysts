@@ -237,3 +237,70 @@ def test_score_run_collects_disagreements() -> None:
         ("p1-ru-006", "04", [15, 20], 10, "Срок не назван", "передам вопрос"),
         ("p1-kz-013", "07", ["na"], None, None, None),
     ]
+
+
+# --- score_run: грубые ошибки --------------------------------------------------------------
+
+
+LEAK = {"insult": False, "paid": False, "leak": True}
+CLEAN = {"insult": False, "paid": False, "leak": False}
+
+
+def _flag_gold() -> tuple:
+    """Восемь положительных подвопросов таблицы семейств + чистый диалог."""
+    rows = [
+        ("p1-ru-009", "RU", {"insult": False, "paid": False, "leak": True}),
+        ("p1-kz-015", "KZ", {"insult": False, "paid": False, "leak": True}),
+        ("p1-en-014", "EN", {"insult": False, "paid": False, "leak": True}),
+        ("p1-ru-022", "RU", {"insult": False, "paid": True, "leak": False}),
+        ("p1-ru-023", "RU", {"insult": False, "paid": True, "leak": False}),
+        ("p1-kz-013", "KZ", {"insult": False, "paid": True, "leak": False}),
+        ("p1-en-013", "EN", {"insult": False, "paid": True, "leak": False}),
+        ("p1-ru-029", "RU", {"insult": True, "paid": False, "leak": False}),
+        ("p1-ru-006", "RU", CLEAN),
+    ]
+    lines = [gold_line(dlg, "08", [answer]) for dlg, _lang, answer in rows]
+    dialogs = {dlg: dialog(dlg, lang=lang) for dlg, lang, _ in rows}
+    return rows, lines, dialogs
+
+
+def test_gross_recall_by_subquestion_and_language() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    rows, lines, dialogs = _flag_gold()
+    results: dict = {}
+    for dlg, _lang, answer in rows:
+        got = dict(CLEAN) if dlg == "p1-kz-015" else dict(answer)  # пропуск leak на казахском
+        if dlg == "p1-ru-006":
+            got = {"insult": True, "paid": False, "leak": False}  # ложный флаг
+        results[dlg] = {"08": result(got)}
+
+    metrics = score_run(load_gold(lines, v3_checklist()), results, dialogs, v3_checklist())
+    gross = metrics.gross
+
+    assert gross.recall["leak"] == 2 / 3
+    assert gross.recall["paid"] == 1.0
+    assert gross.recall["insult"] == 1.0
+    assert gross.overall == 7 / 8
+    assert gross.by_lang["KZ"] == 0.5
+    assert gross.by_lang["RU"] == 1.0
+    assert gross.by_lang["EN"] == 1.0
+    assert gross.missed == [("p1-kz-015", "leak")]
+    assert gross.false_flags == 1
+
+
+def test_gross_without_positives_is_null() -> None:
+    from cqa.domain.agreement import load_gold, score_run
+
+    lines = [gold_line("p1-ru-006", "08", [CLEAN])]
+    metrics = score_run(
+        load_gold(lines, v3_checklist()),
+        {"p1-ru-006": {"08": result(dict(CLEAN))}},
+        {"p1-ru-006": dialog("p1-ru-006")},
+        v3_checklist(),
+    )
+
+    assert metrics.gross.recall["leak"] is None
+    assert metrics.gross.overall is None
+    assert metrics.gross.missed == []
+    assert metrics.gross.false_flags == 0
