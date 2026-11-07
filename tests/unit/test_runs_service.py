@@ -1,14 +1,24 @@
 """Runs: plan of pairs without a current result, ordered workers, cancel and resume, honest progress."""
 
+import asyncio
+import itertools
 import json
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 import pytest
 
 from cqa.adapters.store import Store, connect
-from cqa.domain.models import Checklist, Dialog
+from cqa.domain.models import (
+    Checklist,
+    Criterion,
+    CriterionResult,
+    Dialog,
+    DialogEvaluation,
+    Evaluation,
+)
 from cqa.domain.review import fingerprint
-from cqa.services.runs import eta_seconds, plan_run
+from cqa.services.runs import Runner, eta_seconds, plan_run
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
@@ -16,6 +26,58 @@ DIALOGS = {
     d["id"]: Dialog.model_validate(d)
     for d in json.loads((FIXTURES / "dialogs_prototype.json").read_text(encoding="utf-8"))
 }
+FPS = {c.id: fingerprint(CHECKLIST, c) for c in CHECKLIST.criteria}
+
+
+class FakeEvaluator:  # ponytail: own copy until tests/fakes.py lands in main
+    """Answers from the prototype `res`; every result costs one call and 0.001 USD."""
+
+    def __init__(
+        self,
+        *,
+        verifier_calls: int = 0,
+        verifier_usd: float = 0.0,
+        fail_on: Iterable[str] = (),
+        skip: Iterable[str] = (),
+        gate: asyncio.Event | None = None,
+    ) -> None:
+        self.verifier_calls = verifier_calls
+        self.verifier_usd = verifier_usd
+        self.fail_on = set(fail_on)
+        self.skip = set(skip)
+        self.gate = gate
+        self.calls = 0
+        self.order: list[str] = []
+        self.seen: list[str] = []
+
+    async def evaluate(
+        self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
+    ) -> DialogEvaluation:
+        self.calls += 1
+        self.order.append(dialog.id)
+        self.seen.extend(c.id for c in criteria)
+        if self.gate is not None:
+            await self.gate.wait()
+        if dialog.id in self.fail_on:
+            raise RuntimeError("timeout")
+        known: dict[str, CriterionResult] = DIALOGS[dialog.id].res
+        results = [
+            Evaluation(c.id, known[c.id].model_copy(update={"calls": 1, "cost": 0.001}))
+            for c in criteria
+            if c.id not in self.skip
+        ]
+        return DialogEvaluation(results, self.verifier_calls, self.verifier_usd)
+
+
+def _clock() -> Callable[[], float]:
+    return itertools.count(100.0, 0.5).__next__  # every reading is half a second later
+
+
+async def _execute(store: Store, evaluator: FakeEvaluator, dialogs: list[str] | None = None) -> int:
+    plan = plan_run(store, CHECKLIST, dialogs, None)
+    run_id = store.add_run(sum(len(cs) for _, cs in plan), 100.0)
+    await Runner(store, evaluator, parallel=1, clock=_clock()).execute(run_id, CHECKLIST, plan)
+    return run_id
 
 
 @pytest.fixture
@@ -70,3 +132,76 @@ def test_plan_does_not_repeat_a_dialog_listed_twice(store: Store) -> None:
 
 def test_plan_does_not_check_unknown_ids(store: Store) -> None:
     assert _ids(plan_run(store, CHECKLIST, ["nope", "call-024"], ["99", "04"])) == [("call-024", ["04"])]
+
+
+async def test_execute_saves_results_with_version_and_fingerprint(store: Store) -> None:
+    await _execute(store, FakeEvaluator())
+    current = store.current_results(FPS)
+    assert {d: sorted(r) for d, r in current.items()} == {"call-024": ALL, "p1-ru-003": ALL}
+    assert current["call-024"]["04"].a == DIALOGS["call-024"].res["04"].a
+    versions = store._conn.execute("SELECT DISTINCT version FROM results").fetchall()
+    assert [row[0] for row in versions] == [3]
+
+
+async def test_execute_counts_progress_and_finishes_done(store: Store) -> None:
+    run = store.get_run(await _execute(store, FakeEvaluator()))
+    assert run is not None
+    assert (run.done, run.calls, run.errors, run.status) == (16, 16, [], "done")
+    assert run.cost == pytest.approx(0.016)
+    assert run.finished is not None
+
+
+async def test_execute_writes_dialog_cost_with_second_opinion(store: Store) -> None:
+    run_id = await _execute(store, FakeEvaluator(verifier_calls=1, verifier_usd=0.0002))
+    dialog = store.get_dialog("call-024")
+    assert dialog is not None and dialog.cost is not None
+    assert dialog.cost.model_dump() == {
+        "calls": 8,
+        "verifier_calls": 1,
+        "usd": pytest.approx(0.0082),
+        "ms": 500,
+    }
+    run = store.get_run(run_id)
+    assert run is not None and run.cost == pytest.approx(0.0164)
+
+
+async def test_one_worker_takes_dialogs_in_plan_order(store: Store) -> None:
+    evaluator = FakeEvaluator()
+    await _execute(store, evaluator, ["p1-ru-003", "call-024"])
+    assert evaluator.order == ["p1-ru-003", "call-024"]
+    first = store._conn.execute("SELECT dialog_id FROM results ORDER BY id LIMIT 1").fetchone()
+    assert first[0] == "p1-ru-003"
+
+
+async def test_workers_start_a_dialog_only_when_a_place_is_free(store: Store) -> None:
+    store.add_dialogs([DIALOGS["p1-ru-025"]], {})
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    plan = plan_run(store, CHECKLIST, ["p1-ru-025", "p1-ru-003", "call-024"], None)
+    run_id = store.add_run(24, 100.0)
+    task = asyncio.create_task(Runner(store, evaluator, parallel=2).execute(run_id, CHECKLIST, plan))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert evaluator.order == ["p1-ru-025", "p1-ru-003"]
+    gate.set()
+    await task
+    assert evaluator.order == ["p1-ru-025", "p1-ru-003", "call-024"]
+
+
+async def test_failed_dialog_is_an_error_and_does_not_stop_the_rest(store: Store) -> None:
+    run = store.get_run(await _execute(store, FakeEvaluator(fail_on={"p1-ru-003"})))
+    assert run is not None
+    assert (run.done, run.errors, run.status) == (16, ["p1-ru-003: timeout"], "done")
+    assert sorted(store.current_results(FPS)) == ["call-024"]
+    assert store.get_dialog("p1-ru-003").cost is None  # type: ignore[union-attr]
+
+
+async def test_missing_answer_is_an_error_and_waits_for_evaluation(store: Store) -> None:
+    run = store.get_run(await _execute(store, FakeEvaluator(skip={"04"})))
+    assert run is not None
+    assert run.errors == [
+        "call-024/04: нет ответа модели, ждёт оценки",
+        "p1-ru-003/04: нет ответа модели, ждёт оценки",
+    ]
+    assert run.done == 16
+    assert "04" not in store.current_results(FPS)["call-024"]
