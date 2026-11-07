@@ -1,38 +1,22 @@
-"""Апелляции и решения проверяющего (review-workflow, группа 5, решения 13–15)."""
+"""Апелляции и решения проверяющего (review-workflow, группа 5, решения 13–15).
 
-import json
+Фикстуры `store` и `conn` из tests/conftest.py: чек-лист v3, диалоги call-024 и p1-ru-003 без результатов.
+"""
+
 import sqlite3
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from cqa.adapters.store import Store, connect
-from cqa.domain.models import Checklist, CriterionResult, Dialog
+from cqa.adapters.store import Store
+from cqa.domain.models import CriterionResult
 from cqa.domain.review import fingerprint, stamp
-from cqa.services.appeals import decide, file_appeal
+from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.errors import Conflict, Invalid, NotFound
 
-FIXTURES = Path(__file__).parent.parent / "fixtures"
 NOW = datetime(2026, 11, 7, 10, 10, tzinfo=UTC)
 COMMENT = "Срок вывода назван, это существенная часть ответа."
-
-
-@pytest.fixture
-def conn() -> sqlite3.Connection:
-    return connect(":memory:")
-
-
-@pytest.fixture
-def store(conn: sqlite3.Connection) -> Store:
-    store = Store(conn)
-    store.add_checklist(
-        Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text()), "начальная версия"
-    )
-    dialogs = json.loads((FIXTURES / "dialogs_prototype.json").read_text())
-    store.add_dialogs([Dialog.model_validate(d) for d in dialogs if d["id"] in ("call-024", "p1-ru-003")], {})
-    return store
 
 
 def add_result(store: Store, dlg: str, cid: str, **result: Any) -> None:
@@ -211,3 +195,107 @@ def test_closed_appeal_cannot_be_decided(store: Store) -> None:
         decide(store, "a1", to=10, reason=REASON, reviewer="Проверяющий", now=NOW)
 
     assert str(exc.value) == "Апелляция a1 уже рассмотрена: closed"
+
+
+def review(store: Store, **over: Any):
+    args: dict[str, Any] = {
+        "dlg": "call-024",
+        "cid": "04",
+        "frm": 15,
+        "to": 10,
+        "reason": "Срок ответа клиенту не назван",
+        "reviewer": "Специалист КК",
+        "now": NOW,
+    }
+    return record_review(store, **(args | over))
+
+
+@pytest.mark.parametrize(("to", "status"), [(10, "changed"), (15, "confirmed")])
+def test_review_settles_model_disagreement(
+    store: Store, conn: sqlite3.Connection, to: int, status: str
+) -> None:
+    add_result(store, "call-024", "04", a=15, alt=10)
+    before = result_rows(conn)
+
+    record = review(store, to=to)
+
+    assert record.id == "a1"
+    assert record.kind == "review"
+    assert record.status == status
+    assert (record.from_, record.to) == (15, to)
+    assert record.by == record.reviewer == "Специалист КК"
+    assert record.reason == "Срок ответа клиенту не назван"
+    assert record.at == record.decidedAt == "07.11 15:10"
+    assert record.ev == []
+    assert record.comment is None
+    assert record.ask is None
+    assert "ask" not in record.model_dump(by_alias=True, exclude={"ask"})
+    assert store.list_appeals()[0][0] == record
+    assert result_rows(conn) == before
+
+
+def test_review_settles_failed_evidence(store: Store) -> None:
+    add_result(store, "call-024", "06", a=7, evFail=True)
+
+    record = review(store, cid="06", frm=7, to=4)
+
+    assert (record.kind, record.status, record.to) == ("review", "changed", 4)
+
+
+@pytest.mark.parametrize(
+    ("over", "error", "detail"),
+    [
+        ({"dlg": "nope"}, NotFound, "Диалог nope не найден"),
+        ({"cid": "99"}, NotFound, "Критерия 99 нет в чек-листе v3"),
+        ({"cid": "08"}, Invalid, "Флаг нарушения не оспаривается: у критерия 08 нет баллов"),
+        ({"cid": "06"}, Invalid, "Критерий 06 ждёт оценки, оспаривать пока нечего"),
+        (
+            {"cid": "01", "frm": "yes"},
+            Invalid,
+            "По критерию 01 модели не расходятся и основание прошло проверку",
+        ),
+        ({"frm": 10}, Conflict, "Текущий ответ по критерию 04: 15. Обновите страницу."),
+        ({"to": 12}, Invalid, "Ответ 12 недопустим для критерия 04: допустимы 20, 15, 10, 5, 0, na"),
+        ({"reason": "  "}, Invalid, "Причина решения обязательна: не короче 5 символов"),
+        ({"reviewer": ""}, Invalid, "Укажите проверяющего"),
+    ],
+)
+def test_review_refusals(store: Store, over: dict[str, Any], error: type[Exception], detail: str) -> None:
+    add_result(store, "call-024", "04", a=15, alt=10)
+    add_result(store, "call-024", "01", a="yes")
+
+    with pytest.raises(error) as exc:
+        review(store, **over)
+
+    assert str(exc.value) == detail
+    assert store.list_appeals() == []
+
+
+def test_second_review_of_same_pair_conflicts(store: Store) -> None:
+    add_result(store, "call-024", "04", a=15, alt=10)
+    review(store, to=15)
+
+    with pytest.raises(Conflict) as exc:
+        review(store, to=10)
+
+    assert str(exc.value) == "По критерию 04 уже есть решение a1"
+
+
+def test_review_waits_for_pending_appeal(store: Store) -> None:
+    add_result(store, "call-024", "04", a=15, alt=10)
+    appeal(store, dlg="call-024", ask=20)
+
+    with pytest.raises(Conflict) as exc:
+        review(store)
+
+    assert str(exc.value) == "По критерию 04 уже есть a1 на рассмотрении"
+
+
+def test_review_checks_disagreement_before_pending_appeal(store: Store) -> None:
+    add_result(store, "call-024", "01", a="yes")
+    appeal(store, dlg="call-024", cid="01", ask="no")
+
+    with pytest.raises(Invalid) as exc:
+        review(store, cid="01", frm="yes", to="no")
+
+    assert str(exc.value) == "По критерию 01 модели не расходятся и основание прошло проверку"
