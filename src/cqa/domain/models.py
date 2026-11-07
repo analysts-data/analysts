@@ -35,6 +35,7 @@ class Criterion(BaseModel):
     stepText: dict[str, str] | None = None
     questions: list[Question] | None = None
     text: str
+    call: str | None = None  # уточнение для звонка: модель получает его после text только на звонке
     channel: Literal["all", "chat", "call"] = "all"
 
     def accepts(self, a: Answer) -> bool:

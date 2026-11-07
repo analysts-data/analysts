@@ -36,7 +36,7 @@ async def test_replay_answers_from_cassette_without_network(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     s = settings()
-    messages = build_messages(render_dialog(CHAT), CHECKLIST.rules, FIRST)[0]
+    messages = build_messages(render_dialog(CHAT), CHECKLIST.rules, FIRST, CHAT.ch)[0]
     body = {"model": s.llm_model, "messages": messages} | PROFILES[s.llm_profile][s.llm_reasoning]
     answer = {"reason_ru": "Поздоровался и представился.", "answer": "yes"}
     record = {

@@ -7,9 +7,10 @@ from typing import Any
 
 from cqa.adapters.store import RunRow, Store
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog
-from cqa.domain.review import fingerprint
+from cqa.domain.review import fingerprints
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.ports import Evaluator
+from cqa.services.state import current_results
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -27,13 +28,12 @@ def plan_run(
 
     Неизвестные id пропускаются: их отсеивает `Runner.start`.
     """
-    fps = {c.id: fingerprint(checklist, c) for c in checklist.criteria}
-    current = store.current_results(fps)
     chosen = [c for c in checklist.criteria if criteria is None or c.id in criteria]
     if dialogs is None:
         items = store.list_dialogs()
     else:
         items = [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None]
+    current = current_results(store, checklist, items)
     plan = []
     for dialog in items:
         todo = [c for c in chosen if c.id not in current.get(dialog.id, {})]
@@ -120,7 +120,7 @@ class Runner:
     async def execute(
         self, run_id: int, checklist: Checklist, plan: list[tuple[Dialog, list[Criterion]]]
     ) -> None:
-        fps = {c.id: fingerprint(checklist, c) for c in checklist.criteria}
+        fps = fingerprints(checklist)
         queue = iter(plan)  # общая очередь: next() не уступает цикл событий, порядок плана сохраняется
 
         async def worker() -> None:
@@ -139,7 +139,7 @@ class Runner:
         self,
         run_id: int,
         checklist: Checklist,
-        fps: dict[str, str],
+        fps: dict[str, dict[str, str]],  # канал → id критерия → отпечаток
         dialog: Dialog,
         criteria: list[Criterion],
     ) -> None:
@@ -153,7 +153,7 @@ class Runner:
             return
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
-            self._store.add_result(dialog.id, e.cid, checklist.version, fps[e.cid], e.result)
+            self._store.add_result(dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result)
         calls = sum(e.result.calls for e in out.results)
         usd = sum(e.result.cost for e in out.results) + out.verifier_usd
         self._store.set_cost(dialog.id, Cost(calls=calls, verifier_calls=out.verifier_calls, usd=usd, ms=ms))

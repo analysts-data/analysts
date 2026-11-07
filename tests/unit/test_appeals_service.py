@@ -23,9 +23,10 @@ def add_result(store: Store, dlg: str, cid: str, **result: Any) -> None:
     checklist = store.current_checklist()
     assert checklist is not None
     criterion = next(c for c in checklist.criteria if c.id == cid)
-    store.add_result(
-        dlg, cid, checklist.version, fingerprint(checklist, criterion), CriterionResult.model_validate(result)
-    )
+    dialog = store.get_dialog(dlg)
+    assert dialog is not None
+    fp = fingerprint(checklist, criterion, dialog.ch)
+    store.add_result(dlg, cid, checklist.version, fp, CriterionResult.model_validate(result))
 
 
 def test_file_appeal_takes_current_answer(store: Store) -> None:
@@ -208,6 +209,15 @@ def review(store: Store, **over: Any):
         "now": NOW,
     }
     return record_review(store, **(args | over))
+
+
+def test_call_result_is_reviewed_under_the_call_fingerprint(store: Store) -> None:
+    checklist = store.current_checklist()
+    assert checklist is not None
+    criteria = [c.model_copy(update={"call": "Уточнение"}) if c.id == "04" else c for c in checklist.criteria]
+    store.add_checklist(checklist.model_copy(update={"version": 4, "criteria": criteria}), "уточнение")
+    add_result(store, "call-024", "04", a=15, alt=10)
+    assert review(store, to=10).status == "changed"
 
 
 @pytest.mark.parametrize(("to", "status"), [(10, "changed"), (15, "confirmed")])

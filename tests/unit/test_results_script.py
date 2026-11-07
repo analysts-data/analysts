@@ -47,7 +47,7 @@ def base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for d in dialogs:
         for c in checklist.criteria:
             r = d.res[c.id].model_copy(update={"model": "qwen3-6", "alt": None})
-            store.add_result(d.id, c.id, checklist.version, fingerprint(checklist, c), r)
+            store.add_result(d.id, c.id, checklist.version, fingerprint(checklist, c, d.ch), r)
     conn.close()
     for key in ("CQA_LLM_MODEL", "CQA_VERIFIER"):
         monkeypatch.delenv(key, raising=False)
