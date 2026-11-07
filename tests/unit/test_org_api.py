@@ -1,0 +1,88 @@
+"""Клиент API организаторов: подстановка group_id и один GET без утечки адреса."""
+
+import httpx
+import pytest
+import respx
+
+from cqa.adapters.org_api import FETCH_TIMEOUT_S, OrgApi, OrgApiError, group_url
+
+TEMPLATE = "https://org.test/api/dialogs?group_id=DEV&token=t"
+
+
+def test_group_url_replaces_value_and_keeps_other_params() -> None:
+    assert group_url(TEMPLATE, "CTRL1") == "https://org.test/api/dialogs?group_id=CTRL1&token=t"
+
+
+def test_group_url_appends_missing_param() -> None:
+    assert group_url("https://org.test/api/dialogs?token=t", "DEV") == (
+        "https://org.test/api/dialogs?token=t&group_id=DEV"
+    )
+
+
+def test_group_url_accepts_boundary_group_ids() -> None:
+    assert group_url("https://org.test/api", "a" * 64).endswith("group_id=" + "a" * 64)
+    assert group_url("https://org.test/api", "A-b_0") == "https://org.test/api?group_id=A-b_0"
+
+
+@pytest.mark.parametrize("bad", ["../etc", "", " ", "a" * 65, "группа", "DEV 1", "a/b"])
+def test_group_url_rejects_bad_group_id(bad: str) -> None:
+    with pytest.raises(ValueError, match="group_id"):
+        group_url(TEMPLATE, bad)
+
+
+def test_fetch_timeout_is_thirty_seconds() -> None:
+    assert FETCH_TIMEOUT_S == 30.0
+
+
+@respx.mock
+async def test_fetch_group_makes_single_get_and_returns_bytes() -> None:
+    route = respx.get("https://org.test/api/dialogs").mock(return_value=httpx.Response(200, content=b"body"))
+    async with httpx.AsyncClient() as client:
+        api = OrgApi(TEMPLATE, client)
+        body = await api.fetch_group("CTRL1")
+
+    assert body == b"body"
+    assert route.call_count == 1
+    request = route.calls.last.request
+    assert str(request.url) == "https://org.test/api/dialogs?group_id=CTRL1&token=t"
+    assert request.extensions["timeout"]["read"] == FETCH_TIMEOUT_S
+
+
+@pytest.mark.parametrize("status", [404, 500])
+@respx.mock
+async def test_fetch_group_error_status_raises_org_api_error(status: int) -> None:
+    route = respx.get("https://org.test/api/dialogs").mock(return_value=httpx.Response(status, text="oops"))
+    async with httpx.AsyncClient() as client:
+        api = OrgApi(TEMPLATE, client)
+        with pytest.raises(OrgApiError) as excinfo:
+            await api.fetch_group("CTRL1")
+
+    assert "org.test" not in str(excinfo.value)
+    assert "token=" not in str(excinfo.value)
+    assert route.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [httpx.ConnectError("refused by org.test"), httpx.ReadTimeout("org.test timed out")],
+)
+@respx.mock
+async def test_fetch_group_network_failure_raises_org_api_error(failure: Exception) -> None:
+    respx.get("https://org.test/api/dialogs").mock(side_effect=failure)
+    async with httpx.AsyncClient() as client:
+        api = OrgApi(TEMPLATE, client)
+        with pytest.raises(OrgApiError) as excinfo:
+            await api.fetch_group("CTRL1")
+
+    assert "org.test" not in str(excinfo.value)
+    assert "token=" not in str(excinfo.value)
+
+
+@respx.mock
+async def test_fetch_group_without_url_makes_no_requests() -> None:
+    async with httpx.AsyncClient() as client:
+        api = OrgApi(None, client)
+        with pytest.raises(OrgApiError, match="CQA_ORG_API_URL не задан"):
+            await api.fetch_group("DEV")
+
+    assert len(respx.calls) == 0
