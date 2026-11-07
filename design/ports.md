@@ -1,0 +1,198 @@
+# Порты между треками
+
+Единственный источник имён на стыках треков. Форма данных и HTTP — в `design/contract.md`, здесь всё остальное, что читают два трека и больше. Файлы `src/cqa/domain/models.py`, `src/cqa/services/ports.py`, `src/cqa/services/errors.py`, `src/cqa/settings.py` и скелет `create_app` создаёт `bootstrap-harness` дословно по этому файлу, поэтому треки волны 1 импортируют их из `main` с первой задачи. Меняет файл только оркестратор.
+
+## Типы и протоколы
+
+```python
+# src/cqa/domain/models.py — bootstrap-harness: модели контракта и служебные типы
+class Cost(BaseModel):            # Dialog.cost
+    calls: int; verifier_calls: int; usd: float; ms: int
+class Mode(BaseModel):            # mode в GET /api/state
+    where: Literal["kz", "local", "external"]; anonymized: bool; model: str
+    verifier: Literal["jev"] | None
+
+@dataclass(frozen=True)
+class IngestResult:
+    dialogs: list[Dialog]         # один на id, порядок источника, без res и reviewed
+    audio: dict[str, str]         # id звонка → audio_url; в колонку dialogs.audio_url, не в Dialog
+    skipped: int                  # битые записи, == len(errors)
+    errors: list[str]             # "<conversation_id>: <причина>"
+
+@dataclass(frozen=True)
+class Evaluation:
+    cid: str
+    result: CriterionResult
+
+@dataclass(frozen=True)
+class DialogEvaluation:
+    results: list[Evaluation]     # по одному на критерий с ответом, в порядке аргумента criteria
+    verifier_calls: int           # запросов второго мнения за этот вызов (0 или 1)
+    verifier_usd: float           # их цена; в CriterionResult.cost не входит
+
+# src/cqa/services/ports.py — bootstrap-harness
+class DialogSource(Protocol):     # реализует OrgDialogSource (dialog-ingest)
+    async def fetch(self, group_id: str) -> IngestResult: ...      # Invalid | Upstream
+    def upload(self, raw: bytes) -> IngestResult: ...              # Invalid
+    async def audio_link(self, audio_url: str) -> str | None: ...  # свежий MP3 из плеера; None — не вышло
+
+class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluation)
+    async def evaluate(self, dialog: Dialog, checklist: Checklist,
+                       criteria: Sequence[Criterion]) -> DialogEvaluation: ...
+```
+
+| Имя | Модуль, владелец | Сигнатура и смысл |
+| --- | --- | --- |
+| `LlmEvaluator.evaluate` | `src/cqa/services/evaluation.py`, llm-evaluation | как `Evaluator.evaluate`. Без кэша: два одинаковых вызова — два запроса. Исключение = сбой всего диалога. `LlmEvaluator(..., sends_real_data: bool = llm_mode == "live", allow_real_data: bool, ...)`: звонок при `sends_real_data` без `allow_real_data` → `RealDataBlocked` |
+| `Verifier`, `Verdict` | `src/cqa/services/evaluation.py`, llm-evaluation | `async verify(dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict`; `Verdict(answers: dict[str, str \| int \| dict[str, bool]], cost: float)`. Выключено — `None` |
+| `anonymize` | `src/cqa/domain/anonymize.py`, llm-evaluation | `anonymize(dialog: Dialog) -> Dialog`: новый объект, `n`, `who`, `seg`, `t`, `s`, `fold` не меняются |
+| `build_source` | `src/cqa/compose.py`, dialog-ingest | `build_source(settings: Settings) -> OrgDialogSource`, не ходит в сеть |
+| `build_evaluator` | `src/cqa/compose.py`, llm-evaluation | `build_evaluator(settings: Settings) -> LlmEvaluator`, не бросает; `ConfigError` — при `evaluate` |
+| `parse_payload`, `ingest_records` | `src/cqa/domain/ingest.py`, dialog-ingest | чистая пара для снимка: `ingest_records(records, *, group_id, now, shift_s, shift_paused_s) -> IngestResult` |
+| `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
+| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
+| `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
+| `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
+| `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
+
+`Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата.
+
+## Правила, которые держат несколько треков
+
+| Правило | Кто пишет | Кто читает |
+| --- | --- | --- |
+| Звонок: `t = s`; если `s is None`, `t` — секунды от первого события транскрипта, до 0,1. `fold.t0`, `fold.t1` — `t` первой и последней реплики участка | dialog-ingest | cqa-web-ui, llm-evaluation (отрисовка) |
+| `skipped` в `{added, skipped}` = дубли по id + `IngestResult.skipped`; причины пишет в журнал `cqa.ingest` источник, `review-workflow` не дублирует | dialog-ingest, review-workflow | cqa-web-ui |
+| `dup: true` ставится на вторую из пары соседних реплик с той же ролью и нормализованным текстом; на первой поля нет | dialog-ingest | cqa-web-ui |
+| Канал: критерий с `channel` `chat` или `call` обязан иметь `na: true`, иначе `PUT /api/checklist` → 422 (`save_checklist`). На диалоге другого канала `LlmEvaluator` — единственное место — даёт `a: "na"`, `why: "Критерий для другого канала"`, `calls: 0` без вызова модели и второго мнения; `Runner` критерии не отсеивает | review-workflow, llm-evaluation | cqa-web-ui |
+| Флаг: `a[k] = основная[k] or второе_мнение[k]`, `alt` — ответ второго мнения как есть. Флаг возвращается всегда: упавший подвопрос (429 после повторов, не разобран, нет ответа Jev) считается «не найдено», найденное сохраняется, у флага `evFail: true`. `violation_found: true` требует `turn_ids` с `quote`; `seg` флага — из `checked_range` первого найденного или пусто | llm-evaluation | review-workflow (`needs_review` для флага всегда `False`), cqa-web-ui |
+| `CriterionResult`: `calls` — вызовы основной модели с повторами, `cost` — только их цена, `ms` — сумма длительностей HTTP | llm-evaluation | review-workflow |
+| `Dialog.cost` пишет `Runner` после каждого `evaluate` диалога: `calls = Σ result.calls`, `verifier_calls`, `usd = Σ result.cost + verifier_usd`, `ms` — время вызова `evaluate` по часам `Runner`. Та же цена идёт в `cost` запуска | review-workflow | cqa-web-ui, eval-and-delivery (README, `demo.py`) |
+| Повтор ответа — по отпечатку `fingerprint(checklist, criterion)` = sha256[:16] от `rules` и полей `text, type, steps, stepText, na, naCond, questions, channel`; модели и версии промпта в нём нет; смена сценария набор не пересчитывает. Ключа кэша в результатах нет | review-workflow | llm-evaluation, eval-and-delivery |
+| `make eval` вызывает `build_evaluator(settings).evaluate` напрямую, мимо `results` и кассет | eval-and-delivery | — |
+
+## Ошибки и коды HTTP
+
+| Класс | Модуль | Код | Где возникает |
+| --- | --- | --- | --- |
+| `NotFound` | `src/cqa/services/errors.py` | 404 | неизвестный диалог, критерий, апелляция, запуск; `/audio` и `/player` для чата |
+| `Invalid` | там же | 422 | недопустимый ответ, пустая причина, плохой `group_id`, файл не в формате организаторов |
+| `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция |
+| `Upstream` | там же | 502 | API организаторов не ответил или вернул ошибку; ссылку на запись получить не удалось |
+| `Unavailable` | там же | 503 | источник или оценщик не подключён (`app.state.source is None`, `app.state.runner is None`) |
+| `ConfigError` | там же | — | нет ключа или неизвестный профиль; бросает `evaluate`, попадает строкой в `errors` запуска |
+
+Примеры 422 из `save_checklist`: `Критерий 05: для канала chat нужен na: true`, `Повторяется id критерия 04`.
+| `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |
+| `PayloadError`, `OrgApiError` | dialog-ingest | — | только внутри трека: `OrgDialogSource` переводит их в `Invalid` или `Upstream` |
+
+Обработчики в `create_app` (`bootstrap-harness`) отвечают `{"detail": str(exc)}`. Текст по-русски, с идентификатором, без адресов и подписей.
+
+## `create_app` и `app.state`
+
+`create_app(settings: Settings | None = None, *, source: DialogSource | None = None, evaluator: Evaluator | None = None, conn: sqlite3.Connection | None = None) -> FastAPI` — в `src/cqa/http/app.py`.
+
+| Атрибут `app.state` | Тип | Кто кладёт |
+| --- | --- | --- |
+| `settings` | `Settings` | bootstrap-harness |
+| `store` | `Store` | review-workflow (`conn` или `connect(settings.db_path)`) |
+| `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
+| `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
+| `mode` | `Mode` | review-workflow (`mode_from_settings`) |
+
+| Строка в `create_app` | Трек |
+| --- | --- |
+| `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
+| `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
+| `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+
+## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
+
+| Переменная | Поле | Тип | По умолчанию | Читает |
+| --- | --- | --- | --- | --- |
+| `CQA_LLM_MODE` | `llm_mode` | `Literal["replay", "record", "live"]` | `replay` | llm-evaluation, eval-and-delivery |
+| `CQA_LLM_BASE_URL` | `llm_base_url` | `str \| None` | `None` | llm-evaluation |
+| `CQA_LLM_API_KEY` | `llm_api_key` | `SecretStr \| None` | `None` | llm-evaluation |
+| `CQA_LLM_MODEL` | `llm_model` | `str` | `qwen3-6` | llm-evaluation, review-workflow (`mode`) |
+| `CQA_LLM_PROFILE` | `llm_profile` | `str` | `plain` | llm-evaluation |
+| `CQA_LLM_REASONING` | `llm_reasoning` | `Literal["on", "off"]` | `on` | llm-evaluation |
+| `CQA_LLM_MAX_PARALLEL` | `llm_max_parallel` | `int` | `4` | llm-evaluation (семафор), review-workflow (`Runner.parallel`) |
+| `CQA_LLM_RPM` | `llm_rpm` | `int` | `120` (`0` — без лимита) | llm-evaluation |
+| `CQA_LLM_TIMEOUT_S` | `llm_timeout_s` | `float` | `180` | llm-evaluation |
+| `CQA_LLM_PRICE_IN`, `CQA_LLM_PRICE_OUT` | `llm_price_in`, `llm_price_out` | `float` | `0.0` (USD за 1 млн токенов) | llm-evaluation |
+| `CQA_VERIFIER` | `verifier` | `Literal["jev"] \| None` | `None` (пусто) | llm-evaluation, review-workflow (`mode`) |
+| `CQA_JEV_API_KEY` | `jev_api_key` | `SecretStr \| None` | `None` | llm-evaluation |
+| `CQA_ANONYMIZE` | `anonymize` | `bool` | `True` | llm-evaluation, review-workflow (`mode`) |
+| `CQA_DATA_WHERE` | `data_where` | `Literal["kz", "local", "external"]` | `kz` | review-workflow (`mode`) |
+| `CQA_ALLOW_REAL_DATA` | `allow_real_data` | `bool` | `False`, ставит только человек | llm-evaluation, eval-and-delivery |
+| `CQA_ORG_API_URL` | `org_api_url` | `SecretStr \| None` | `None` | dialog-ingest |
+| `CQA_RAW_DIR` | `raw_dir` | `Path` | `data/raw` | dialog-ingest |
+| `CQA_AUDIO_SHIFT_S` | `audio_shift_s` | `float` | `0.25` | dialog-ingest |
+| `CQA_AUDIO_SHIFT_PAUSED_S` | `audio_shift_paused_s` | `float` | `4.5` | dialog-ingest |
+| `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
+| `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
+| `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+
+Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
+
+## Хранилище (`data/cqa.db`, владелец review-workflow)
+
+| Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
+| --- | --- | --- |
+| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается) | dialog-ingest через `Store.audio_url` |
+| `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
+| `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
+| `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+
+eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
+
+## Интерфейс
+
+`web/js/scoring.js` (cqa-web-ui), чистый модуль, импортируют analytics-coaching, e2e и `node --test`:
+
+| Экспорт | Сигнатура | Возвращает |
+| --- | --- | --- |
+| `r2` | `r2(x: number)` | округление до 2 знаков, половина вверх через десятичную запись: `r2(1.005) == 1.01`, `r2(0.285) == 0.29` |
+| `frac` | `frac(criterion, answer)` | `1`, `0`, `ступень / max(steps)`, `null` для `na`, `null` (нет записи) и флага |
+| `ans` | `ans(dialog, cid, appeals)` | `null`, если записи в `res` нет; иначе `to` последней в порядке `appeals` записи пары (`appeal` или `review`) со статусом `confirmed` или `changed`, иначе `res[cid].a`. То же правило, что `from` у сервера (`effective_answer`) |
+| `calc` | `calc(dialog, checklist, appeals, override = null)` | `{total, W, G, pending, rows, secs, losses}`; `total` — `null`, если применимых с весом нет; `pending` — число критериев без записи; `override = {cid, val}` |
+| `flagsOf` | `flagsOf(dialog, checklist)` | подписи найденных нарушений |
+
+Клиент `web/js/api.js`: `createApi(base, fetchFn)` с методами по контракту, в том числе `postRun({dialogs, criteria})` (диалоги в порядке очереди), `getRun(id)`, `cancelRun(id)`, `postReview(...)` → `POST /api/decisions`. Запуск — одно действие `startRun` в `state.js`, опрос до `status` `done` или `cancelled`. Время реплики звонка на экране — `t`; `fold` рисуется одной строкой с кнопкой раскрытия, реплики участка остаются в `lines`.
+
+Атрибуты для e2e (имена `data-act` уникальны на всё приложение):
+
+| Шаг защиты | Селектор |
+| --- | --- |
+| Роль | `[data-act="role"][data-role="qa" \| "operator" \| "reviewer"]` |
+| Экраны | контейнер `[data-view="<page>"]`, страницы `queue`, `appeals`, `checklist`, `analytics`, `coaching` |
+| Список | строка `[data-act="open"][data-id="<dialog id>"]` |
+| Карточка | критерий `[data-cid]`, «К реплике» `[data-act="ev"][data-n]`, реплика `[data-n]`, «Перейти к фрагменту» `[data-act="seek"][data-n]`, «Оставить»/«Принять» второго мнения `[data-act="review"][data-cid]`, отметка `[data-act="reviewed"]` |
+| Апелляция | «Оспорить оценку» `[data-act="appeal"][data-cid]`; «Сохранить решение» на `#/appeals` `[data-act="decide"]`, неактивна без причины |
+| Замена критерия | «Сохранить как vN» `[data-act="csave"]`, «Оценить набор» `[data-act="crun"]`, «Остановить» `[data-act="stop"]` |
+
+Папки e2e: `tests/e2e/web/` — тесты экранов cqa-web-ui и analytics-coaching (статический сервер `web_url`, `page.route` на `tests/fixtures/state_prototype.json`); `tests/e2e/defence/` — сценарий защиты eval-and-delivery (`uvicorn` в подпроцессе, `replay`). Общих `autouse`-фикстур в `tests/e2e/conftest.py` нет, все файлы помечены `pytest.mark.e2e`.
+
+## Make, фикстуры, кассеты
+
+| Цель | Что делает | Параметры |
+| --- | --- | --- |
+| `make check` | ruff, mypy, pytest без сети, `node --test`, секреты, защищённые пути, стоп-код; локально `openspec validate --all --strict` | — |
+| `make run` | `uvicorn` на `127.0.0.1:8000` | `.env` |
+| `make record` | `CQA_LLM_MODE=record uv run pytest -m "cassette or e2e"`: перезаписывает ровно те вызовы, что потом проигрываются, только на синтетике прототипа (`call-024` тоже синтетика) | без параметров: набор и чек-лист — фикстуры тестов. Запускает агент с ключом в `.env` от человека; `CQA_ALLOW_REAL_DATA` не нужен (в `record` звонки не блокируются) |
+| `make e2e` | `uv run pytest -m e2e`, сервер в подпроцессе с `CQA_LLM_MODE` из окружения (по умолчанию `replay`) | `ARGS=--runxfail` |
+| `make eval` | `CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)` | `ARGS="--checklist PATH"`, `ARGS=--accept` |
+| `make eval-holdout` | то же с `--holdout` | `CQA_HOLDOUT_DIR` вне репозитория |
+| `make backup` | `scripts/backup_db.py` → `data/backup/cqa-<HHMM>.db` | `CQA_DB_PATH` |
+
+| Файл | Формат | Владелец |
+| --- | --- | --- |
+| `tests/fixtures/checklist_v3.json` | `Checklist` (`CL0` прототипа) | bootstrap-harness |
+| `tests/fixtures/dialogs_prototype.json` | `list[Dialog]` с `res` (`D` прототипа) | bootstrap-harness |
+| `tests/fixtures/scoring_vectors.json` | `[{name, checklist, answers: {cid: a}, total}]`, `total: number \| null` | bootstrap-harness |
+| `tests/fixtures/org_payload.json` | конверт организаторов `{error, isSuccess, data: {dataset_group_id, total_records, records}}`, 5 записей `syn-*` | dialog-ingest |
+| `tests/e2e/fixtures/defence_set.json` | тот же конверт, 8 синтетических диалогов прототипа | eval-and-delivery |
+| `tests/e2e/fixtures/replacement_criterion.json` | один `Criterion` | eval-and-delivery |
+| `tests/fixtures/state_prototype.json` | ответ `GET /api/state` на данных прототипа | cqa-web-ui |
+| `tests/cassettes/{llm,jev}/{sha}.json` | `{"request": тело, "status": код, "response": JSON}`, без заголовков; `sha = sha256(json.dumps(тело, ensure_ascii=False, sort_keys=True, separators=(",", ":")))` | llm-evaluation |
