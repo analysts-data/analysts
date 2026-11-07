@@ -7,6 +7,7 @@ from collections.abc import Callable
 from cqa.adapters.store import Store
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog
 from cqa.domain.review import fingerprint
+from cqa.services.errors import Conflict, NotFound
 from cqa.services.ports import Evaluator
 
 
@@ -51,6 +52,35 @@ class Runner:
         self._parallel = parallel
         self._clock = clock
         self._cancel = asyncio.Event()
+        self._active: int | None = None
+        self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
+
+    def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
+        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
+        if self._active is not None:
+            raise Conflict(f"Запуск {self._active} ещё идёт")
+        if dialogs is not None:
+            unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
+            if unknown:
+                raise NotFound(f"Диалоги не найдены: {', '.join(unknown)}")
+        checklist = self._store.current_checklist()
+        assert checklist is not None, "create_app сеет чек-лист на пустой базе"
+        if criteria is not None:
+            known = {c.id for c in checklist.criteria}
+            unknown = [i for i in dict.fromkeys(criteria) if i not in known]
+            if unknown:
+                raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
+        plan = plan_run(self._store, checklist, dialogs, criteria)
+        run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
+        if not plan:
+            self._store.finish_run(run_id, self._clock(), "done")
+            return run_id
+        self._active = run_id
+        self._cancel = asyncio.Event()
+        task = asyncio.create_task(self.execute(run_id, checklist, plan))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return run_id
 
     async def execute(
         self, run_id: int, checklist: Checklist, plan: list[tuple[Dialog, list[Criterion]]]
@@ -68,6 +98,7 @@ class Runner:
             await asyncio.gather(*(worker() for _ in range(self._parallel)))
         finally:
             self._store.finish_run(run_id, self._clock(), "cancelled" if self._cancel.is_set() else "done")
+            self._active = None
 
     async def _evaluate(
         self,

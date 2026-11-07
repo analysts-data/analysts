@@ -10,6 +10,7 @@ import pytest
 from cqa.adapters.store import Store
 from cqa.domain.models import Dialog
 from cqa.domain.review import fingerprint
+from cqa.services.errors import Conflict, NotFound
 from cqa.services.runs import Runner, eta_seconds, plan_run
 from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
 
@@ -148,3 +149,54 @@ async def test_missing_answer_is_an_error_and_waits_for_evaluation(store: Store)
     ]
     assert run.done == 16
     assert "04" not in store.current_results(FPS)["call-024"]
+
+
+async def _drain(runner: Runner) -> None:
+    await asyncio.gather(*runner._tasks)
+
+
+async def test_start_rejects_unknown_dialogs(store: Store) -> None:
+    with pytest.raises(NotFound, match="^Диалоги не найдены: nope, nope2$"):
+        Runner(store, FakeEvaluator(), parallel=1).start(["call-024", "nope", "nope2"], None)
+
+
+async def test_start_rejects_unknown_criteria(store: Store) -> None:
+    with pytest.raises(NotFound, match="^Критериев нет в чек-листе v3: 99$"):
+        Runner(store, FakeEvaluator(), parallel=1).start(None, ["04", "99"])
+
+
+async def test_start_with_nothing_to_do_finishes_at_once_without_a_task(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    runner.start(None, None)
+    await _drain(runner)
+    evaluator = FakeEvaluator()
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    run = store.get_run(run_id)
+    assert run is not None and (run.total, run.status) == (0, "done")
+    assert runner._tasks == set()
+    assert evaluator.calls == 0
+
+
+async def test_second_start_while_a_run_is_active_is_a_conflict(store: Store) -> None:
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(gate=gate), parallel=1)
+    run_id = runner.start(None, None)
+    assert len(runner._tasks) == 1
+    with pytest.raises(Conflict, match=f"^Запуск {run_id} ещё идёт$"):
+        runner.start(None, None)
+    gate.set()
+    await _drain(runner)
+    assert runner._tasks == set()
+    run = store.get_run(runner.start(None, ["04"]))
+    assert run is not None and (run.total, run.status) == (0, "done")
+
+
+async def test_started_run_evaluates_the_plan_in_the_background(store: Store) -> None:
+    evaluator = FakeEvaluator()
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(["p1-ru-003", "call-024"], None)
+    await _drain(runner)
+    run = store.get_run(run_id)
+    assert run is not None and (run.total, run.done, run.status) == (16, 16, "done")
+    assert evaluator.order == ["p1-ru-003", "call-024"]
