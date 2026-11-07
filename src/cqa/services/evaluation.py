@@ -18,6 +18,7 @@ from cqa.domain.models import (
     Line,
 )
 from cqa.domain.prompt import Message, build_messages, render_dialog
+from cqa.services.errors import ConfigError
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,10 @@ class Verifier(Protocol):
 
 class RealDataBlocked(Exception):
     pass
+
+
+class ModelUnavailable(Exception):
+    """Провайдер не ответил или вернул ошибку после всех повторов (бросает любая ChatModel)."""
 
 
 _NO_JSON = {False: "нет объекта JSON с полем answer", True: "нет объекта JSON с полем violation_found"}
@@ -117,6 +122,8 @@ class LlmEvaluator:
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
     ) -> DialogEvaluation:
+        if self.config_error:
+            raise ConfigError(self.config_error)
         if dialog.lines is None:
             raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
         # реальный звонок уходит наружу только с разрешения человека (design.md п. 19)
@@ -131,8 +138,10 @@ class LlmEvaluator:
         lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
+        prompts = [build_messages(text, checklist.rules, c) for c in asked]
+        failures: list[tuple[str, ModelUnavailable]] = []
         found_future = asyncio.gather(
-            *(self._criterion(build_messages(text, checklist.rules, c), c, lines) for c in asked)
+            *(self._criterion(m, c, lines, failures) for m, c in zip(prompts, asked, strict=True))
         )
         verdict: Verdict | None = None
         if self.verifier and asked:
@@ -141,6 +150,10 @@ class LlmEvaluator:
             except Exception as exc:  # сбой второго мнения не рушит оценку и не попадает в результаты
                 _LOG.warning("Второе мнение не ответило: %s: %s", type(exc).__name__, exc)
         found = await found_future
+        for cid, err in failures:
+            _LOG.warning("Диалог %s, критерий %s: модель недоступна: %s", dialog.id, cid, err)
+        if failures and len(failures) == sum(map(len, prompts)):
+            raise failures[0][1]  # провайдер недоступен совсем: сбой всего диалога
         by_id = dict(zip((c.id for c in asked), found, strict=True))
         results = []
         for c in criteria:
@@ -161,13 +174,26 @@ class LlmEvaluator:
         )
 
     async def _criterion(
-        self, calls: list[list[Message]], criterion: Criterion, lines: Mapping[int, str]
+        self,
+        calls: list[list[Message]],
+        criterion: Criterion,
+        lines: Mapping[int, str],
+        failures: list[tuple[str, ModelUnavailable]],
     ) -> CriterionResult | None:
         usage = _Usage()
-        if criterion.type == "flag":
-            subs = await asyncio.gather(*(self._ask(m, criterion, lines, usage, sub=True) for m in calls))
+        sub = criterion.type == "flag"
+
+        async def ask(messages: list[Message]) -> tuple[dict[str, Any] | None, bool]:
+            try:
+                return await self._ask(messages, criterion, lines, usage, sub=sub)
+            except ModelUnavailable as exc:  # подвопрос — «не найдено» с evFail, критерий — ждёт оценки
+                failures.append((criterion.id, exc))
+                return None, False
+
+        if sub:
+            subs = await asyncio.gather(*map(ask, calls))
             return merge_flag(criterion, list(subs), model=self.model_name, **asdict(usage))
-        raw, ev_fail = await self._ask(calls[0], criterion, lines, usage, sub=False)
+        raw, ev_fail = await ask(calls[0])
         if raw is None:
             return None
         return to_result(raw, criterion, ev_fail=ev_fail, model=self.model_name, **asdict(usage))

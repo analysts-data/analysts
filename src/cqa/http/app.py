@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
-from cqa.compose import build_source
+from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.audio import router as audio_router
@@ -62,9 +62,8 @@ def create_app(
         )
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
-    app.state.runner = (
-        Runner(store, evaluator, parallel=settings.llm_max_parallel) if evaluator is not None else None
-    )
+    evaluator = evaluator if evaluator is not None else build_evaluator(settings)  # llm-evaluation, ports.md
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
