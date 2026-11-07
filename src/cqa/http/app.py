@@ -7,12 +7,19 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.adapters.store import Store, connect
+from cqa.domain.models import Checklist
+from cqa.http import api
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.ports import DialogSource, Evaluator
+from cqa.services.state import mode_from_settings
 from cqa.settings import Settings
 
-WEB_DIR = Path(__file__).resolve().parents[3] / "web"
+ROOT = Path(__file__).resolve().parents[3]
+WEB_DIR = ROOT / "web"
+# ponytail: seed is the test fixture; a separate product file if the two ever diverge
+SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -36,7 +43,8 @@ def create_app(
     conn: sqlite3.Connection | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CQA")
-    app.state.settings = settings or Settings()
+    settings = settings or Settings()
+    app.state.settings = settings
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
 
@@ -44,7 +52,19 @@ def create_app(
     def health() -> dict[str, bool]:
         return {"ok": True}
 
-    # routers of the tracks go here (review-workflow: cqa.http.api, dialog-ingest: cqa.http.audio)
+    store = Store(conn if conn is not None else connect(settings.db_path))
+    store.cancel_stale_runs()
+    if store.current_checklist() is None:
+        store.add_checklist(
+            Checklist.model_validate_json(SEED_CHECKLIST.read_text(encoding="utf-8")), "начальная версия"
+        )
+    app.state.store = store
+    app.state.source = source
+    # review-workflow group 6: Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    app.state.runner = None
+    app.state.mode = mode_from_settings(settings)
+
+    app.include_router(api.router)
     app.include_router(audio_router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path
