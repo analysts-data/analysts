@@ -174,6 +174,49 @@ def load_holdout(
     return criteria, load_gold(lines, merged)
 
 
+@dataclass(frozen=True)
+class HoldoutRow:
+    """Строка отчёта отложенных критериев: только идентификатор, тип и числа."""
+
+    cid: str
+    type: str
+    n: int
+    agree: float | None
+
+
+@dataclass(frozen=True)
+class HoldoutReport:
+    rows: list[HoldoutRow]
+    n: int
+    ok: int
+
+    @property
+    def agreement(self) -> float | None:
+        return None if self.n == 0 else self.ok / self.n
+
+
+async def run_holdout(
+    dialogs: list[Dialog], holdout_dir: Path, checklist: Checklist, evaluator: Evaluator
+) -> HoldoutReport:
+    """Каждый отложенный критерий встаёт на место replaces, оценка зовётся только по нему."""
+    criteria, labels = load_holdout(holdout_dir, checklist)
+    rows: list[HoldoutRow] = []
+    total = hits_total = 0
+    for criterion, replaces in criteria:
+        swapped = checklist.model_copy(
+            update={"criteria": [criterion if c.id == replaces else c for c in checklist.criteria]}
+        )
+        mine = [g for g in labels if g.cid == criterion.id and g.ok is not None]
+        targets = [d for d in dialogs if d.id in {g.dlg for g in mine}]
+        outs = await asyncio.gather(*(evaluator.evaluate(d, swapped, [criterion]) for d in targets))
+        got = {d.id: {e.cid: e.result.a for e in out.results} for d, out in zip(targets, outs, strict=True)}
+        hits = sum(1 for g in mine if g.ok and got.get(g.dlg, {}).get(criterion.id, None) in g.ok)
+        rows.append(HoldoutRow(criterion.id, criterion.type, len(mine), hits / len(mine) if mine else None))
+        total += len(mine)
+        hits_total += hits
+    return HoldoutReport(rows, total, hits_total)
+
+
 def _build_evaluator(settings: Settings) -> Evaluator:
     # ponytail: build_evaluator приходит с llm-evaluation 4.6 (после слияния клиента модели), тогда импорт
     # переедет наверх модуля.
@@ -223,17 +266,22 @@ class _Stop(Exception):
     """Ошибка конфигурации: main печатает текст и возвращает код 2 без вызовов оценщика."""
 
 
-def _snapshot(settings: Settings, ids: set[str]) -> list[Dialog]:
-    """Диалоги разметки из снимка CQA_EVAL_DATASET; звонок только с CQA_ALLOW_REAL_DATA=1."""
+def _snapshot(settings: Settings, ids: set[str], *, quiet: bool = False) -> list[Dialog]:
+    """Диалоги разметки из снимка CQA_EVAL_DATASET; звонок только с CQA_ALLOW_REAL_DATA=1.
+
+    quiet: в сообщениях только число диалогов (отложенные критерии не раскрывают разметку).
+    """
     if not settings.eval_dataset.exists():
         raise _Stop(f"Нет набора {settings.eval_dataset}: положите снимок DEV или задайте CQA_EVAL_DATASET")
     raw = settings.eval_dataset.read_bytes()
     dialogs = [d for d in build_source(settings).upload(raw).dialogs if d.id in ids]
     calls = sorted(d.id for d in dialogs if d.ch == "call")
     if calls and not settings.allow_real_data:
-        raise _Stop(f"Звонки в разметке без CQA_ALLOW_REAL_DATA=1, оценка не запущена: {', '.join(calls)}")
+        named = f"{len(calls)}" if quiet else ", ".join(calls)
+        raise _Stop(f"Звонки в разметке без CQA_ALLOW_REAL_DATA=1, оценка не запущена: {named}")
     if absent := sorted(ids - {d.id for d in dialogs}):
-        print(f"Нет в снимке, пары считаются «ждёт оценки»: {', '.join(absent)}")
+        named = f"{len(absent)}" if quiet else ", ".join(absent)
+        print(f"Нет в снимке, пары считаются несовпадением: {named}")
     return dialogs
 
 
@@ -275,10 +323,19 @@ def _holdout_main(settings: Settings, checklist: Checklist) -> int:
     if holdout is None or holdout.resolve().is_relative_to(REPO):
         raise _Stop("Отложенные критерии лежат вне репозитория: задайте CQA_HOLDOUT_DIR каталогом вне него")
     try:
-        criteria, labels = load_holdout(holdout, checklist)
+        _, labels = load_holdout(holdout, checklist)
     except ValueError as exc:
         raise _Stop(f"Отложенные критерии: {exc}") from None
-    raise NotImplementedError
+    dialogs = _snapshot(settings, {g.dlg for g in labels}, quiet=True)
+    report = _evaluate(run_holdout(dialogs, holdout, checklist, _build_evaluator(settings)))
+    limit = load_thresholds(THRESHOLDS.read_text(encoding="utf-8")).holdout_agreement_min
+    for row in report.rows:
+        print(f"{row.cid} ({row.type}): {row.n} ответов, совпадение {_num(row.agree)}")
+    print(f"Отложенные критерии вместе: {_num(report.agreement)} ({report.ok} из {report.n})")
+    if report.agreement is not None and report.agreement < limit:
+        print(f"НЕ ПРОШЛО: совпадение отложенных критериев {_num(report.agreement)} ниже {_num(limit)}")
+        return 1
+    return 0
 
 
 def _eval_main(settings: Settings, checklist: Checklist, accept: bool) -> int:

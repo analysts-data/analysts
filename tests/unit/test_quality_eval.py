@@ -10,7 +10,7 @@ from cqa.domain.agreement import GoldLabel, Thresholds
 from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog, DialogEvaluation, Evaluation
 from cqa.domain.prompt import PROMPT_VERSION
 from cqa.services import quality_eval
-from cqa.services.quality_eval import load_holdout, load_thresholds, run_eval
+from cqa.services.quality_eval import HoldoutRow, load_holdout, load_thresholds, run_eval, run_holdout
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -330,3 +330,62 @@ def test_load_holdout_checks_labels_against_replacing_criterion(tmp_path: Path) 
     write_holdout(tmp_path, holdout_criteria("01"), [hl("syn-chat-ru", "h1", 15)])
     with pytest.raises(ValueError, match="строка 1"):
         load_holdout(tmp_path, CHECKLIST)
+
+
+class RecordingEvaluator:
+    """Отвечает «yes» на каждый критерий и записывает чек-лист и критерии каждого вызова."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], list[str]]] = []
+
+    async def evaluate(
+        self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
+    ) -> DialogEvaluation:
+        self.calls.append((dialog.id, [c.id for c in checklist.criteria], [c.id for c in criteria]))
+        return DialogEvaluation([Evaluation(c.id, res("yes")) for c in criteria], 0, 0.0)
+
+
+async def test_run_holdout_swaps_each_criterion_in_place_and_asks_only_it(tmp_path: Path) -> None:
+    labels = [
+        hl("d1", "h1", "yes"),
+        hl("d2", "h1", "no"),
+        hl("d1", "h2", "yes"),
+        {**hl("d2", "h2"), "ok": None},
+    ]
+    write_holdout(tmp_path, holdout_criteria("01", "04"), labels)
+    fake = RecordingEvaluator()
+    report = await run_holdout([chat("d1"), chat("d2"), chat("d3")], tmp_path, CHECKLIST, fake)
+    ids = [c.id for c in CHECKLIST.criteria]
+    assert sorted(fake.calls) == sorted(
+        [
+            ("d1", ["h1", *ids[1:]], ["h1"]),
+            ("d1", [*ids[:3], "h2", *ids[4:]], ["h2"]),
+            ("d2", ["h1", *ids[1:]], ["h1"]),
+        ]
+    )
+    assert report.rows == [HoldoutRow("h1", "bool", 2, 0.5), HoldoutRow("h2", "bool", 1, 1.0)]
+    assert (report.n, report.ok, report.agreement) == (3, 2, pytest.approx(2 / 3))
+
+
+def holdout_run(root: Path, monkeypatch: pytest.MonkeyPatch, misses: int) -> Path:
+    """Пять отложенных критериев на трёх синтетических чатах: 15 ответов, из них `misses` не совпадают."""
+    criteria = holdout_criteria("01", "02", "03", "05", "07")
+    pairs = [(d, c["id"]) for c in criteria for d in CHATS]
+    labels = [hl(d, cid, "no" if i < misses else "yes") for i, (d, cid) in enumerate(pairs)]
+    holdout = write_holdout(root.parent / "holdout", criteria, labels)
+    monkeypatch.setenv("CQA_HOLDOUT_DIR", str(holdout))
+    use(monkeypatch, FakeEvaluator([{d: {c["id"]: res("yes") for c in criteria} for d in CHATS}]))
+    return holdout
+
+
+def test_holdout_agreement_below_threshold_returns_one(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    holdout_run(workdir, monkeypatch, misses=3)
+    assert quality_eval.main([*ARGS, "--holdout"]) == 1
+    assert "0,80" in capsys.readouterr().out
+
+
+def test_holdout_agreement_at_threshold_passes(workdir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    holdout_run(workdir, monkeypatch, misses=2)
+    assert quality_eval.main([*ARGS, "--holdout"]) == 0
