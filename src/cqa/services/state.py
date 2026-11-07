@@ -1,10 +1,11 @@
 """GET /api/state: everything the UI needs in one object (review-workflow design, decisions 9-10)."""
 
+from collections.abc import Sequence
 from typing import Any
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Appeal, Checklist, Dialog, Mode
-from cqa.domain.review import fingerprint
+from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
+from cqa.domain.review import fingerprints
 from cqa.services.errors import Unavailable
 from cqa.settings import Settings
 
@@ -18,17 +19,29 @@ def mode_from_settings(settings: Settings) -> Mode:
     )
 
 
+def current_results(
+    store: Store, checklist: Checklist, dialogs: Sequence[Dialog]
+) -> dict[str, dict[str, CriterionResult]]:
+    """Results of the current meaning per dialog; a call matches the fingerprint with `call`."""
+    found = {ch: store.current_results(fps) for ch, fps in fingerprints(checklist).items()}
+    return {d.id: found[d.ch][d.id] for d in dialogs if d.id in found[d.ch]}
+
+
 def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
     """Current checklist, dialogs with current `res`, appeals the score takes into account."""
     checklist = store.current_checklist()
     if checklist is None:
         raise Unavailable("Чек-лист не загружен")
-    fps = {c.id: fingerprint(checklist, c) for c in checklist.criteria}
-    results = store.current_results(fps)
-    dialogs = [d.model_copy(update={"res": results.get(d.id, {})}) for d in store.list_dialogs()]
+    fps = fingerprints(checklist)
+    stored = store.list_dialogs()
+    results = current_results(store, checklist, stored)
+    dialogs = [d.model_copy(update={"res": results.get(d.id, {})}) for d in stored]
+    ch = {d.id: d.ch for d in stored}
     # open records always; decided ones only for the current meaning of the criterion (decision 12)
     appeals = [
-        a for a, fp in store.list_appeals() if a.status in ("pending", "closed") or fp == fps.get(a.cid)
+        a
+        for a, fp in store.list_appeals()
+        if a.status in ("pending", "closed") or fp == fps[ch[a.dlg]].get(a.cid)
     ]
     return checklist, dialogs, appeals
 

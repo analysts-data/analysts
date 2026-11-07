@@ -24,7 +24,7 @@ def decided(client: TestClient, store: Store) -> dict[str, Any]:
     checklist = store.current_checklist()
     assert checklist is not None
     c04 = next(c for c in checklist.criteria if c.id == "04")
-    store.add_result("p1-ru-003", "04", 3, fingerprint(checklist, c04), CriterionResult(a=5))
+    store.add_result("p1-ru-003", "04", 3, fingerprint(checklist, c04, "chat"), CriterionResult(a=5))
     client.post(
         "/api/appeals",
         json={

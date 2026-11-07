@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Appeal, Cost, CriterionResult, Dialog, Mode
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Mode
 from cqa.domain.review import fingerprint
 from cqa.services.state import build_state, mode_from_settings
 from cqa.settings import Settings
@@ -21,7 +21,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def evaluate_all(store: Store, dialog: Dialog) -> None:
     cl = prototype_checklist()
     for c in cl.criteria:
-        store.add_result(dialog.id, c.id, cl.version, fingerprint(cl, c), dialog.res[c.id])
+        store.add_result(dialog.id, c.id, cl.version, fingerprint(cl, c, dialog.ch), dialog.res[c.id])
 
 
 def file(store: Store, *, status: str, fp: str, kind: str = "appeal") -> Appeal:
@@ -76,9 +76,33 @@ def test_open_appeals_stay_and_decided_ones_follow_the_fingerprint(store: Store)
     file(store, status="closed", fp="old")
     file(store, status="changed", fp="old")
     cl = prototype_checklist()
-    current = fingerprint(cl, cl.criteria[3])
+    current = fingerprint(cl, cl.criteria[3], "call")
     file(store, status="confirmed", fp=current)
     assert [a["status"] for a in build_state(store, MODE)["appeals"]] == ["pending", "closed", "confirmed"]
+
+
+def with_call_addendum(cid: str, version: int = 4) -> Checklist:
+    cl = prototype_checklist()
+    criteria = [c.model_copy(update={"call": "Новое уточнение"}) if c.id == cid else c for c in cl.criteria]
+    return cl.model_copy(update={"version": version, "criteria": criteria})
+
+
+def test_call_addendum_change_drops_only_call_results(store: Store, dialogs: list[Dialog]) -> None:
+    for d in dialogs:
+        evaluate_all(store, d)
+    store.add_checklist(with_call_addendum("01"), "уточнение для звонка")
+    state = build_state(store, MODE)
+    assert "01" not in dialog_of(state, "call-024")["res"]
+    assert "01" in dialog_of(state, "p1-ru-003")["res"]
+
+
+def test_decided_appeal_on_call_follows_the_call_fingerprint(store: Store) -> None:
+    changed = with_call_addendum("04")
+    store.add_checklist(changed, "уточнение для звонка")
+    c04 = next(c for c in changed.criteria if c.id == "04")
+    file(store, status="confirmed", fp=fingerprint(changed, c04, "chat"))
+    file(store, status="changed", fp=fingerprint(changed, c04, "call"))
+    assert [a["status"] for a in build_state(store, MODE)["appeals"]] == ["changed"]
 
 
 def test_review_record_has_no_ask_and_appeal_keeps_from_key(store: Store) -> None:

@@ -65,3 +65,16 @@ def test_rules_define_disclosure_of_account_data_before_identification() -> None
     rules = Checklist.model_validate(load_fixture("checklist_v3.json")).rules
     assert "Раскрытие конфиденциальной информации — " in rules
     assert "до подтверждения личности" in rules
+
+
+def test_chat_worded_na_conditions_have_call_wording() -> None:
+    # организаторы: чек-лист строился для чатов, для звонка его адаптируют к устной речи
+    criteria = Checklist.model_validate(load_fixture("checklist_v3.json")).criteria
+    chat_worded = [c for c in criteria if c.naCond and "Чат" in c.naCond]
+    assert chat_worded
+    assert all(c.call and "na" in c.call for c in chat_worded)
+
+
+def test_call_wording_does_not_blame_operator_for_speech_recognition() -> None:
+    calls = [c.call for c in Checklist.model_validate(load_fixture("checklist_v3.json")).criteria if c.call]
+    assert any("распознавания речи" in text and "дикцию" in text for text in calls)
