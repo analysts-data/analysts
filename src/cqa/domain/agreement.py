@@ -13,7 +13,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from cqa.domain.models import Checklist, Criterion
+    from collections.abc import Mapping
+
+    from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog
 
 # "yes" | "no" | "na", ступень шкалы или объект подвопросов флага — форма поля `a`
 Answer = Literal["yes", "no", "na"] | int | dict[str, bool]
@@ -84,6 +86,112 @@ def _load_line(line: str, number: int, by_id: dict[str, Criterion], seen: set[tu
     for answer in ok:
         _check_answer(answer, criterion, bad)
     return GoldLabel(dlg, cid, tuple(ok), by, note)
+
+
+# --- метрики одного прогона ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Agreement:
+    """Совпавших пар из учтённых (спорные не учтены)."""
+
+    n: int
+    ok: int
+
+    @property
+    def frac(self) -> float | None:
+        return None if self.n == 0 else self.ok / self.n
+
+
+@dataclass(frozen=True)
+class Disagreement:
+    dlg: str
+    cid: str
+    gold: list[Answer]
+    got: Answer | None  # None — записи в res нет, критерий ждёт оценки
+    why: str | None
+    quote: str | None
+
+
+@dataclass(frozen=True)
+class RunMetrics:
+    agree_total: Agreement
+    per_lang: dict[str, Agreement]
+    per_cid: dict[str, Agreement]
+    missing: int
+    disagreements: list[Disagreement]
+
+    @property
+    def kz_gap_pts(self) -> float | None:
+        ru = self.per_lang.get("RU")
+        kz = self.per_lang.get("KZ")
+        if ru is None or kz is None or ru.frac is None or kz.frac is None:
+            return None
+        return round((ru.frac - kz.frac) * 100, 2)
+
+
+def score_run(
+    gold: list[GoldLabel],
+    results: Mapping[str, Mapping[str, CriterionResult]],
+    dialogs: Mapping[str, Dialog],
+    checklist: Checklist,
+) -> RunMetrics:
+    """Совпадение с эталоном одного прогона: всего, по языкам и по критериям.
+
+    Ответ совпал, если `a` входит в `ok` (для флага — равенство объекта).
+    Спорные (`ok: null`) исключены; нет записи в `res` — несовпадение и `missing`.
+    """
+    total = _Counter()
+    per_lang: dict[str, _Counter] = {}
+    per_cid: dict[str, _Counter] = {}
+    missing = 0
+    disagreements: list[Disagreement] = []
+
+    for label in gold:
+        if label.ok is None:
+            continue
+        res = results.get(label.dlg, {}).get(label.cid)
+        got = res.a if res is not None else None
+        hit = got is not None and got in label.ok
+        total.add(hit)
+        lang = dialogs[label.dlg].lang if label.dlg in dialogs else None
+        if lang is not None:
+            per_lang.setdefault(lang, _Counter()).add(hit)
+        per_cid.setdefault(label.cid, _Counter()).add(hit)
+        if res is None:
+            missing += 1
+        if not hit:
+            disagreements.append(
+                Disagreement(
+                    dlg=label.dlg,
+                    cid=label.cid,
+                    gold=list(label.ok),
+                    got=got,
+                    why=res.why if res is not None else None,
+                    quote=res.quote if res is not None else None,
+                )
+            )
+
+    return RunMetrics(
+        agree_total=total.agreement(),
+        per_lang={lang: counter.agreement() for lang, counter in per_lang.items()},
+        per_cid={cid: counter.agreement() for cid, counter in per_cid.items()},
+        missing=missing,
+        disagreements=disagreements,
+    )
+
+
+class _Counter:
+    def __init__(self) -> None:
+        self.n = 0
+        self.ok = 0
+
+    def add(self, hit: bool) -> None:
+        self.n += 1
+        self.ok += int(hit)
+
+    def agreement(self) -> Agreement:
+        return Agreement(n=self.n, ok=self.ok)
 
 
 def _check_answer(answer: object, criterion: Criterion, bad) -> None:
