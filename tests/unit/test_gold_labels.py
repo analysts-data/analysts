@@ -47,9 +47,8 @@ def test_real_labels_pass_load_gold() -> None:
     if not CHECKLIST_FIXTURE.exists():
         pytest.skip("ждёт tests/fixtures/checklist_v3.json из bootstrap-harness")
 
-    from cqa.domain.models import Checklist
-
     from cqa.domain.agreement import load_gold
+    from cqa.domain.models import Checklist
 
     checklist = Checklist.model_validate_json(CHECKLIST_FIXTURE.read_text(encoding="utf-8"))
     gold = load_gold(LABELS.read_text(encoding="utf-8").splitlines(), checklist)
