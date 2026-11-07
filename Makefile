@@ -39,5 +39,5 @@ backup:
 	uv run python scripts/backup_db.py
 
 results:
-	# файл организаторов results/$(SET)/results.json; SET=dev|prod, для prod GROUP=<group_id>, несколько — GROUP="A B" (scripts/results.py --help)
+	# файл организаторов results/$(SET)/results.json; SET=dev|prod, для prod GROUP=<group_id>, несколько — GROUP="A B"; ARGS=--evaluate — сначала загрузить и оценить набор (scripts/results.py --help)
 	uv run python scripts/results.py $(SET) $(foreach g,$(GROUP),--group $(g)) $(ARGS)
