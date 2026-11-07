@@ -8,6 +8,7 @@ check:
 	@if find web tests -name '*.test.js' | grep -q .; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
 	@if [ -x scripts/secret_scan.sh ]; then scripts/secret_scan.sh; fi
 	@if [ -x scripts/protected_paths.sh ]; then scripts/protected_paths.sh; fi
+	@if [ -x scripts/stop_code.sh ]; then scripts/stop_code.sh; fi
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
 
 e2e:
