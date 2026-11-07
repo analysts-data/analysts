@@ -24,6 +24,14 @@ class Api:
         page.route("**/api/state", lambda route: route.fulfill(json=self.state))
         page.route("**/api/appeals/*/decision", self.decide)
         page.route("**/api/appeals", self.appeal)
+        page.route("**/api/dialogs/*/reviewed", self.reviewed)
+
+    def reviewed(self, route: Route) -> None:
+        body = route.request.post_data_json
+        did = route.request.url.split("/")[-2]
+        self.posts.append((route.request.url, body))
+        next(d for d in self.state["dialogs"] if d["id"] == did)["reviewed"] = body["reviewed"]
+        route.fulfill(json={"ok": True})
 
     def appeal(self, route: Route) -> None:
         body = route.request.post_data_json
@@ -109,6 +117,24 @@ def test_appeal_form_offers_only_scored_criteria_and_other_answers(page: Page, w
     assert asks.evaluate_all("os => os.map(o => o.value)") == ["10", "4", "0"]  # без текущего 7
     form.get_by_label("Критерий").select_option("01")
     assert asks.evaluate_all("os => os.map(o => o.value)") == ["no"]
+
+
+def test_reviewed_mark_posts_flag_and_takes_dialog_out_of_risk(page: Page, web_url: str) -> None:
+    api = Api(page)
+    page.goto(f"{web_url}/#/d/p1-ru-022")
+    card = page.locator('[data-view="d"]')
+    mark = page.locator('[data-act="reviewed"]')
+    expect(card).to_contain_text("Грубая ошибка, нужна проверка")
+    expect(mark).to_have_text("Отметить проверенным")
+    mark.click()
+    expect(mark).to_have_text("Снять отметку")
+    expect(card).not_to_contain_text("Грубая ошибка, нужна проверка")
+    mark.click()
+    expect(mark).to_have_text("Отметить проверенным")
+    expect(card).to_contain_text("Грубая ошибка, нужна проверка")
+    assert [body for _, body in api.posts] == [{"reviewed": True}, {"reviewed": False}]
+    assert api.posts[0][0].endswith("/api/dialogs/p1-ru-022/reviewed")
+    assert api.errors == []
 
 
 def as_reviewer(page: Page, web_url: str, hash_: str) -> None:
