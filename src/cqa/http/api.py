@@ -6,6 +6,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from cqa.domain.models import Checklist
+from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import save_owners, set_reviewed
 from cqa.services.errors import Unavailable
@@ -54,6 +56,11 @@ async def get_state(request: Request) -> dict[str, Any]:
 async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> dict[str, bool]:
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     return {"ok": True}
+
+
+@router.put("/checklist")
+async def put_checklist(draft: Checklist, request: Request) -> dict[str, Any]:
+    return save_checklist(request.app.state.store, draft)
 
 
 @router.put("/owners")
