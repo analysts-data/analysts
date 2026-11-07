@@ -2,71 +2,20 @@
 
 import asyncio
 import itertools
-import json
-from collections.abc import Callable, Iterable, Sequence
-from pathlib import Path
+import sqlite3
+from collections.abc import Callable
 
 import pytest
 
-from cqa.adapters.store import Store, connect
-from cqa.domain.models import (
-    Checklist,
-    Criterion,
-    CriterionResult,
-    Dialog,
-    DialogEvaluation,
-    Evaluation,
-)
+from cqa.adapters.store import Store
+from cqa.domain.models import Dialog
 from cqa.domain.review import fingerprint
 from cqa.services.runs import Runner, eta_seconds, plan_run
+from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
 
-FIXTURES = Path(__file__).parents[1] / "fixtures"
-CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
-DIALOGS = {
-    d["id"]: Dialog.model_validate(d)
-    for d in json.loads((FIXTURES / "dialogs_prototype.json").read_text(encoding="utf-8"))
-}
+CHECKLIST = prototype_checklist()
+DIALOGS = {d.id: d for d in prototype_dialogs()}
 FPS = {c.id: fingerprint(CHECKLIST, c) for c in CHECKLIST.criteria}
-
-
-class FakeEvaluator:  # ponytail: own copy until tests/fakes.py lands in main
-    """Answers from the prototype `res`; every result costs one call and 0.001 USD."""
-
-    def __init__(
-        self,
-        *,
-        verifier_calls: int = 0,
-        verifier_usd: float = 0.0,
-        fail_on: Iterable[str] = (),
-        skip: Iterable[str] = (),
-        gate: asyncio.Event | None = None,
-    ) -> None:
-        self.verifier_calls = verifier_calls
-        self.verifier_usd = verifier_usd
-        self.fail_on = set(fail_on)
-        self.skip = set(skip)
-        self.gate = gate
-        self.calls = 0
-        self.order: list[str] = []
-        self.seen: list[str] = []
-
-    async def evaluate(
-        self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
-    ) -> DialogEvaluation:
-        self.calls += 1
-        self.order.append(dialog.id)
-        self.seen.extend(c.id for c in criteria)
-        if self.gate is not None:
-            await self.gate.wait()
-        if dialog.id in self.fail_on:
-            raise RuntimeError("timeout")
-        known: dict[str, CriterionResult] = DIALOGS[dialog.id].res
-        results = [
-            Evaluation(c.id, known[c.id].model_copy(update={"calls": 1, "cost": 0.001}))
-            for c in criteria
-            if c.id not in self.skip
-        ]
-        return DialogEvaluation(results, self.verifier_calls, self.verifier_usd)
 
 
 def _clock() -> Callable[[], float]:
@@ -78,14 +27,6 @@ async def _execute(store: Store, evaluator: FakeEvaluator, dialogs: list[str] | 
     run_id = store.add_run(sum(len(cs) for _, cs in plan), 100.0)
     await Runner(store, evaluator, parallel=1, clock=_clock()).execute(run_id, CHECKLIST, plan)
     return run_id
-
-
-@pytest.fixture
-def store() -> Store:
-    store = Store(connect(":memory:"))
-    store.add_checklist(CHECKLIST, "начальная версия")
-    store.add_dialogs([DIALOGS["call-024"], DIALOGS["p1-ru-003"]], {})
-    return store
 
 
 def _ids(plan: list[tuple[Dialog, list]]) -> list[tuple[str, list[str]]]:
@@ -134,12 +75,14 @@ def test_plan_does_not_check_unknown_ids(store: Store) -> None:
     assert _ids(plan_run(store, CHECKLIST, ["nope", "call-024"], ["99", "04"])) == [("call-024", ["04"])]
 
 
-async def test_execute_saves_results_with_version_and_fingerprint(store: Store) -> None:
+async def test_execute_saves_results_with_version_and_fingerprint(
+    store: Store, conn: sqlite3.Connection
+) -> None:
     await _execute(store, FakeEvaluator())
     current = store.current_results(FPS)
     assert {d: sorted(r) for d, r in current.items()} == {"call-024": ALL, "p1-ru-003": ALL}
     assert current["call-024"]["04"].a == DIALOGS["call-024"].res["04"].a
-    versions = store._conn.execute("SELECT DISTINCT version FROM results").fetchall()
+    versions = conn.execute("SELECT DISTINCT version FROM results").fetchall()
     assert [row[0] for row in versions] == [3]
 
 
@@ -165,11 +108,11 @@ async def test_execute_writes_dialog_cost_with_second_opinion(store: Store) -> N
     assert run is not None and run.cost == pytest.approx(0.0164)
 
 
-async def test_one_worker_takes_dialogs_in_plan_order(store: Store) -> None:
+async def test_one_worker_takes_dialogs_in_plan_order(store: Store, conn: sqlite3.Connection) -> None:
     evaluator = FakeEvaluator()
     await _execute(store, evaluator, ["p1-ru-003", "call-024"])
     assert evaluator.order == ["p1-ru-003", "call-024"]
-    first = store._conn.execute("SELECT dialog_id FROM results ORDER BY id LIMIT 1").fetchone()
+    first = conn.execute("SELECT dialog_id FROM results ORDER BY id LIMIT 1").fetchone()
     assert first[0] == "p1-ru-003"
 
 
