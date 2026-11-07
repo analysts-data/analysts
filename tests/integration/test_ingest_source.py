@@ -183,3 +183,20 @@ def test_audio_shift_comes_from_settings(tmp_path: Path, monkeypatch: pytest.Mon
 def test_build_source_makes_no_requests(tmp_path: Path) -> None:
     build_source(Settings(_env_file=None, org_api_url=SecretStr(TEMPLATE), raw_dir=tmp_path))
     assert len(respx.calls) == 0
+
+
+# --- запись звонка ---
+
+
+@respx.mock
+async def test_audio_link_asks_the_player_each_time(tmp_path: Path) -> None:
+    player = respx.get("https://org.test/player/syn-call-hold").mock(
+        return_value=httpx.Response(200, text='<audio><source src="/media/rec.mp3?token=x"></audio>')
+    )
+    source = make_source(tmp_path)
+
+    first = await source.audio_link("https://org.test/player/syn-call-hold")
+    second = await source.audio_link("https://org.test/player/syn-call-hold")
+
+    assert first == second == "https://org.test/media/rec.mp3?token=x"
+    assert player.call_count == 2

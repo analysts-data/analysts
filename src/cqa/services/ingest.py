@@ -50,9 +50,7 @@ class OrgDialogSource:
         return self._ingest(payload, payload.group_id)
 
     async def audio_link(self, audio_url: str) -> str | None:
-        # ponytail: OrgApi.fresh_audio_link приходит с группой 5 (feat/dialog-ingest-audio), тогда
-        # здесь будет `return await self._api.fresh_audio_link(audio_url)`.
-        raise NotImplementedError("OrgApi.fresh_audio_link ещё не в main")
+        return await self._api.fresh_audio_link(audio_url)
 
     def _ingest(self, payload: OrgPayload, group_id: str) -> IngestResult:
         settings = self._settings
