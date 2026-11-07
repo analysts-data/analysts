@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from cqa.domain.models import Checklist, Criterion, Dialog, Fold, Line
-from cqa.domain.prompt import SYSTEM_PROMPT, build_messages, render_dialog
+from cqa.domain.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_messages, render_dialog
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
@@ -152,3 +152,12 @@ def test_na_without_condition_offers_neutral_na_not_none() -> None:
     block = build_messages("<dialog/>", "", crit(BOOL, na=True, naCond=None))[0][1]["content"]
     assert '"na" — неприменимо' in block
     assert "None" not in block
+
+
+def test_prompt_v2_blames_operator_only_for_own_waits_and_criterion_scope() -> None:
+    # расхождения DEV-прогона: очередь до оператора считалась его ожиданием, ответ снижали за
+    # недостатки других пунктов, условие na проверяли по ошибкам оператора
+    assert PROMPT_VERSION == "2"
+    assert "до его первой реплики — очередь, оператор за неё не отвечает" in SYSTEM_PROMPT
+    assert "Недостатки, о которых критерий не говорит, оценивают другие пункты чек-листа" in SYSTEM_PROMPT
+    assert "Условие na проверяй по фактам диалога" in SYSTEM_PROMPT

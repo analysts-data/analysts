@@ -39,6 +39,16 @@ _WORD_RE = re.compile(_WORD)
 _HINTS = "менің атым|меня зовут|моё имя|мое имя|есімім|атым|my name is"
 _HINT_RE = re.compile(rf"(?<!\w)(?:{_HINTS})\s+({_WORD})(?:\s+({_WORD}))?", re.IGNORECASE)
 
+# Представление без подсказки: «я Марк», «I'm Adrian», «мен Мұратпын» (личное окончание отбрасывается).
+# Имя — слово с заглавной буквы; только реплики оператора и клиента (бот представляет себя сам).
+_KZ_SUFFIX = "мын|мін|пын|пін|бын|бін"
+_UPPER = "А-ЯЁӘҒҚҢӨҰҮҺІA-Z"
+_LOWER = "а-яёәғқңөұүһіa-z"
+_SELF_RE = re.compile(
+    rf"(?<!\w)(?:[Яя]|I'm|I am|[Мм]ен)\s+([{_UPPER}][{_LOWER}]+?)(?:{_KZ_SUFFIX})?(?![{_UPPER}{_LOWER}])"
+)
+_PEOPLE = frozenset({"operator", "client"})
+
 # Вопрос оператора об имени клиента.
 _QUESTION_RE = re.compile(
     r"(?<!\w)(?:как к вам обращаться|как вас зовут|атыңыз кім|сізге қалай жүгінуге болады"
@@ -93,6 +103,14 @@ _STOP = frozenset(
         "моя",
         "ваш",
         "ваша",
+        "вас",
+        "вам",
+        "вами",
+        "сіз",
+        "сізге",
+        "сізді",
+        "сізбен",
+        "sorry",
         "да",
         "нет",
         "как",
@@ -185,6 +203,10 @@ def _discover_names(lines: list[Line | Fold]) -> list[tuple[str, str]]:
             name = _hint_name(match.group(1), match.group(2))
             if name:
                 candidates.append((index, match.start(1), name, who))
+        if who in _PEOPLE:
+            for match in _SELF_RE.finditer(line.text):
+                if match.group(1).casefold() not in _STOP:
+                    candidates.append((index, match.start(1), match.group(1), who))
         if who == "operator" and _QUESTION_RE.search(line.text):
             for later_index in range(index + 1, len(lines)):
                 later = lines[later_index]
@@ -214,7 +236,8 @@ def _discover_names(lines: list[Line | Fold]) -> list[tuple[str, str]]:
 def _replace_names(text: str, names: list[tuple[str, str]]) -> str:
     """Точное вхождение имени и близкие варианты распознавания — в метку роли."""
     for name, label in names:
-        pattern = r"(?<!\w)" + r"\s+".join(re.escape(w) for w in name.split()) + r"(?!\w)"
+        words = r"\s+".join(re.escape(w) for w in name.split())
+        pattern = rf"(?<!\w){words}(?:{_KZ_SUFFIX})?(?!\w)"
         text = re.sub(pattern, label, text, flags=re.IGNORECASE)
     pieces: list[str] = []
     last_end = 0
