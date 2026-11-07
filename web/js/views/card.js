@@ -4,6 +4,7 @@ import { ans, calc, flagsOf, frac, lastDec } from '../scoring.js';
 import { groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
 import { href } from '../router.js';
+import * as player from '../player.js';
 
 const LANG = { RU: 'Русский', KZ: 'Қазақша', EN: 'English' };
 const WHO = { client: 'клиент', operator: 'оператор', bot: 'бот', system: 'система' };
@@ -41,6 +42,8 @@ function defaultOpen(d, sum) {
 
 export function view(S, id) {
   const d = S.dialogs.find(x => x.id === id);
+  if (d && d.ch === 'call' && d.lines) player.mount(d);
+  else player.unmount();
   if (!d) return `<div class="head"><div><h1 class="h1">Диалог не найден</h1>
     <p class="sub">Диалога «${esc(id)}» нет в загруженном наборе. <a href="#/queue">Вернуться к списку</a></p></div></div>`;
   const cl = S.checklist, call = d.ch === 'call';
@@ -101,11 +104,13 @@ export function view(S, id) {
     </div>
   </section>
 
+  ${call && d.lines ? player.html(d, sum.losses) : ''}
+
   <div class="cols">
     <section class="card" aria-label="Расшифровка">
       <div class="row" style="justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)">
         <h2 class="h2">${call ? 'Расшифровка звонка' : 'Переписка'}</h2>
-        <span class="muted xs">${call ? 'Время от начала записи' : 'Время из чата, исходные метки сохранены'}</span>
+        <span class="muted xs">${call ? 'Время от начала записи. ▶ ставит запись на начало реплики' : 'Время из чата, исходные метки сохранены'}</span>
       </div>
       <div class="tr" id="tr">${trHTML(d, open)}</div>
     </section>
@@ -151,7 +156,7 @@ function trHTML(d, open) {
       continue;
     }
     out.push(`<div class="msg ${l.who}${cls}" id="L${l.n}" data-n="${l.n}">
-      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${tg}</header>${esc(l.text)}</div>`);
+      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${call ? listen(d, l, true) : ''}${tg}</header>${esc(l.text)}</div>`);
   }
   return out.join('');
 }
@@ -174,12 +179,20 @@ function critHTML(d, c, open) {
     ${isOpen ? `<div class="crit-body">${critBody(d, c, r, a)}</div>` : ''}</article>`;
 }
 
+// Перемотка к началу реплики; без line.s — запасной путь на плеер организаторов в новой вкладке.
+function listen(d, l, mini) {
+  if (l.s == null) return `<a class="small" href="${esc(player.playerUrl(d.id))}" target="_blank" rel="noopener">Открыть в плеере</a>`;
+  return mini
+    ? `<button type="button" class="mini" data-act="seek" aria-label="Слушать реплику ${l.n} с ${mmss(l.s)}" title="Слушать с ${mmss(l.s)}">▶</button>`
+    : `<button type="button" class="btn sm" data-act="seek" data-n="${l.n}">▶ Перейти к фрагменту, ${mmss(l.s)}</button>`;
+}
+
 function evidence(d, r) {
   return (r.ev || []).map(n => {
     const l = lineBy(d, n);
     if (!l) return '';
     return `<div class="quote"><div><span class="muted xs">${n}, ${WHO[l.who] || esc(l.who)}</span><br>«${esc(l.text)}»</div>
-      <button type="button" class="btn sm" data-act="ev" data-n="${n}">К реплике</button></div>`;
+      <button type="button" class="btn sm" data-act="ev" data-n="${n}">К реплике</button>${d.ch === 'call' ? listen(d, l, false) : ''}</div>`;
   }).join('');
 }
 
@@ -215,13 +228,24 @@ function flashLine(n) {
 }
 
 export const actions = {
+  ...player.actions,
   crit: t => { const id = S.r.id; S.open[id] = S.open[id] === t.dataset.cid ? null : t.dataset.cid; render(); },
   goto: t => {
     const d = current();
     S.open[d.id] = t.dataset.cid;
     render();
     const r = d.res[t.dataset.cid];
-    if (r && r.ev && r.ev.length) flashLine(r.ev[0]);
+    const l = r && r.ev && r.ev.length ? lineBy(d, r.ev[0]) : null;
+    if (!l) return;
+    flashLine(l.n);
+    if (l.s != null) player.seek(l.s, false);
+  },
+  pin: t => actions.goto(t),
+  seek: t => {
+    const l = lineBy(current(), Number(t.dataset.n || t.closest('[data-n]').dataset.n)); // ▶ в реплике — без своего data-n
+    if (!l || l.s == null) return;
+    player.seek(l.s);
+    flashLine(l.n);
   },
   ev: t => flashLine(Number(t.dataset.n)),
   fold: t => { const k = t.dataset.key; unfolded.has(k) ? unfolded.delete(k) : unfolded.add(k); render(); },
