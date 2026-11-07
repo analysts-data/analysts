@@ -217,3 +217,11 @@ async def test_verifier_is_not_called_when_no_criterion_needs_a_call() -> None:
     chat_only = CRITERIA["05"].model_copy(update={"channel": "chat", "na": True})
     out = await evaluator(FakeModel(), verifier).evaluate(CALL, CHECKLIST, [chat_only])
     assert (verifier.criteria, out.verifier_calls, out.verifier_usd) == ([], 0, 0.0)
+
+
+async def test_dialog_without_transcript_raises_before_any_call() -> None:
+    model = FakeModel()
+    empty = CHAT.model_copy(update={"lines": None})
+    with pytest.raises(ValueError, match="p1-ru-022"):
+        await evaluator(model, FakeVerifier()).evaluate(empty, CHECKLIST, CHECKLIST.criteria)
+    assert model.calls == []

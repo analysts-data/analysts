@@ -88,8 +88,10 @@ class LlmEvaluator:
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
     ) -> DialogEvaluation:
+        if dialog.lines is None:
+            raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
         text = render_dialog(dialog)
-        lines = {x.n: x.text for x in dialog.lines or [] if isinstance(x, Line)}
+        lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
         answers = asyncio.gather(
