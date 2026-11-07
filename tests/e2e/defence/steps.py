@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 from playwright.sync_api import Locator, Page, Route, expect
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -240,10 +239,6 @@ def replace(d: Defence) -> None:
     with d.page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/api/runs")) as post:
         d.page.locator('[data-act="crun"]').click()
     run = wait_run(d.api, post.value.json()["run_id"])
-    if any("запустите make record" in e for e in run["errors"]):  # CassetteMissing: шаги до этого проверены
-        pytest.xfail(
-            f"нет записей ответов на заменённый критерий ({len(run['errors'])}): make record с ключом"
-        )
     assert (run["status"], run["errors"], run["done"]) == ("done", [], run["total"]), run
     # в replay запуск короче секунды опроса: прогресс и цена GET /api/runs/{id} — на панели очереди
     d.go("#/queue")
