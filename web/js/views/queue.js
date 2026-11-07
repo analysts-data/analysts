@@ -3,7 +3,7 @@ import * as state from '../state.js';
 import { groupOf, queueOrder, reasonOf } from '../queue.js';
 import { calc, flagsOf, r2, frac, ans } from '../scoring.js';
 import { esc, titleOf, f2, fn, ansTxt } from '../format.js';
-import { href } from '../router.js';
+import { href, parseHash } from '../router.js';
 
 const { S } = state;
 
@@ -35,6 +35,12 @@ function rowsOf() {
     });
 }
 
+// Порядок видимых строк — как на экране: группы и итог из queueOrder.
+function visibleOrder() {
+  const byId = Object.fromEntries(rowsOf().map(x => [x.d.id, x]));
+  return queueOrder(S.dialogs, S.checklist, S.appeals).map(id => byId[id]).filter(Boolean);
+}
+
 const hasFilters = () => !!(S.r?.params && (S.r.params.grp || S.r.params.lang || S.r.params.ch || S.r.params.lost) || S.q);
 
 export function view() {
@@ -45,9 +51,9 @@ export function view() {
   const avg = totals.length ? r2(totals.reduce((a, b) => a + b, 0) / totals.length) : null;
   const pa = S.appeals.filter(a => a.status === 'pending').length;
   const rows = rowsOf();
-  if (rows.length && !rows.some(x => x.d.id === S.qsel)) S.qsel = rows[0].d.id;
-  const byId = Object.fromEntries(rows.map(x => [x.d.id, x]));
-  const seq = queueOrder(S.dialogs, S.checklist, S.appeals).map(id => byId[id]).filter(Boolean);
+  const seq = visibleOrder();
+  const ids = seq.map(x => x.d.id);
+  if (ids.length && !ids.includes(S.qsel)) S.qsel = ids[0];
   const tile = (g, title, n, note) => `<button type="button" class="tile" data-act="grp" data-g="${g}" aria-pressed="${p.grp === g}"><span class="t">${title}</span><strong>${n}</strong><span class="muted small">${note}</span></button>`;
   const sel = (id, label, cur, vals) => `<label class="small muted" for="${id}">${label}</label><select id="${id}" class="fld" data-act="${id}">${vals.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   const lost = c => c.losses.slice(0, 3).map(r => `${r.c.id} ${esc(ansTxt(r.c, r.a))}`).join(', ');
@@ -137,20 +143,20 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,select,dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
   const down = e.key === 'j' || e.key === 'о', up = e.key === 'k' || e.key === 'л';
   if (!down && !up && e.key !== 'Enter') return;
-  const r = S.r;
-  if (!r || !S.checklist || !S.dialogs?.length) return;
-  if (r.page === 'd') {
+  if (!S.checklist || !S.dialogs?.length) return;
+  // Хеш читаем напрямую: быстрый повтор до события hashchange не должен смотреть прошлый маршрут.
+  const { page, id } = parseHash(location.hash);
+  if (page === 'd') {
     if (down || up) {
-      const ord = queueOrder(S.dialogs, S.checklist, S.appeals), i = ord.indexOf(r.id);
+      const ord = queueOrder(S.dialogs, S.checklist, S.appeals), i = ord.indexOf(id);
       const n = ord[i + (down ? 1 : -1)];
       if (n) location.hash = href('d', n);
     }
     return;
   }
-  if (r.page !== 'queue') return;
-  const ids = rowsOf().map(x => x.d.id);
-  if (!ids.length) return;
-  if (down || up) {
+  if (page !== 'queue') return;
+  const ids = visibleOrder().map(x => x.d.id);
+  if (!ids.length) return;  if (down || up) {
     const i = ids.indexOf(S.qsel);
     const n = ids[Math.min(ids.length - 1, Math.max(0, (i < 0 ? 0 : i) + (down ? 1 : -1)))];
     if (n !== S.qsel) { S.qsel = n; state.render(); }

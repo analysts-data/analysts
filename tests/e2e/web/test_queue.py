@@ -32,6 +32,7 @@ def open_queue(page: Page, web_url: str, route: str = "#/queue") -> None:
         lambda route_: route_.fulfill(status=200, content_type="application/json", body=state),
     )
     page.goto(f"{web_url}/{route}")
+    expect(page.locator("#clVer")).to_have_text("Чек-лист v3")
 
 
 def row_ids(page: Page) -> list[str]:
@@ -62,6 +63,31 @@ def test_risk_tile_filters_and_reset_returns_full_list(page: Page, web_url: str)
     page.locator('[data-act="clear"]').click()
     expect(page).to_have_url(re.compile(r"#/queue$"))
     expect(page.locator('[data-act="open"]')).to_have_count(10)
+
+
+def test_j_j_enter_opens_third_dialog_in_queue_order(page: Page, web_url: str) -> None:
+    open_queue(page, web_url)
+    page.keyboard.press("j")
+    page.keyboard.press("j")
+    expect(page.locator("tr.sel")).to_have_count(1)
+    assert page.locator("tr.sel").get_attribute("data-id") == "p1-ru-022"
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(re.compile(r"#/d/p1-ru-022$"))
+    expect(page.locator('[data-view="d"]')).to_be_visible()
+
+
+def test_k_at_first_row_keeps_selection(page: Page, web_url: str) -> None:
+    open_queue(page, web_url)
+    page.keyboard.press("k")
+    assert page.locator("tr.sel").get_attribute("data-id") == "p1-kz-015"
+
+
+def test_j_k_in_card_follow_queue_order(page: Page, web_url: str) -> None:
+    open_queue(page, web_url, "#/d/call-024")
+    page.keyboard.press("j")
+    expect(page).to_have_url(re.compile(r"#/d/p1-kz-003$"))
+    page.keyboard.press("k")
+    expect(page).to_have_url(re.compile(r"#/d/call-024$"))
 
 
 def test_lost_and_lang_filters_come_from_hash(page: Page, web_url: str) -> None:
