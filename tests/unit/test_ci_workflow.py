@@ -32,4 +32,3 @@ def test_pr_template_links_openspec_and_tdd() -> None:
     assert "openspec/changes" in content
     assert "TDD" in content
     assert "human-ok" in content
-
