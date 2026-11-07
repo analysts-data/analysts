@@ -5,7 +5,7 @@ from datetime import datetime
 
 from cqa.adapters.store import Store
 from cqa.domain.models import Answer as ResultAnswer
-from cqa.domain.models import Appeal, Criterion, CriterionResult
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
 from cqa.domain.review import Answer, allowed_answers, effective_answer, fingerprint, stamp
 from cqa.services.errors import Conflict, Invalid, NotFound
 
@@ -22,14 +22,19 @@ class _Pair:
         return effective_answer(self.result, [a for a, fp in self.records if fp == self.fp])
 
 
-def _pair(store: Store, dlg: str, cid: str) -> _Pair:
-    if store.get_dialog(dlg) is None:
-        raise NotFound(f"Диалог {dlg} не найден")
+def _criterion(store: Store, cid: str) -> tuple[Checklist, Criterion]:
     checklist = store.current_checklist()
     assert checklist is not None, "create_app сеет чек-лист на пустой базе"
     criterion = next((c for c in checklist.criteria if c.id == cid), None)
     if criterion is None:
         raise NotFound(f"Критерия {cid} нет в чек-листе v{checklist.version}")
+    return checklist, criterion
+
+
+def _pair(store: Store, dlg: str, cid: str) -> _Pair:
+    if store.get_dialog(dlg) is None:
+        raise NotFound(f"Диалог {dlg} не найден")
+    checklist, criterion = _criterion(store, cid)
     if criterion.type == "flag":
         raise Invalid(f"Флаг нарушения не оспаривается: у критерия {cid} нет баллов")
     fp = fingerprint(checklist, criterion)
@@ -48,6 +53,13 @@ def _check_allowed(criterion: Criterion, answer: Answer) -> None:
     if answer not in allowed:
         listed = ", ".join(map(str, allowed))
         raise Invalid(f"Ответ {answer} недопустим для критерия {criterion.id}: допустимы {listed}")
+
+
+def _check_signed(reason: str, reviewer: str) -> None:
+    if len(reason.strip()) < 5:
+        raise Invalid("Причина решения обязательна: не короче 5 символов")
+    if not reviewer.strip():
+        raise Invalid("Укажите проверяющего")
 
 
 def file_appeal(
@@ -80,8 +92,13 @@ def file_appeal(
 
 def decide(store: Store, appeal_id: str, *, to: Answer, reason: str, reviewer: str, now: datetime) -> Appeal:
     found = store.get_appeal(appeal_id)
-    assert found is not None
+    if found is None:
+        raise NotFound(f"Апелляция {appeal_id} не найдена")
     appeal = found[0]
+    if appeal.status != "pending":
+        raise Conflict(f"Апелляция {appeal_id} уже рассмотрена: {appeal.status}")
+    _check_signed(reason, reviewer)
+    _check_allowed(_criterion(store, appeal.cid)[1], to)
     decided = appeal.model_copy(
         update={
             "to": to,

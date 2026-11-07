@@ -151,3 +151,63 @@ def test_new_appeal_after_changed_decision_starts_from_decision(store: Store) ->
 
     assert second.id == "a2"
     assert second.from_ == 10
+
+
+REASON = "Срок вывода назван полностью"
+
+
+@pytest.mark.parametrize(
+    ("over", "error", "detail"),
+    [
+        ({"appeal_id": "a999"}, NotFound, "Апелляция a999 не найдена"),
+        ({"reason": ""}, Invalid, "Причина решения обязательна: не короче 5 символов"),
+        ({"reason": " abc  "}, Invalid, "Причина решения обязательна: не короче 5 символов"),
+        ({"reviewer": " "}, Invalid, "Укажите проверяющего"),
+        ({"to": 12}, Invalid, "Ответ 12 недопустим для критерия 04: допустимы 20, 15, 10, 5, 0, na"),
+    ],
+)
+def test_decide_refusals_leave_appeal_pending(
+    store: Store, over: dict[str, Any], error: type[Exception], detail: str
+) -> None:
+    add_result(store, "p1-ru-003", "04", a=5)
+    appeal(store)
+    args: dict[str, Any] = {"appeal_id": "a1", "to": 10, "reason": REASON, "reviewer": "Проверяющий"}
+
+    with pytest.raises(error) as exc:
+        decide(store, **(args | over), now=NOW)
+
+    assert str(exc.value) == detail
+    stored = store.get_appeal("a1")
+    assert stored is not None and stored[0].status == "pending"
+
+
+def test_na_is_refused_where_criterion_forbids_it(store: Store) -> None:
+    add_result(store, "p1-ru-003", "01", a="yes")
+    appeal(store, cid="01", ask="no")
+
+    with pytest.raises(Invalid) as exc:
+        decide(store, "a1", to="na", reason=REASON, reviewer="Проверяющий", now=NOW)
+
+    assert str(exc.value) == "Ответ na недопустим для критерия 01: допустимы yes, no"
+
+
+def test_decided_appeal_cannot_be_decided_again(store: Store) -> None:
+    add_result(store, "p1-ru-003", "04", a=5)
+    appeal(store)
+    decide(store, "a1", to=10, reason=REASON, reviewer="Проверяющий", now=NOW)
+
+    with pytest.raises(Conflict) as exc:
+        decide(store, "a1", to=5, reason=REASON, reviewer="Проверяющий", now=NOW)
+
+    assert str(exc.value) == "Апелляция a1 уже рассмотрена: changed"
+
+
+def test_closed_appeal_cannot_be_decided(store: Store) -> None:
+    add_result(store, "p1-ru-003", "04", a=5)
+    appeal(store)
+    store.close_pending_appeals(["04"])
+
+    with pytest.raises(Conflict) as exc:
+        decide(store, "a1", to=10, reason=REASON, reviewer="Проверяющий", now=NOW)
+
+    assert str(exc.value) == "Апелляция a1 уже рассмотрена: closed"
