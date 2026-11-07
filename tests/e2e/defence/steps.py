@@ -37,9 +37,8 @@ class Defence:
     page: Page
     api: httpx.Client
     console_errors: list[str] = field(default_factory=list)
-    open_appeal: dict[str, Any] | None = (
-        None  # на заменяемый критерий: подаёт mode_and_roles, закрывает replace
-    )
+    # апелляция на заменяемый критерий: подаёт mode_and_roles, закрывает replace
+    open_appeal: dict[str, Any] | None = None
 
     def go(self, route: str) -> None:
         self.page.goto(f"{self.api.base_url}{route}")
@@ -68,8 +67,8 @@ def mode_and_roles(d: Defence) -> None:
     c = criterion(s["checklist"], load_fixture("replacement_criterion.json")["id"])
     current = dialog(s, CARD)["res"][c["id"]]["a"]
     ask = next(v for v in allowed(c) if v != current)
-    body = {"dlg": CARD, "cid": c["id"], "ask": ask, "ev": [], "comment": "Итог подведён.", "by": "Оператор"}
-    d.open_appeal = d.api.post("/api/appeals", json=body).raise_for_status().json()
+    filed = {"dlg": CARD, "cid": c["id"], "ask": ask, "ev": [], "comment": "Итог подведён.", "by": "Оператор"}
+    d.open_appeal = d.api.post("/api/appeals", json=filed).raise_for_status().json()
     d.page.reload()
     role(d.page, "reviewer")
     d.go("#/appeals")
@@ -255,18 +254,6 @@ def replace(d: Defence) -> None:
     expect(d.body).to_contain_text("$")
 
 
-def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
-    deadline = time.monotonic() + RUN_TIMEOUT_S
-    while (run := api.get(f"/api/runs/{run_id}").raise_for_status().json())["status"] == "running":
-        assert time.monotonic() < deadline, f"запуск {run_id} идёт дольше {RUN_TIMEOUT_S} с: {run}"
-        time.sleep(0.2)
-    return run
-
-
-def load_fixture(name: str) -> Any:
-    return json.loads((FIXTURES / name).read_text())
-
-
 def no_total(d: Defence) -> None:
     """Репетиция «Итог не рассчитывается»: у NA все критерии с весом — N/A, итог «—», консоль чиста."""
 
@@ -287,6 +274,18 @@ def no_total(d: Defence) -> None:
     d.go("#/queue")
     expect(d.page.locator(f'[data-act="open"][data-id="{NA}"]')).to_contain_text("—")
     assert d.console_errors == [], d.console_errors
+
+
+def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
+    deadline = time.monotonic() + RUN_TIMEOUT_S
+    while (run := api.get(f"/api/runs/{run_id}").raise_for_status().json())["status"] == "running":
+        assert time.monotonic() < deadline, f"запуск {run_id} идёт дольше {RUN_TIMEOUT_S} с: {run}"
+        time.sleep(0.2)
+    return run
+
+
+def load_fixture(name: str) -> Any:
+    return json.loads((FIXTURES / name).read_text())
 
 
 def dialog(state: dict[str, Any], dialog_id: str) -> dict[str, Any]:
