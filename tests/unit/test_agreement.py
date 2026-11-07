@@ -1,32 +1,8 @@
 """Соглашение с эталоном: загрузка labels.jsonl и метрики прогона (чистые функции)."""
 
 import json
-from types import SimpleNamespace
 
-
-def criterion(cid: str, ctype: str = "bool", *, na: bool = False, steps=None, questions=None):
-    subs = [SimpleNamespace(k=q["k"]) for q in questions] if questions else None
-    return SimpleNamespace(id=cid, type=ctype, na=na, steps=steps, questions=subs)
-
-
-def checklist(*criteria) -> SimpleNamespace:
-    return SimpleNamespace(criteria=list(criteria))
-
-
-FLAG_KEYS = [{"k": "insult"}, {"k": "paid"}, {"k": "leak"}]
-
-
-def v3_checklist() -> SimpleNamespace:
-    return checklist(
-        criterion("01"),
-        criterion("02", na=True),
-        criterion("03", na=True),
-        criterion("04", "scale", na=True, steps=[20, 15, 10, 5, 0]),
-        criterion("05"),
-        criterion("06", "scale", steps=[10, 7, 4, 0]),
-        criterion("07", na=True),
-        criterion("08", "flag", questions=FLAG_KEYS),
-    )
+from builders import v3_checklist
 
 
 def gold_line(dlg: str, cid: str, ok, by: str = "team", note: str = "") -> str:
