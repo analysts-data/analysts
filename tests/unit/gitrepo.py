@@ -22,6 +22,8 @@ def base_env(**overrides: str) -> dict[str, str]:
     env.update(
         GIT_CONFIG_GLOBAL="/dev/null",
         GIT_CONFIG_NOSYSTEM="1",
+        # Пустой XDG: глобальный ~/.config/git/ignore не должен прячеть файлы тестовых репозиториев
+        XDG_CONFIG_HOME="/nonexistent-cqa-test",
         GIT_AUTHOR_NAME="Test Agent",
         GIT_AUTHOR_EMAIL="agent@example.com",
         GIT_COMMITTER_NAME="Test Agent",
@@ -61,11 +63,14 @@ def clone_with_origin(tmp_path: Path, branch: str = "feat/test") -> Path:
     return clone
 
 
-def run_script(name: str, *args: str, cwd: Path, **env: str) -> subprocess.CompletedProcess[str]:
+def run_script(
+    name: str, *args: str, cwd: Path, input: str | None = None, **env: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPTS / name), *args],
         cwd=cwd,
         capture_output=True,
         text=True,
+        input=input,
         env=base_env(**env),
     )
