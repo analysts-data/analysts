@@ -1,0 +1,39 @@
+# secrets and local config
+.env
+.env.*
+!.env.example
+
+# real data, caches, databases: never committed
+data/
+*.db
+*.db-journal
+*.mp3
+
+# agent worktrees
+.worktrees/
+
+# agent and planning files: local only, shared into worktrees by scripts/wt.sh
+.claude/
+.pi/
+AGENTS.md
+AGENT.md
+CLAUDE.md
+openspec/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# node / playwright
+node_modules/
+test-results/
+playwright-report/
+
+# os
+.DS_Store

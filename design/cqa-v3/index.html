@@ -1,0 +1,1278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>CQA — контроль качества диалогов</title>
+<style>
+:root{
+  --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --bg:#F3F5F4;--surface:#fff;--hover:#F1F4F2;
+  --line:#E0E6E3;--line2:#ECF0EE;--line-strong:#C9D1CD;
+  --ink:#17201C;--ink2:#34413B;--muted:#56635D;
+  --accent:#0E6A55;--accent-ink:#0A4C3D;--accent-soft:#E2F1EB;
+  --ev:#B4560C;--ev-line:#E39B3A;--ev-soft:#FFF3E3;
+  --risk:#B42318;--risk-soft:#FDEEEB;
+  --info:#1849A9;--info-line:#4A7BD6;--info-soft:#EAF1FF;
+  --na:#475467;--na-soft:#EEF1F2;
+  --r:10px;--shadow:0 1px 2px rgba(23,32,28,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+a:hover{color:var(--accent-ink)}
+:focus-visible{outline:3px solid #2E7DD1;outline-offset:2px}
+h1,h2,h3,p{margin:0}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.xs{font-size:12px}
+.num{text-align:right;white-space:nowrap}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:10px}
+
+/* каркас */
+.app{display:grid;grid-template-columns:228px minmax(0,1fr);min-height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:10px;align-items:center;padding:2px 10px 16px}
+.brand i{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:13px}
+.brand b{display:block;font-size:15px}
+.brand span{font-size:12px;color:var(--muted)}
+.navgroup{font-size:12px;font-weight:600;color:var(--muted);padding:14px 12px 4px}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:var(--ink2);text-decoration:none;font-weight:500;min-height:40px}
+.nav a:hover{background:var(--hover);color:var(--ink)}
+.nav a[aria-current=page]{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+.nav svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.badge{margin-left:auto;min-width:22px;text-align:center;font-size:12px;font-weight:600;border-radius:999px;padding:0 7px;background:var(--risk);color:#fff}
+.badge:empty{display:none}
+.sidefoot{margin-top:auto;border-top:1px solid var(--line);padding:12px 12px 0;font-size:12px;color:var(--muted);display:grid;gap:2px}
+.top{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 28px;min-height:58px;flex-wrap:wrap}
+.crumb{font-size:13px;color:var(--muted)}
+.crumb b{color:var(--ink);font-weight:600}
+.demo{font-size:12px;font-weight:600;color:#7A3A06;background:var(--ev-soft);border-radius:999px;padding:3px 10px}
+.content{padding:22px 28px 56px;max-width:1480px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.content:focus{outline:none}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.h1{font-size:24px;font-weight:700;letter-spacing:-.01em}
+.sub{margin-top:2px;color:var(--muted)}
+.h2{font-size:16px;font-weight:650}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.pad{padding:16px 18px}
+.label{font-size:13px;font-weight:600;color:var(--muted)}
+
+/* элементы */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;cursor:pointer;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover{background:var(--hover);color:var(--ink)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.pri:hover{background:var(--accent-ink)}
+.btn.sm{min-height:32px;padding:0 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:0 12px;min-height:36px;cursor:pointer;font-size:13px;font-weight:500;color:var(--ink2)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+.fld{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background:var(--surface)}
+textarea.fld{padding:8px 10px;min-height:88px;width:100%;resize:vertical;line-height:1.5}
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:13px;font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:1px 9px;border-radius:999px;white-space:nowrap;line-height:20px;border:0}
+button.chip{cursor:pointer}
+.c-risk{background:var(--risk-soft);color:var(--risk)}
+.c-ev{background:var(--ev-soft);color:#8A3A0B}
+.c-info{background:var(--info-soft);color:var(--info)}
+.c-ok{background:var(--accent-soft);color:var(--accent-ink)}
+.c-na{background:var(--na-soft);color:var(--na)}
+table{width:100%;border-collapse:collapse}
+th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--hover)}
+tr.grp td{background:#F7F9F8;font-weight:600;font-size:13px;padding:9px 12px}
+.tablewrap{overflow-x:auto}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.box{border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5}
+.box.info{background:var(--info-soft);color:#12387F}
+.box.good{background:var(--accent-soft);color:var(--accent-ink)}
+.box.ev{background:var(--ev-soft);color:#5E2A08}
+.box.na{background:var(--na-soft);color:#344054}
+.box.risk{background:var(--risk-soft);color:#7A1A12}
+
+/* список */
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.tile{display:flex;flex-direction:column;gap:2px;padding:14px 16px;text-align:left;cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);text-decoration:none;color:var(--ink)}
+.tile:hover{border-color:var(--line-strong);color:var(--ink)}
+.tile[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.tile strong{font-size:28px;line-height:1.15;font-weight:700}
+.tile .t{font-size:13px;font-weight:600}
+.runbar{height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden}
+.runbar i{display:block;height:100%;background:var(--accent)}
+
+/* карточка */
+.sum{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) minmax(0,1fr);gap:14px}
+.ring{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.kv{display:flex;justify-content:space-between;gap:12px}
+.msg .chip,.sys .chip{background:#fff;box-shadow:inset 0 0 0 1px currentColor}
+.secs{display:grid;gap:8px;font-size:13px;flex:1 1 170px}
+.secs b{white-space:nowrap}
+.secs div{display:flex;justify-content:space-between;gap:8px}
+.loss{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px;border-radius:8px;cursor:pointer;text-align:left;background:none;border:0;width:100%}
+.loss:hover{background:var(--ev-soft)}
+.loss em{font-style:normal;color:var(--risk);font-weight:700}
+.pinno{width:22px;height:22px;border-radius:50%;background:var(--ev);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center}
+.player{display:flex;flex-direction:column;gap:10px}
+.wave{position:relative;padding-top:26px}
+.bars{display:flex;align-items:center;gap:2px;height:72px;cursor:pointer}
+.bars span{flex:1;border-radius:2px;min-width:2px}
+.wc{background:#9AA8A1}.wo{background:var(--accent)}.wi{background:#D5DBD8}.ws{background:#E6EAE8}
+.hatch{position:absolute;top:26px;height:72px;border-radius:6px;background:repeating-linear-gradient(135deg,rgba(86,99,93,.06) 0 6px,rgba(86,99,93,.13) 6px 12px);pointer-events:none}
+.hatchlbl{position:absolute;top:2px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pin{position:absolute;top:0;transform:translateX(-50%);width:24px;height:24px;border-radius:50%;background:var(--ev);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;padding:0}
+.playhead{position:absolute;top:22px;bottom:0;width:2px;background:var(--ink);pointer-events:none}
+.ruler{position:relative;height:18px;font-size:12px;color:var(--muted)}
+.ruler span{position:absolute;transform:translateX(-50%)}
+.ruler span:first-child{transform:none}.ruler span:last-child{transform:translateX(-100%)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.cols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+.tr{display:flex;flex-direction:column;gap:10px;padding:14px}
+.msg{max-width:86%;padding:8px 12px;border-radius:12px;transition:box-shadow .15s,background .15s}
+.msg.client{align-self:flex-start;background:#EEF2F0;border-bottom-left-radius:4px}
+.msg.operator{align-self:flex-end;background:var(--accent-soft);border-bottom-right-radius:4px}
+.msg header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:2px}
+.msg header b{color:var(--ink2)}
+.msg.sel{background:var(--ev-soft);box-shadow:0 0 0 2px var(--ev-line)}
+.msg.hl,.sys.hl{box-shadow:0 0 0 2px var(--info-line)}
+.msg.now{box-shadow:0 0 0 2px var(--ink)}
+.sys{align-self:center;max-width:90%;font-size:12px;color:var(--muted);text-align:center;padding:2px 8px;border-radius:8px}
+.sys.sel{background:var(--ev-soft);box-shadow:0 0 0 2px var(--ev-line)}
+.fold{align-self:stretch;border:1px dashed var(--line-strong);border-radius:8px;padding:8px 12px;font-size:13px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.mini{border:0;background:none;color:var(--accent);font-weight:700;cursor:pointer;padding:0 4px;font-size:12px}
+.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%{box-shadow:0 0 0 8px rgba(227,155,58,.55)}100%{box-shadow:0 0 0 2px var(--ev-line)}}
+.crit{border-top:1px solid var(--line2)}
+.crit.open{background:#FFFBF4}
+.crit-row{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) auto 76px 14px;gap:10px;align-items:center;padding:10px 14px;background:none;border:0;text-align:left;cursor:pointer}
+.crit-row:hover{background:var(--hover)}
+.crit-row svg{width:14px;height:14px;fill:none;stroke:var(--muted);stroke-width:2;transition:transform .15s}
+.crit.open .crit-row svg{transform:rotate(180deg)}
+.crit-body{padding:2px 14px 16px 48px;display:flex;flex-direction:column;gap:12px}
+.sechead{display:flex;justify-content:space-between;padding:9px 14px;background:#F7F9F8;border-top:1px solid var(--line2);font-size:13px;font-weight:600;color:var(--ink2)}
+.ladder{display:flex;gap:6px;flex-wrap:wrap}
+.step{min-width:44px;min-height:32px;border:1px solid var(--line-strong);border-radius:7px;display:grid;place-items:center;font-weight:600;font-size:13px;color:var(--ink2);background:var(--surface);padding:0 8px}
+.step.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.step.alt{box-shadow:inset 0 0 0 2px var(--info-line);color:var(--info)}
+button.step{cursor:pointer;min-height:40px}
+button.step[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.quote{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface)}
+.quote>div{flex:1;min-width:0}
+.hist{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:6px 12px;font-size:13px;align-items:baseline}
+
+/* апелляции */
+.split{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start}
+.qitem{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:8px;text-decoration:none;color:var(--ink)}
+.qitem:hover{background:var(--hover);color:var(--ink)}
+.qitem[aria-current=true]{background:var(--accent-soft)}
+.compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.compare>div{background:#F7F9F8;border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.compare strong{font-size:20px}
+.opt{display:flex;gap:10px;align-items:center;padding:10px 14px;border:1px solid var(--line-strong);border-radius:8px;cursor:pointer;flex:1;min-width:220px}
+.opt:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.timeline{display:flex;flex-direction:column}
+.ev{display:grid;grid-template-columns:14px minmax(0,1fr);gap:12px;padding-bottom:16px;position:relative}
+.ev:before{content:"";position:absolute;left:6px;top:14px;bottom:0;width:1px;background:var(--line)}
+.ev:last-child:before{display:none}
+.ev i{width:13px;height:13px;border-radius:50%;margin-top:4px;background:var(--accent)}
+.ev i.k{background:var(--na)}
+
+/* аналитика */
+.lens{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.lens a{display:flex;flex-direction:column;gap:6px;padding:16px 18px;text-decoration:none;color:var(--ink)}
+.lens a:hover{border-color:var(--line-strong);color:var(--ink)}
+.lens strong{font-size:30px;line-height:1.1}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.hbar{display:inline-block;height:10px;border-radius:0 3px 3px 0;background:var(--ev);vertical-align:middle}
+.heat{display:grid;place-items:center;min-height:36px;border-radius:4px;font-weight:600;font-size:13px}
+.hm0{background:#F7F9F8;color:var(--muted)}.hm1{background:#FFF1E2}.hm2{background:#FBD6AA}.hm3{background:#F0A964}.hm4{background:#A84F14;color:#fff}
+
+/* чек-лист */
+.clist{display:flex;flex-direction:column;gap:2px}
+.citem{display:grid;grid-template-columns:24px minmax(0,1fr) auto 30px;gap:8px;align-items:center;padding:9px 10px;border-radius:8px;background:none;border:0;text-align:left;cursor:pointer;width:100%}
+.citem:hover{background:var(--hover)}
+.citem[aria-current=true]{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+
+/* диалог и уведомление */
+dialog{border:0;border-radius:12px;padding:0;width:min(520px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(23,32,28,.25)}
+dialog::backdrop{background:rgba(23,32,28,.35)}
+dialog form{display:flex;flex-direction:column;gap:16px;padding:20px 22px}
+dialog footer{display:flex;gap:10px;justify-content:flex-end;padding-top:6px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 16px;border-radius:10px;max-width:min(560px,calc(100vw - 32px));box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:20;font-size:14px}
+
+/* роли: что кому показывать */
+.app[data-role=operator] .only-qa,.app[data-role=operator] .only-rv,
+.app[data-role=reviewer] .only-qa,.app[data-role=reviewer] .no-rv,
+.app[data-role=qa] .only-rv{display:none!important}
+.app:not([data-role=reviewer]) .only-rv-note{display:block}
+.only-rv-note{display:none}
+
+@media (max-width:1100px){
+  .tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sum,.lens{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols,.split,.two{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .side{position:static;height:auto;flex-direction:row;align-items:center;overflow-x:auto;padding:6px 8px;border-right:0;border-bottom:1px solid var(--line)}
+  .brand,.navgroup,.sidefoot{display:none}
+  .nav{display:flex;gap:2px}
+  .nav a{white-space:nowrap}
+  .top{padding:8px 16px}
+  .content{padding:16px 14px 40px}
+  .tiles,.sum,.lens,.grid2,.compare{grid-template-columns:1fr}
+  .msg{max-width:100%}
+  .crit-body{padding-left:14px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{.side,.top,.no-print{display:none!important}.app{display:block}body{background:#fff}.card{box-shadow:none}}
+</style>
+</head>
+<body>
+<!-- Весь интерфейс живёт в одном корневом элементе: в Dynamics 365 его можно отдать как HTML-ресурс,
+     адрес API передаётся атрибутом data-api, маршруты держатся в адресе после #. -->
+<div id="cqa-app" class="app" data-role="qa" data-api="/api">
+  <aside class="side">
+    <div class="brand"><i aria-hidden="true">CQ</i><div><b>CQA</b><span>Качество диалогов</span></div></div>
+    <div class="navgroup">Работа</div>
+    <nav class="nav" aria-label="Работа">
+      <a href="#/queue" data-page="queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Диалоги<span class="badge" id="bQueue"></span></a>
+      <a href="#/appeals" data-page="appeals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M6 21h12M4 7h16M7 7l-3 7c1.5 1.3 4.5 1.3 6 0L7 7zM17 7l-3 7c1.5 1.3 4.5 1.3 6 0l-3-7z"/></svg>Апелляции<span class="badge" id="bAppeals"></span></a>
+      <a href="#/coaching" data-page="coaching"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v15H6a2 2 0 0 0-2 2V5zM4 20a2 2 0 0 0 2 2h14v-4"/></svg>Обучение</a>
+    </nav>
+    <div class="navgroup">Обзор и настройка</div>
+    <nav class="nav" aria-label="Обзор и настройка">
+      <a href="#/analytics" data-page="analytics"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16M9 16v-5M14 16V7M19 16v-3"/></svg>Аналитика</a>
+      <a href="#/checklist" data-page="checklist"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>Чек-лист</a>
+    </nav>
+    <div class="sidefoot"><span>Набор DEV, учебные данные</span><span id="clVer"></span></div>
+  </aside>
+  <div>
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="row">
+        <span class="demo">Учебный макет: модель не вызывается</span>
+        <span class="muted small" id="roleLbl">Роль</span>
+        <div class="seg" role="group" aria-labelledby="roleLbl">
+          <button type="button" data-act="role" data-role="qa" aria-pressed="true">Специалист КК</button>
+          <button type="button" data-act="role" data-role="operator" aria-pressed="false">Оператор</button>
+          <button type="button" data-act="role" data-role="reviewer" aria-pressed="false">Проверяющий</button>
+        </div>
+      </div>
+    </header>
+    <main id="view" class="content" tabindex="-1"></main>
+  </div>
+</div>
+<dialog id="dlg" aria-labelledby="dlgTitle"><form method="dialog" id="dlgForm"></form></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- утилиты ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// ponytail: float + эпсилон для округления половин; на сервере итог считает Decimal
+const r2 = x => Math.round((x + 1e-9) * 100) / 100;
+const f2 = x => x == null ? '—' : x.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const fn = x => (Math.round(x * 100) / 100).toLocaleString('ru-RU', {maximumFractionDigits: 2});
+const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const clone = o => JSON.parse(JSON.stringify(o));
+const now = () => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+const COST = {chat: 0.012, call: 0.023};      // цена одной оценки: 10 вызовов основной модели и 1 запрос второго мнения
+const SPEECH = 14.5;                           // символов в секунду: метка времени в звонке стоит в конце реплики
+const LANG = {RU: 'Русский', KZ: 'Қазақша', EN: 'English'};
+const ROLE = {qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий'};
+
+/* ---------- чек-лист: только данные, экраны рисуют любой набор критериев ---------- */
+const CL0 = {
+  version: 3,
+  sections: ['Начало и понимание запроса', 'Безопасность и решение', 'Ведение и завершение диалога', 'Грубые нарушения'],
+  criteria: [
+    {id:'01', sec:0, name:'Установление контакта', type:'bool', w:10, na:false, text:'Да — оператор поздоровался на языке клиента и представился в первом ответе.'},
+    {id:'02', sec:0, name:'Выявление потребности', type:'bool', w:15, na:true, naCond:'Данных для ответа хватало с самого начала.', text:'Да — оператор учёл известные детали и уточнил недостающее до ответа.'},
+    {id:'03', sec:1, name:'Идентификация', type:'bool', w:20, na:true, naCond:'Запрос не требовал идентификации.', text:'Да — проверка личности подтверждена до раскрытия данных или защищённого действия.'},
+    {id:'04', sec:1, name:'Корректная и полная консультация', type:'scale', w:20, na:true, naCond:'Чат закончился до того, как клиент сформулировал запрос.', signal:'resolution',
+      steps:[20,15,10,5,0], stepText:{20:'Все существенные вопросы закрыты или дан корректный следующий шаг.',15:'Основной вопрос решён, пропущена второстепенная деталь.',10:'Часть запроса закрыта, существенный вопрос остался открытым.',5:'Есть общая подсказка, но клиенту всё ещё непонятно, как действовать.',0:'Ответа по существу нет или ключевая рекомендация ошибочна.'},
+      text:'Оцените ответ или следующий шаг по шкале.'},
+    {id:'05', sec:2, name:'Эмпатия и клиентоориентированность', type:'bool', w:15, na:false, text:'Да — оператор вежлив и, если клиент выразил недовольство или описал неудобство, отреагировал на конкретную проблему.'},
+    {id:'06', sec:2, name:'Управление диалогом, скорость и грамотность', type:'scale', w:15, na:false,
+      steps:[10,7,4,0], stepText:{10:'Ответы ясные и связные. Если было явное ожидание, оператор предупредил.',7:'Один заметный сбой, но клиент может понять ответ и продолжить.',4:'Клиенту приходится переспрашивать из-за формулировок или порядка ответов.',0:'Из-за бессвязных или противоречивых реплик ход диалога непонятен.'},
+      text:'Оцените ясность, порядок ответов и предупреждение об ожидании.'},
+    {id:'07', sec:2, name:'Завершение', type:'bool', w:5, na:true, naCond:'Чат оборвался до возможности его завершить.', text:'Да — оператор подвёл итог или предложил дальнейшую помощь и попрощался.'},
+    {id:'08', sec:3, name:'Грубые ошибки', type:'flag', w:0, signal:'risk',
+      questions:[{k:'insult',label:'Оскорбление клиента'},{k:'paid',label:'Платная услуга в обход компании'},{k:'leak',label:'Раскрытие конфиденциальной информации'}],
+      text:'Каждый вид нарушения — отдельный вопрос к модели. Флаг ставится, если найден хотя бы один.'}
+  ]
+};
+
+/* ---------- учебные диалоги ---------- */
+const OK = {
+  '01':{a:'yes',why:'Поздоровался и представился в первом ответе.'},
+  '02':{a:'yes',why:'Учёл известные детали запроса.'},
+  '03':{a:'yes',why:'Личность подтверждена системным сообщением.'},
+  '04':{a:20,why:'Вопрос закрыт полностью.'},
+  '05':{a:'yes',why:'Вежлив и внимателен к проблеме клиента.'},
+  '06':{a:10,why:'Ответы ясные и по порядку.'},
+  '07':{a:'yes',why:'Подвёл итог и попрощался.'},
+  '08':{a:{insult:false,paid:false,leak:false},why:'Нарушений не найдено.'}
+};
+const full = o => Object.assign(clone(OK), o);
+const L = (n, t, who, text) => ({n, t, who, text});
+
+const D = [
+  {id:'call-024', title:'Звонок 024', ch:'call', lang:'RU', dur:393, at:'07.11 14:52', lines:[
+    L(1,0,'system','Звонок принят, оператор подключился'),
+    L(2,4,'operator','Здравствуйте! Меня зовут [Имя скрыто], слушаю вас.'),
+    L(3,12,'client','Здравствуйте. Неделю назад я оставил обращение по выводу средств, номер [Персональные данные скрыты].'),
+    L(4,24,'operator','Для проверки назовите, пожалуйста, ФИО и дату рождения.'),
+    L(5,41,'client','[Данные идентификации скрыты]'),
+    L(6,52,'operator','Спасибо, личность подтверждена. Сейчас посмотрю обращение.'),
+    L(7,90,'operator','Вижу ваше обращение, оно на рассмотрении в отделе расчётов.'),
+    L(8,128,'client','Когда я получу ответ по обращению?'),
+    L(9,138,'operator','Я передам вопрос специалистам.'),
+    L(10,147,'client','А сколько времени это займёт?'),
+    L(11,160,'operator','Одну минуту, уточню у коллег.'),
+    {fold:true, from:12, to:29, t0:165, t1:310, label:'Удержание и разговор с коллегой'},
+    L(30,318,'operator','Спасибо за ожидание. Обращение передано, специалисты свяжутся с вами.'),
+    L(31,331,'client','Понятно. Ладно, буду ждать.'),
+    L(32,380,'system','Клиент завершил разговор'),
+    {fold:true, from:33, to:33, t0:380, t1:393, label:'После конца разговора'}],
+   res:{
+    '01':{a:'yes',ev:[2],why:'Оператор поздоровался и назвал имя в первой реплике.'},
+    '02':{a:'na',ev:[3],why:'Клиент сразу назвал тему и номер обращения.'},
+    '03':{a:'yes',ev:[4,6],why:'Личность подтверждена до разговора об обращении.'},
+    '04':{a:15,alt:10,ev:[9,10],why:'Оператор назвал следующий шаг — передачу специалистам, но не сообщил срок ответа, хотя клиент прямо спросил о нём.',tag:'Не назван срок ответа',better:'Передам вопрос в отдел расчётов, ответ придёт в течение двух рабочих дней на вашу почту.'},
+    '05':{a:'yes',ev:[6],why:'Оператор вежлив, недовольства клиент не выражал.'},
+    '06':{a:7,ev:[11],why:'Обещал минуту, а удержание длилось около двух с половиной минут.',tag:'Долгое ожидание без предупреждения',better:'Уточню у коллег, это займёт около трёх минут. Подождёте на линии?'},
+    '07':{a:'no',ev:[30,32],seg:'реплики 30–32',why:'До конца звонка оператор не подвёл итог и не попрощался.',tag:'Нет итога и прощания',better:'Итак, обращение передано в отдел расчётов, ответ придёт в течение двух рабочих дней. Могу ещё чем-то помочь? Всего доброго!'},
+    '08':{a:{insult:false,paid:false,leak:false},why:'Ни одного из трёх нарушений не найдено.'}}},
+
+  {id:'p1-ru-022', ch:'chat', lang:'RU', at:'07.11 14:50', lines:[
+    L(1,'00:00','bot','Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, вывод средств, инвестиции.'),
+    L(2,'00:05','client','Инвестиции'),
+    L(3,'00:06','system','Чат передан оператору'),
+    L(4,'00:41','operator','Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?'),
+    L(5,'01:10','client','Хочу начать инвестировать, но не понимаю, с чего начать. Есть готовые портфели?'),
+    L(6,'02:02','operator','Готовые портфели есть в приложении, раздел «Инвестиции». Но могу подобрать вам лично: напишите мне на личный номер, консультация 5 000 тенге.'),
+    L(7,'02:40','client','Нет, спасибо, лучше через приложение.'),
+    L(8,'03:15','operator','Хорошо.'),
+    L(9,'03:16','system','Оператор закрыл чат')],
+   res:{
+    '01':{a:'yes',ev:[4],why:'Поздоровался и представился в первом ответе.'},
+    '02':{a:'yes',ev:[5],why:'Учёл тему, выбранную в меню бота.'},
+    '03':{a:'na',why:'Общий вопрос об услугах не требует идентификации.'},
+    '04':{a:10,alt:10,ev:[6],why:'Назван раздел приложения, но не объяснено, как выбрать портфель под цель клиента.',tag:'Общая подсказка без шагов',better:'В приложении откройте «Инвестиции», затем «Готовые портфели». У каждого указан риск и срок. Подскажите цель — помогу выбрать.'},
+    '05':{a:'yes',ev:[4],why:'Вежлив, недовольства клиент не выражал.'},
+    '06':{a:10,why:'Ответы ясные и по порядку.'},
+    '07':{a:'no',ev:[8,9],seg:'реплики 7–9',why:'Оператор закрыл чат без итога и прощания.',tag:'Нет итога и прощания',better:'Хорошо, портфели в разделе «Инвестиции». Если появятся вопросы, пишите. Всего доброго!'},
+    '08':{a:{insult:false,paid:true,leak:false},ev:[6],why:'Оператор предложил платную консультацию через личный номер. Достаточно самого предложения, отказ клиента значения не имеет.'}}},
+
+  {id:'p1-ru-025', ch:'chat', lang:'RU', at:'07.11 14:49', lines:[
+    L(1,'00:00','bot','Здравствуйте! Чем можем помочь?'),
+    L(2,'00:04','client','Оператора'),
+    L(3,'00:05','system','Чат передан оператору'),
+    L(4,'00:30','operator','Здравствуйте! Меня зовут [Имя скрыто]. Подскажите, пожалуйста, ваш вопрос.'),
+    L(5,'01:30','system','Клиент покинул чат')],
+   res:{
+    '01':{a:'yes',ev:[4],why:'Поздоровался и представился.'},
+    '02':{a:'yes',ev:[4],why:'Оператор попросил описать вопрос.'},
+    '03':{a:'na',why:'Запрос не прозвучал, идентификация не требовалась.'},
+    '04':{a:'na',ev:[5],why:'Клиент ушёл, не сформулировав запрос.'},
+    '05':{a:'yes',ev:[4],why:'Вежливое обращение.'},
+    '06':{a:10,ev:[4],why:'Единственная реплика оператора ясная.'},
+    '07':{a:'na',ev:[5],why:'Клиент покинул чат до ответа оператора.'},
+    '08':{a:{insult:false,paid:false,leak:false},why:'Нарушений не найдено.'}}},
+
+  {id:'p1-ru-003', ch:'chat', lang:'RU', at:'07.11 14:47', lines:[
+    L(1,'00:00','bot','Здравствуйте! Выберите тему.'),
+    L(2,'00:03','client','Вывод средств. Подал заявку на вывод три дня назад, деньги так и не пришли.'),
+    L(3,'00:04','system','Чат передан оператору'),
+    L(4,'00:35','operator','Здравствуйте, меня зовут [Имя скрыто]. Для проверки подтвердите, пожалуйста, личность в приложении.'),
+    L(5,'01:20','system','Идентификация пройдена'),
+    L(6,'01:40','operator','Спасибо. По какому вопросу обращаетесь?'),
+    L(7,'02:05','client','Я же написал: вывод средств, деньги не пришли.'),
+    L(8,'02:50','operator','Вывод обычно занимает до пяти рабочих дней. Статус можно посмотреть в приложении.'),
+    L(9,'03:20','client','А где именно? И что делать, если не придут?'),
+    L(10,'04:10','operator','В приложении. Пожалуйста. Хорошего дня!'),
+    L(11,'04:12','system','Оператор закрыл чат')],
+   res:{
+    '01':{a:'yes',ev:[4],why:'Поздоровался и представился.'},
+    '02':{a:'no',ev:[6,7],why:'Переспросил тему, которую клиент уже назвал боту.',tag:'Переспрос известного',better:'Вижу, что вопрос о выводе средств. Подскажите дату заявки, проверю статус.'},
+    '03':{a:'yes',ev:[5],why:'Идентификация пройдена до разговора о заявке.'},
+    '04':{a:5,ev:[8,10],why:'Срок назван, но не сказано, где смотреть статус и что делать при задержке.',tag:'Не объяснено, где смотреть статус',better:'Статус — в разделе «Вывод средств», вкладка «История заявок». Если деньги не придут до пятницы, напишите нам, и мы откроем запрос в отдел расчётов.'},
+    '05':{a:'no',ev:[2,8],why:'Клиент описал неудобство, оператор на него не отреагировал.',tag:'Нет реакции на недовольство',better:'Понимаю, ожидание неприятно. Давайте разберёмся, где сейчас ваша заявка.'},
+    '06':{a:4,ev:[9],why:'Клиенту пришлось переспрашивать, где смотреть статус.',tag:'Клиенту пришлось переспрашивать'},
+    '07':{a:'no',ev:[10,11],seg:'реплики 10–11',why:'Попрощался, но итога и предложения помощи нет.',tag:'Нет итога и прощания'},
+    '08':{a:{insult:false,paid:false,leak:false},why:'Нарушений не найдено.'}}},
+
+  {id:'p1-ru-009', ch:'chat', lang:'RU', at:'07.11 14:46', lines:null, res:full({
+    '03':{a:'no',why:'Ограничение по счёту названо до проверки личности.',tag:'Данные до идентификации',better:'Чтобы рассказать о статусе счёта, сначала подтвердите, пожалуйста, личность в приложении.'},
+    '04':{a:15,why:'Основной вопрос решён, не сказано, когда снимут ограничение.',tag:'Не назван срок ответа'},
+    '08':{a:{insult:false,paid:false,leak:true},why:'Сообщено об ограничении на счёте до идентификации.'}})},
+  {id:'p1-kz-015', ch:'chat', lang:'KZ', at:'07.11 14:45', lines:null, res:full({
+    '03':{a:'no',why:'Данные счёта названы до проверки личности.',tag:'Данные до идентификации'},
+    '06':{a:7,why:'Один заметный сбой в порядке ответов.'},
+    '07':{a:'no',why:'Чат закрыт без итога и прощания.',tag:'Нет итога и прощания'},
+    '08':{a:{insult:false,paid:false,leak:true},why:'Данные счёта раскрыты до идентификации.'}})},
+  {id:'p1-ru-029', ch:'chat', lang:'RU', at:'07.11 14:44', reviewed:true, lines:null, res:full({
+    '05':{a:'no',why:'Оператор ответил клиенту грубо.',tag:'Грубый тон'},
+    '06':{a:4,why:'Клиенту пришлось переспрашивать.',tag:'Клиенту пришлось переспрашивать'},
+    '08':{a:{insult:true,paid:false,leak:false},why:'Оскорбление клиента в ответе оператора.'}})},
+  {id:'p1-en-008', ch:'chat', lang:'EN', at:'07.11 14:43', lines:null, res:full({
+    '07':{a:'no',alt:'yes',why:'Клиент попрощался и снова спросил. На второй вопрос оператор ответил, но не попрощался.',tag:'Нет итога и прощания'}})},
+  {id:'p1-kz-003', ch:'chat', lang:'KZ', at:'07.11 14:42', lines:null, res:full({
+    '04':{a:15,why:'Вопрос передан специалистам, срок ответа не назван.',tag:'Не назван срок ответа',better:'Сұрағыңызды мамандарға жібердім, жауап екі жұмыс күні ішінде поштаңызға келеді.'},
+    '06':{a:7,evFail:true,why:'Один заметный сбой: ответ разбит на несвязные сообщения.'}})},
+  {id:'p1-en-006', ch:'chat', lang:'EN', at:'07.11 14:41', lines:null, res:full({
+    '04':{a:15,why:'Запрос передан специалистам, срок ответа не назван.',tag:'Не назван срок ответа',better:'I have forwarded your request to our specialists; you will get a reply by email within two business days.'}})}
+];
+
+// начало реплики в звонке: метка стоит в конце, длительность оцениваем по длине текста
+for (const d of D) if (d.ch === 'call') {
+  let prev = 0;
+  for (const l of d.lines) {
+    if (l.fold) { prev = l.t1; continue; }
+    l.e = l.t; l.s = Math.max(prev, l.t - l.text.length / SPEECH); prev = l.e;
+  }
+}
+
+const AP = [
+  {id:'a1', kind:'appeal', dlg:'call-024', cid:'04', from:15, ask:20, ev:[30], by:'Оператор', at:'07.11 15:10', status:'pending',
+   comment:'Срок назвать было нельзя: обращение у отдела расчётов, срок по регламенту сообщает отдел. Следующий шаг дан верно.'},
+  {id:'a2', kind:'appeal', dlg:'p1-ru-003', cid:'04', from:5, ask:10, ev:[8], by:'Оператор', at:'07.11 14:58', status:'pending',
+   comment:'Срок вывода назван, это существенная часть ответа.'},
+  {id:'a3', kind:'appeal', dlg:'p1-en-006', cid:'04', from:15, ask:20, to:20, by:'Оператор', at:'07.11 11:20', status:'changed',
+   comment:'По регламенту срок ответа специалистов клиенту не сообщается.', reviewer:'Проверяющий', reason:'Регламент запрещает называть срок, следующий шаг дан полностью.', decidedAt:'07.11 12:05'},
+  {id:'a4', kind:'appeal', dlg:'p1-ru-029', cid:'05', from:'no', ask:'yes', to:'no', by:'Оператор', at:'07.11 10:40', status:'confirmed',
+   comment:'Клиент первым перешёл на грубость.', reviewer:'Проверяющий', reason:'Ответная грубость оператора остаётся нарушением.', decidedAt:'07.11 11:02'}
+];
+
+/* ---------- состояние ---------- */
+const S = {
+  role:'qa', cl:clone(CL0), draft:null, cSel:'04',
+  versions:[{v:1,note:'перенесён из PDF организаторов'},{v:2,note:'уточнены общие правила'},{v:3,note:'текущая'}],
+  ds:D, ap:AP, open:{}, play:{id:null,t:0,on:false,rate:1}, dec:{},
+  q:'', lang:'', ch:'', grp:'', coachC:null, sheet:new Set(), running:false,
+  owners:{'Не назван срок ответа':'Инструкция','Нет итога и прощания':'Инструкция','Данные до идентификации':'Инструкция','Общая подсказка без шагов':'Продукт','Переспрос известного':'Сервис','Не объяснено, где смотреть статус':'Продукт'}
+};
+
+/* ---------- расчёт ---------- */
+const scored = (cl = S.cl) => cl.criteria.filter(c => c.type !== 'flag');
+const flagCs = (cl = S.cl) => cl.criteria.filter(c => c.type === 'flag');
+const maxOf = c => Math.max(...c.steps);
+const crit = id => S.cl.criteria.find(c => c.id === id);
+const dlgById = id => S.ds.find(d => d.id === id);
+const lastDec = (dlg, cid) => S.ap.filter(a => a.dlg === dlg && a.cid === cid && (a.status === 'changed' || a.status === 'confirmed')).at(-1);
+const pendAppeal = (dlg, cid) => S.ap.find(a => a.dlg === dlg && a.cid === cid && a.status === 'pending');
+
+function ans(d, cid, ov) {
+  if (ov && ov.cid === cid) return ov.val;
+  const r = d.res[cid];
+  if (!r) return 'pending';
+  const dec = lastDec(d.id, cid);
+  return dec && dec.status === 'changed' ? dec.to : r.a;
+}
+function frac(c, a) {
+  if (a == null || a === 'na' || a === 'pending') return null;
+  if (c.type === 'bool') return a === 'yes' ? 1 : 0;
+  if (c.type === 'scale') return a / maxOf(c);
+  return null;
+}
+// Итог = 100 × Σ(вес × доля) / Σ(вес применимых). N/A исключается, его вес перераспределяется.
+function calc(d, ov, cl = S.cl) {
+  let W = 0, G = 0, pending = 0; const rows = [];
+  for (const c of scored(cl)) {
+    const a = ans(d, c.id, ov);
+    if (a === 'pending') { pending++; continue; }
+    const f = frac(c, a);
+    if (f == null) continue;
+    W += c.w; G += c.w * f; rows.push({c, a, f});
+  }
+  for (const r of rows) r.loss = W ? 100 * r.c.w * (1 - r.f) / W : 0;
+  const secs = cl.sections.map((name, i) => {
+    const rs = rows.filter(r => r.c.sec === i);
+    return {name, n: rs.length, w: rs.reduce((s, r) => s + r.c.w, 0), g: rs.reduce((s, r) => s + r.c.w * r.f, 0)};
+  }).filter(s => s.n);
+  return {total: W ? r2(100 * G / W) : null, W, G, rows, secs, pending, losses: rows.filter(r => r.loss > 0).sort((a, b) => b.loss - a.loss)};
+}
+function flagsOf(d) {
+  const out = [];
+  for (const fc of flagCs()) { const r = d.res[fc.id]; if (r && r.a) for (const q of fc.questions) if (r.a[q.k]) out.push(q.label); }
+  return out;
+}
+const disagree = d => scored().filter(c => { const r = d.res[c.id]; return r && r.alt !== undefined && r.alt !== r.a && !lastDec(d.id, c.id); });
+const evFail = d => scored().filter(c => { const r = d.res[c.id]; return r && r.evFail && !lastDec(d.id, c.id); });
+const nextStep = d => scored().some(c => { if (c.signal !== 'resolution') return false; const f = frac(c, ans(d, c.id)); return f != null && f <= 0.25; });
+function group(d) {
+  if (flagsOf(d).length && !d.reviewed) return 'risk';
+  if (!d.reviewed && (disagree(d).length || evFail(d).length)) return 'review';
+  if (nextStep(d)) return 'next';
+  return 'other';
+}
+const GORDER = {risk:0, review:1, next:2, other:3};
+const queueOrder = () => S.ds.map(d => ({d, g:group(d), t:calc(d).total ?? 101})).sort((a, b) => GORDER[a.g] - GORDER[b.g] || a.t - b.t).map(x => x.d.id);
+const ansTxt = (c, a) => a === 'pending' ? 'ждёт оценки' : a === 'na' ? 'N/A' : a === 'yes' ? 'Да' : a === 'no' ? 'Нет' : c.type === 'scale' ? `${a} из ${maxOf(c)}` : String(a);
+function tone(c, a) {
+  if (a === 'pending') return 'c-ev';
+  if (a === 'na') return 'c-na';
+  const f = frac(c, a);
+  return f === 1 ? 'c-ok' : (c.type === 'bool' ? 'c-risk' : 'c-ev');
+}
+const ptsTxt = (c, a) => { const f = frac(c, a); return f == null ? '—' : `${fn(c.w * f)} / ${c.w}`; };
+const allowed = c => c.type === 'bool' ? ['yes', 'no', ...(c.na ? ['na'] : [])] : [...c.steps, ...(c.na ? ['na'] : [])];
+const parseVal = v => /^\d+$/.test(v) ? Number(v) : v;
+const lineBy = (d, n) => (d.lines || []).find(l => l.n === n);
+const titleOf = d => d.title || d.id;
+
+/* ---------- маршруты и отрисовка ---------- */
+const view = $('#view');
+const app = $('#cqa-app');
+function parse() { const h = location.hash.replace(/^#\/?/, '').split('/'); return {page: h[0] || 'queue', id: h[1] ? decodeURIComponent(h[1]) : null}; }
+
+function render(focusView) {
+  const ae = document.activeElement, aid = ae && ae.id, sel = ae && ae.selectionStart;
+  const r = S.r = parse();
+  const pages = {queue, d:card, appeals, analytics, coaching, checklist};
+  view.innerHTML = (pages[r.page] || queue)(r.id);
+  const navPage = r.page === 'd' ? 'queue' : r.page;
+  $$('.nav a').forEach(a => a.dataset.page === navPage ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  const names = {queue:'Диалоги', d:'Карточка разговора', appeals:'Апелляции', analytics:'Аналитика', coaching:'Обучение', checklist:'Чек-лист'};
+  $('#crumb').innerHTML = `CQA / <b>${names[r.page] || 'Диалоги'}</b>`;
+  const att = S.ds.filter(d => group(d) !== 'other').length;
+  $('#bQueue').textContent = att || '';
+  const pa = S.ap.filter(a => a.status === 'pending').length;
+  $('#bAppeals').textContent = pa || '';
+  $('#clVer').textContent = `Чек-лист v${S.cl.version}`;
+  $$('[data-act=role]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.role === S.role)));
+  if (r.page === 'd') updatePlayer();
+  if (focusView) view.focus({preventScroll:true});
+  else if (aid) { const el = document.getElementById(aid); if (el) { el.focus({preventScroll:true}); try { el.setSelectionRange(sel, sel); } catch (e) {} } }
+}
+window.addEventListener('hashchange', () => { stopPlay(); render(true); window.scrollTo(0, 0); });
+
+let toastT;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 5200); }
+
+/* ---------- 1. Диалоги ---------- */
+function reasonOf(d, g) {
+  if (g === 'risk') return `<span class="chip c-risk">${esc(flagsOf(d).join(', '))}</span>`;
+  if (g === 'review') {
+    const dc = disagree(d)[0];
+    if (dc) { const r = d.res[dc.id]; return `<span class="chip c-info">Модели разошлись: ${dc.id}, ${esc(ansTxt(dc, r.a))} и ${esc(ansTxt(dc, r.alt))}</span>`; }
+    const ef = evFail(d)[0];
+    return `<span class="chip c-ev">Цитата для ${ef.id} не найдена в реплике</span>`;
+  }
+  if (g === 'next') { const c = scored().find(c => c.signal === 'resolution'); return `<span class="chip c-ev">${esc(c.name.split(' ').slice(-1)[0].replace(/^./, s => s.toUpperCase()))}: ${esc(ansTxt(c, ans(d, c.id)))}</span>`; }
+  return flagsOf(d).length ? `<span class="chip c-na">Грубая ошибка проверена</span>` : '';
+}
+function statusOf(d) {
+  const c = calc(d);
+  if (c.pending) return `<span class="chip c-ev">Ждёт оценки</span>`;
+  if (S.ap.some(a => a.dlg === d.id && a.status === 'pending')) return `<span class="chip c-info">Апелляция</span>`;
+  return d.reviewed ? `<span class="chip c-ok">Проверен</span>` : `<span class="chip c-na">Не проверен</span>`;
+}
+function queue() {
+  const all = S.ds.map(d => ({d, c:calc(d), g:group(d)}));
+  const cnt = k => all.filter(x => x.g === k).length;
+  const totals = all.map(x => x.c.total).filter(x => x != null);
+  const avg = totals.length ? r2(totals.reduce((a, b) => a + b, 0) / totals.length) : null;
+  const pa = S.ap.filter(a => a.status === 'pending').length;
+  const ql = S.q.trim().toLowerCase();
+  const rows = all.filter(x => (!ql || (titleOf(x.d) + ' ' + (x.d.lines || []).map(l => l.text || '').join(' ')).toLowerCase().includes(ql))
+    && (!S.lang || x.d.lang === S.lang) && (!S.ch || x.d.ch === S.ch) && (!S.grp || x.g === S.grp));
+  const G = [['risk','Грубые ошибки','c-risk','флаг ставит любая из двух моделей, итог он не обнуляет'],
+             ['review','Нужна проверка человека','c-info','модели разошлись или цитата не нашлась в реплике'],
+             ['next','Без понятного следующего шага','c-ev','критерий с сигналом «Решение запроса» на нижних ступенях'],
+             ['other','Остальные','c-na','']];
+  const tile = (g, title, n, note) => `<button type="button" class="tile" data-act="grp" data-g="${g}" aria-pressed="${S.grp === g}"><span class="t">${title}</span><strong>${n}</strong><span class="muted small">${note}</span></button>`;
+  const lost = c => c.losses.slice(0, 3).map(r => `${r.c.id} ${esc(ansTxt(r.c, r.a))}`).join(', ');
+  let body = '';
+  for (const [g, title, cls, hint] of G) {
+    const rs = rows.filter(x => x.g === g).sort((a, b) => (a.c.total ?? 101) - (b.c.total ?? 101));
+    if (!rs.length) continue;
+    body += `<tbody><tr class="grp"><td colspan="6"><span class="chip ${cls}">${title}: ${rs.length}</span> <span class="muted" style="font-weight:400;margin-left:8px">${hint}</span></td></tr>`;
+    body += rs.map(x => `<tr class="click" data-act="open" data-id="${esc(x.d.id)}">
+      <td><a href="#/d/${encodeURIComponent(x.d.id)}" style="font-weight:600;text-decoration:none">${esc(titleOf(x.d))}</a></td>
+      <td>${x.d.ch === 'call' ? 'Звонок' : 'Чат'}, ${x.d.lang}</td>
+      <td class="num" style="font-weight:700">${f2(x.c.total)}</td>
+      <td>${reasonOf(x.d, g)}</td>
+      <td class="muted small">${lost(x.c) || '—'}</td>
+      <td>${statusOf(x.d)}</td></tr>`).join('') + '</tbody>';
+  }
+  return `
+  <div class="head"><div><h1 class="h1">Диалоги</h1><p class="sub">Сначала разговоры с нарушениями и спорными ответами модели</p></div>
+    <div class="row only-qa">
+      <label class="sr" for="gid">Набор по group_id</label><input id="gid" class="fld" value="DEV" style="width:110px">
+      <button type="button" class="btn" data-act="load">Получить набор</button>
+      <label class="btn" for="jsonf">Загрузить JSON</label><input id="jsonf" type="file" accept="application/json" class="sr">
+    </div></div>
+  <section class="card pad row only-qa" aria-label="Оценка набора">
+    <div style="flex:1 1 320px" class="stack"><div class="row" style="justify-content:space-between"><span><b>${S.ds.length - all.filter(x => x.c.pending).length} из ${S.ds.length}</b> оценено по чек-листу v${S.cl.version}</span><span class="muted small">${S.ds.length * 10 + S.ds.length} вызовов, $${fn(S.ds.reduce((s, d) => s + COST[d.ch], 0))}</span></div>
+    <div class="runbar"><i style="width:${100 * (S.ds.length - all.filter(x => x.c.pending).length) / S.ds.length}%"></i></div></div>
+  </section>
+  <section class="tiles" aria-label="Быстрые фильтры">
+    ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.ds.filter(d => d.reviewed && flagsOf(d).length).length} проверено`)}
+    ${tile('review', 'Нужна проверка', cnt('review'), 'модели разошлись или цитата не найдена')}
+    ${tile('next', 'Без следующего шага', cnt('next'), 'клиент не знает, что делать дальше')}
+    <a class="tile" href="#/appeals"><span class="t">Апелляции</span><strong>${pa}</strong><span class="muted small">ждут решения проверяющего</span></a>
+    <a class="tile" href="#/analytics"><span class="t">Средний итог</span><strong>${f2(avg)}</strong><span class="muted small">по ${totals.length} диалогам, открыть аналитику</span></a>
+  </section>
+  <section class="card" aria-label="Список диалогов">
+    <div class="row" style="padding:12px 14px;border-bottom:1px solid var(--line)">
+      <label class="sr" for="q">Поиск</label><input id="q" class="fld" style="flex:1 1 220px" placeholder="Номер диалога или текст реплики" value="${esc(S.q)}">
+      <label class="small muted" for="fl">Язык</label><select id="fl" class="fld">${['', 'RU', 'KZ', 'EN'].map(v => `<option value="${v}" ${S.lang === v ? 'selected' : ''}>${v || 'Все'}</option>`).join('')}</select>
+      <label class="small muted" for="fc">Канал</label><select id="fc" class="fld">${[['', 'Все'], ['chat', 'Чат'], ['call', 'Звонок']].map(([v, t]) => `<option value="${v}" ${S.ch === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      ${S.grp || S.q || S.lang || S.ch ? `<button type="button" class="btn sm" data-act="clear">Сбросить фильтры</button>` : ''}
+    </div>
+    <div class="tablewrap"><table style="min-width:860px">
+      <thead><tr><th>Диалог</th><th>Канал и язык</th><th class="num">Итог</th><th>Почему в очереди</th><th>Где потеряны баллы</th><th>Статус</th></tr></thead>
+      ${body || `<tbody><tr><td colspan="6" class="empty">По этим фильтрам диалогов нет. Сбросьте фильтры, чтобы увидеть весь набор.</td></tr></tbody>`}
+    </table></div>
+  </section>
+  <p class="muted xs">Клавиши J и K переходят между диалогами в карточке. Числа и реплики учебные.</p>`;
+}
+
+/* ---------- 2. Карточка ---------- */
+function defaultOpen(d, c) {
+  const dc = disagree(d)[0]; if (dc) return dc.id;
+  return c.losses[0] ? c.losses[0].c.id : (flagsOf(d).length ? flagCs()[0].id : scored()[0].id);
+}
+function card(id) {
+  const d = dlgById(id);
+  if (!d) return `<div class="card empty">Диалог «${esc(id)}» не найден. <a href="#/queue">Вернуться к списку</a></div>`;
+  if (S.play.id !== d.id) { stopPlay(); S.play = {id:d.id, t:0, on:false, rate:1}; }
+  const c = calc(d);
+  if (!(d.id in S.open)) S.open[d.id] = defaultOpen(d, c);
+  const open = S.open[d.id];
+  const ord = queueOrder(), i = ord.indexOf(d.id);
+  const prev = ord[i - 1], next = ord[i + 1];
+  const g = group(d);
+  const C = 2 * Math.PI * 52, dash = c.total == null ? 0 : C * c.total / 100;
+  const naRows = scored().filter(cr => ans(d, cr.id) === 'na');
+  const flags = flagsOf(d);
+  const altN = scored().filter(cr => d.res[cr.id] && ans(d, cr.id) !== 'pending').length;
+  const fr = flagCs()[0], frr = fr && d.res[fr.id];
+  const status = {risk:`<span class="chip c-risk">Грубая ошибка, нужна проверка</span>`, review:`<span class="chip c-info">Нужна проверка человека</span>`, next:`<span class="chip c-ev">Без следующего шага</span>`, other:''}[g];
+  return `
+  <nav class="row" aria-label="Навигация по очереди" style="justify-content:space-between">
+    <a href="#/queue">Все диалоги</a>
+    <div class="row small"><span class="muted">${i + 1} из ${ord.length} в очереди</span>
+      ${prev ? `<a class="btn sm" href="#/d/${encodeURIComponent(prev)}" aria-label="Предыдущий диалог">Предыдущий</a>` : ''}
+      ${next ? `<a class="btn sm" href="#/d/${encodeURIComponent(next)}" aria-label="Следующий диалог">Следующий</a>` : ''}</div>
+  </nav>
+  <div class="head">
+    <div><h1 class="h1">${esc(titleOf(d))}</h1>
+      <p class="sub">${d.ch === 'call' ? `Звонок, ${mmss(d.dur)}` : 'Чат'}, ${LANG[d.lang]}, оценён ${esc(d.at)} по чек-листу v${S.cl.version}</p></div>
+    <div class="row">${status}${d.reviewed ? '<span class="chip c-ok">Проверен</span>' : ''}
+      <button type="button" class="btn only-qa" data-act="reviewed">${d.reviewed ? 'Снять отметку' : 'Отметить проверенным'}</button></div>
+  </div>
+
+  <section class="sum" aria-label="Сводка">
+    <div class="card pad stack">
+      <h2 class="label">Итог</h2>
+      <div class="ring">
+        <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label="Итог ${f2(c.total)} из 100">
+          <circle cx="62" cy="62" r="52" fill="none" stroke="#E2F1EB" stroke-width="11"/>
+          <circle cx="62" cy="62" r="52" fill="none" stroke="#0E6A55" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${C}" transform="rotate(-90 62 62)"/>
+          <text x="62" y="66" text-anchor="middle" font-size="25" font-weight="700" fill="#17201C" font-family="Segoe UI, system-ui, sans-serif">${c.total == null ? '—' : f2(c.total)}</text>
+          <text x="62" y="86" text-anchor="middle" font-size="12" fill="#56635D" font-family="Segoe UI, system-ui, sans-serif">из 100</text>
+        </svg>
+        <div class="secs">${c.secs.map(s => `<div><span>${esc(s.name)}</span><b>${fn(s.g)} / ${s.w}</b></div>`).join('')}</div>
+      </div>
+      <details class="small"><summary style="cursor:pointer;color:var(--accent);font-weight:600">Как посчитан итог</summary>
+        <p class="muted" style="margin-top:6px">${fn(c.G)} балла из ${c.W} применимых, приведено к 100.${naRows.length ? ` N/A у критериев ${naRows.map(x => x.id).join(', ')}: их вес распределён между остальными.` : ' N/A нет, веса не перераспределялись.'}${c.pending ? ` ${c.pending} критерия ждут оценки, итог предварительный.` : ''}</p></details>
+    </div>
+    <div class="card pad stack">
+      <h2 class="label">Почему снижена оценка</h2>
+      ${c.losses.length ? c.losses.slice(0, 3).map((r, k) => { const rr = d.res[r.c.id] || {}; const ln = rr.ev && rr.ev.length ? lineBy(d, rr.ev[0]) : null;
+        return `<button type="button" class="loss" data-act="goto" data-cid="${r.c.id}"><span class="pinno">${k + 1}</span>
+          <span><b>${esc(r.c.name)}</b>, ${esc(ansTxt(r.c, r.a))}<br><span class="muted small">${esc(rr.why || '')}</span>${ln ? `<br><span class="small" style="color:var(--accent)">Реплика ${ln.n}${d.ch === 'call' ? `, ${mmss(ln.s)}` : ''}</span>` : ''}</span>
+          <em>−${fn(r.loss)}</em></button>`; }).join('') : '<p class="muted">Все применимые критерии выполнены полностью.</p>'}
+      ${c.losses.length > 3 ? `<p class="muted xs">Ещё ${c.losses.length - 3} в списке критериев. Потери посчитаны после перераспределения N/A и в сумме дают 100 − итог.</p>` : `<p class="muted xs">Потери посчитаны после перераспределения N/A и в сумме дают 100 − итог.</p>`}
+    </div>
+    <div class="card pad stack">
+      <div class="row" style="justify-content:space-between"><h2 class="label">Грубые ошибки</h2>${flags.length ? `<span class="chip c-risk">Найдены: ${flags.length}</span>` : frr ? '<span class="chip c-ok">Не найдены</span>' : '<span class="chip c-ev">Ждут оценки</span>'}</div>
+      ${fr ? fr.questions.map(q => `<div class="kv"><span>${esc(q.label)}</span>${frr && frr.a[q.k] ? '<b style="color:var(--risk)">да</b>' : '<span class="muted">нет</span>'}</div>`).join('') : ''}
+      ${flags.length && frr.ev ? `<button type="button" class="btn sm" data-act="goto" data-cid="${fr.id}">Показать реплику ${frr.ev.join(', ')}</button>` : ''}
+      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла хотя бы одна из двух моделей. Итог он не обнуляет.</p>
+      ${altN ? `<p class="small" style="margin-top:auto;border-top:1px solid var(--line2);padding-top:10px">Второе мнение совпало по ${altN - disagree(d).length} из ${altN} критериев</p>` : ''}
+    </div>
+  </section>
+
+  ${d.ch === 'call' ? playerHTML(d, c) : ''}
+
+  <div class="cols">
+    <section class="card" aria-label="Расшифровка">
+      <div class="row" style="justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)">
+        <h2 class="h2">${d.ch === 'call' ? 'Расшифровка звонка' : 'Переписка'}</h2>
+        <span class="muted xs">${d.ch === 'call' ? 'Время от начала звонка. ▶ ставит запись на начало реплики' : 'Время из чата, исходные метки сохранены'}</span>
+      </div>
+      <div class="tr" id="tr">${trHTML(d, open)}</div>
+    </section>
+    <section class="card" aria-label="Оценка по критериям">
+      <div class="row" style="justify-content:space-between;padding:12px 14px">
+        <h2 class="h2">Оценка по критериям</h2><span class="muted xs">Наведите на критерий, чтобы подсветить реплики</span></div>
+      ${S.cl.sections.map((s, si) => { const cs = S.cl.criteria.filter(x => x.sec === si); if (!cs.length) return ''; const sc = c.secs.find(x => x.name === s);
+        return `<div class="sechead"><span>${esc(s)}</span><span>${sc ? `${fn(sc.g)} / ${sc.w}` : ''}</span></div>` + cs.map(cr => critHTML(d, cr, open)).join(''); }).join('')}
+    </section>
+  </div>
+  <p class="muted xs">Оценка: DeepSeek V4 Pro (рассуждение low), второе мнение Jev. ${scored().length + (fr ? fr.questions.length : 0)} вызовов основной модели и 1 запрос второго мнения, около 8 секунд, $${fn(COST[d.ch])}.</p>`;
+}
+
+function trHTML(d, open) {
+  if (!d.lines) return `<div class="empty">Расшифровка этого диалога не входит в учебный макет. Оценка и обоснования справа — в том виде, в каком их видит специалист.</div>`;
+  const tags = {};
+  for (const cr of S.cl.criteria) {
+    const r = d.res[cr.id]; if (!r || !r.ev) continue;
+    const t = cr.type === 'flag' ? (Object.values(r.a || {}).some(Boolean) ? 'c-risk' : 'c-ok') : tone(cr, ans(d, cr.id));
+    r.ev.forEach(n => (tags[n] = tags[n] || []).push({id:cr.id, t}));
+  }
+  const sel = new Set((d.res[open] && d.res[open].ev) || []);
+  return d.lines.map(l => {
+    if (l.fold) return `<div class="fold"><span>${d.ch === 'call' ? `${mmss(l.t0)}–${mmss(l.t1)}, ` : ''}<b>${esc(l.label)}</b>, реплики ${l.from}${l.to !== l.from ? '–' + l.to : ''}. <span class="muted">Модель видит участок как контекст, но не оценивает.</span></span></div>`;
+    const tg = (tags[l.n] || []).map(x => `<button type="button" class="chip ${x.t}" data-act="crit" data-cid="${x.id}" aria-label="Открыть критерий ${x.id}">${x.id}</button>`).join(' ');
+    const time = d.ch === 'call' ? mmss(l.e) : esc(l.t);
+    if (l.who === 'system' || l.who === 'bot')
+      return `<div class="sys${sel.has(l.n) ? ' sel' : ''}" id="L${l.n}" data-n="${l.n}">${l.n}, ${time}. ${l.who === 'bot' ? 'Бот' : 'Система'}: ${esc(l.text)} ${tg}</div>`;
+    return `<div class="msg ${l.who}${sel.has(l.n) ? ' sel' : ''}" id="L${l.n}" data-n="${l.n}">
+      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>
+      ${d.ch === 'call' ? `<button type="button" class="mini" data-act="seek" data-n="${l.n}" aria-label="Слушать реплику ${l.n} с ${mmss(l.s)}" title="Слушать с ${mmss(l.s)}">▶</button>` : ''}${tg}</header>${esc(l.text)}</div>`;
+  }).join('');
+}
+
+function critHTML(d, c, open) {
+  const r = d.res[c.id], a = ans(d, c.id), isOpen = open === c.id;
+  let chip, pts;
+  if (c.type === 'flag') {
+    const on = r && r.a && Object.values(r.a).some(Boolean);
+    chip = !r ? '<span class="chip c-ev">ждёт оценки</span>' : on ? '<span class="chip c-risk">Да</span>' : '<span class="chip c-ok">Нет</span>';
+    pts = 'без баллов';
+  } else { chip = `<span class="chip ${tone(c, a)}">${esc(ansTxt(c, a))}</span>`; pts = c.type === 'flag' ? '' : ptsTxt(c, a); }
+  return `<article class="crit${isOpen ? ' open' : ''}" data-cid="${c.id}" data-ev="${(r && r.ev || []).join(',')}">
+    <button type="button" class="crit-row" data-act="crit" data-cid="${c.id}" aria-expanded="${isOpen}">
+      <span class="muted small">${c.id}</span><span>${esc(c.name)}</span>${chip}<span class="num small" style="font-weight:600">${pts}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+    ${isOpen ? `<div class="crit-body">${critBody(d, c, r, a)}</div>` : ''}</article>`;
+}
+
+function critBody(d, c, r, a) {
+  if (!r || a === 'pending') return `<div class="box ev">Критерий изменён в чек-листе v${S.cl.version}. Ответ появится после оценки: один вызов модели на диалог. Пока итог считается без него.</div>`;
+  const evs = (r.ev || []).map(n => { const l = lineBy(d, n); if (!l) return '';
+    return `<div class="quote"><div><span class="muted xs">${n}, ${l.who === 'client' ? 'клиент' : l.who === 'operator' ? 'оператор' : l.who === 'bot' ? 'бот' : 'система'}</span><br>«${esc(l.text)}»</div>
+      <button type="button" class="btn sm" data-act="ev" data-n="${n}">К реплике</button>${d.ch === 'call' && l.s != null ? `<button type="button" class="btn sm" data-act="seek" data-n="${n}" aria-label="Слушать с ${mmss(l.s)}">▶ ${mmss(l.s)}</button>` : ''}</div>`; }).join('');
+  if (c.type === 'flag') {
+    return `<div class="stack small">${c.questions.map(q => `<div class="row" style="justify-content:space-between"><span>${esc(q.label)}</span>${r.a[q.k] ? '<b style="color:var(--risk)">найдено</b>' : '<span class="muted">нет</span>'}</div>`).join('')}</div>
+      <p>${esc(r.why)}</p>${evs ? `<div class="stack"><span class="label">Основание</span>${evs}</div>` : ''}`;
+  }
+  const dec = lastDec(d.id, c.id), pa = pendAppeal(d.id, c.id);
+  const vals = allowed(c).filter(v => v !== 'na' || a === 'na' || r.alt === 'na');
+  let out = `<div class="stack" style="gap:6px"><div class="ladder" role="img" aria-label="Ответ ${esc(ansTxt(c, a))}${r.alt !== undefined && r.alt !== r.a ? `, второе мнение ${esc(ansTxt(c, r.alt))}` : ''}">
+    ${vals.map(v => `<span class="step${v === a ? ' on' : ''}${r.alt !== undefined && v === r.alt && r.alt !== a ? ' alt' : ''}">${v === 'yes' ? 'Да' : v === 'no' ? 'Нет' : v === 'na' ? 'N/A' : v}</span>`).join('')}</div>
+    ${c.type === 'scale' && c.stepText && c.stepText[a] ? `<span class="muted xs">${a}: ${esc(c.stepText[a])}</span>` : ''}</div>`;
+  if (a === 'na') out += `<div class="box na"><b>Условие N/A выполнено.</b> ${esc(c.naCond || '')} ${esc(r.why)} Вес ${c.w} распределён между применимыми критериями.</div>`;
+  else out += `<div><span class="label">Обоснование</span><p>${esc(r.why)}</p></div>`;
+  if (a === 'no' && r.seg) out += `<p class="small">Проверен участок: <b>${esc(r.seg)}</b>. Ожидаемого действия там нет.</p>`;
+  if (evs) out += `<div class="stack" style="gap:6px"><span class="label">Основание</span>${evs}</div>`;
+  if (r.evFail && !dec) out += `<div class="box ev"><b>Цитата не нашлась в указанной реплике</b> и после повтора. Основание не подставлено, ответ нужно проверить вручную.</div>`;
+  if (r.alt !== undefined) {
+    if (r.alt !== r.a && !dec) out += `<div class="box info stack" style="gap:8px"><span><b>Второе мнение: ${esc(ansTxt(c, r.alt))}.</b> Модели разошлись, ответ ждёт решения специалиста.</span>
+      <span class="row only-qa"><button type="button" class="btn sm" data-act="decide" data-cid="${c.id}" data-val="${r.a}">Оставить ${esc(ansTxt(c, r.a))}</button><button type="button" class="btn sm" data-act="decide" data-cid="${c.id}" data-val="${r.alt}">Принять ${esc(ansTxt(c, r.alt))}</button></span></div>`;
+    else if (r.alt === r.a) out += `<p class="muted xs">Второе мнение совпало: ${esc(ansTxt(c, r.alt))}.</p>`;
+  }
+  if (r.better && frac(c, a) != null && frac(c, a) < 1) out += `<div class="box good"><b>Как сказать лучше:</b> «${esc(r.better)}»</div>`;
+  const hist = S.ap.filter(x => x.dlg === d.id && x.cid === c.id && x.status !== 'pending');
+  if (hist.length) out += `<div class="stack" style="gap:6px"><span class="label">История оценки</span><div class="hist">
+    <span class="muted">Исходная</span><span>Модель, ${esc(d.at)}</span><span class="chip c-na">${esc(ansTxt(c, r.a))}</span>
+    ${hist.map(h => `<span class="muted">${h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span><span>${esc(h.reviewer)}, ${esc(h.decidedAt)}: «${esc(h.reason)}»</span><span class="chip ${h.status === 'changed' ? 'c-info' : 'c-ok'}">${h.status === 'changed' ? esc(ansTxt(c, h.to)) : 'подтверждено'}</span>`).join('')}
+    <span class="muted">Итог</span><span>Пересчитан по формуле чек-листа</span><b>${f2(calc(d).total)}</b></div></div>`;
+  out += pa ? `<p><span class="chip c-info">Апелляция на рассмотрении</span> <a href="#/appeals/${pa.id}" class="small">Открыть</a></p>`
+            : `<div class="no-rv"><button type="button" class="btn" data-act="appeal" data-cid="${c.id}">Оспорить оценку</button></div>`;
+  return out;
+}
+
+/* плеер: в макете нет звука, время идёт по таймеру. В рабочей версии <audio> берёт свежую ссылку на запись через сервер. */
+function playerHTML(d, c) {
+  const N = 150; let bars = '';
+  for (let i = 0; i < N; i++) {
+    const t = (i + .5) / N * d.dur;
+    const l = d.lines.find(x => x.fold ? (t >= x.t0 && t < x.t1) : ((x.who === 'client' || x.who === 'operator') && t >= x.s && t <= x.e + .8));
+    const cls = !l ? 'ws' : l.fold ? 'wi' : l.who === 'client' ? 'wc' : 'wo';
+    const rr = Math.abs(Math.sin(i * 1.93) * Math.cos(i * .41)) * .8 + ((i * 37) % 11) / 55;
+    const h = cls === 'ws' ? 4 : cls === 'wi' ? 6 + Math.round(rr * 18) : 12 + Math.round(rr * 50);
+    bars += `<span class="${cls}" style="height:${h}px"></span>`;
+  }
+  const folds = d.lines.filter(x => x.fold && x.t1 - x.t0 > 30).map(x => { const l = 100 * x.t0 / d.dur, w = 100 * (x.t1 - x.t0) / d.dur;
+    return `<div class="hatch" style="left:${l}%;width:${w}%"></div><div class="hatchlbl" style="left:${l}%;width:${w}%;text-align:center">${esc(x.label)}, не оценивается</div>`; }).join('');
+  const pins = c.losses.slice(0, 3).map((r, k) => { const rr = d.res[r.c.id]; const ln = rr && rr.ev && lineBy(d, rr.ev[0]); if (!ln) return '';
+    return `<button type="button" class="pin" style="left:${100 * ln.s / d.dur}%" data-act="pin" data-cid="${r.c.id}" aria-label="Потеря ${k + 1}: ${esc(r.c.name)}, ${mmss(ln.s)}">${k + 1}</button>`; }).join('');
+  const ticks = []; for (let m = 0; m * 60 < d.dur; m++) ticks.push(m * 60);
+  return `<section class="card pad player" aria-label="Запись звонка">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <button type="button" class="btn pri" id="pbtn" data-act="play" aria-label="Слушать" style="width:44px;padding:0;border-radius:50%">▶</button>
+        <button type="button" class="btn sm" data-act="skip" data-s="-5">−5 с</button>
+        <button type="button" class="btn sm" data-act="skip" data-s="5">+5 с</button>
+        <button type="button" class="btn sm" data-act="rate" id="prate">1×</button>
+        <span><b id="ptime">00:00</b> / ${mmss(d.dur)}</span><span class="muted small" id="pnow"></span>
+      </div>
+      <div class="legend"><span><i style="background:#9AA8A1"></i>Клиент</span><span><i style="background:var(--accent)"></i>Оператор</span><span><i style="background:#D5DBD8"></i>Не оценивается</span><span><i style="background:var(--ev);border-radius:50%"></i>Потеря баллов</span></div>
+    </div>
+    <div class="wave">${folds}<div class="bars" data-act="wave" title="Перейти к моменту записи">${bars}</div><div class="playhead" id="phead" style="left:0"></div>${pins}</div>
+    <div class="ruler" aria-hidden="true">${ticks.map(t => `<span style="left:${100 * t / d.dur}%">${mmss(t)}</span>`).join('')}<span style="left:100%">${mmss(d.dur)}</span></div>
+    <p class="muted xs">Запись монофоническая: участки окрашены по ролям из расшифровки. Начало реплики считаем от метки конца по длине текста.</p>
+  </section>`;
+}
+let timer = null;
+const curD = () => S.r && S.r.page === 'd' ? dlgById(S.r.id) : null;
+function stopPlay() { S.play.on = false; clearInterval(timer); timer = null; }
+function seek(t) { const d = curD(); if (!d || d.ch !== 'call') return; S.play.t = Math.max(0, Math.min(d.dur, t)); updatePlayer(); }
+function togglePlay() {
+  const d = curD(); if (!d) return;
+  if (S.play.on) { stopPlay(); updatePlayer(); return; }
+  if (S.play.t >= d.dur) S.play.t = 0;
+  S.play.on = true;
+  timer = setInterval(() => { S.play.t += .25 * S.play.rate; if (S.play.t >= d.dur) { S.play.t = d.dur; stopPlay(); } updatePlayer(); }, 250);
+  updatePlayer();
+}
+function updatePlayer() {
+  const d = curD(); if (!d || d.ch !== 'call' || !$('#phead')) return;
+  const t = S.play.t;
+  $('#phead').style.left = `${100 * t / d.dur}%`;
+  $('#ptime').textContent = mmss(t);
+  $('#pbtn').textContent = S.play.on ? '❚❚' : '▶';
+  $('#pbtn').setAttribute('aria-label', S.play.on ? 'Пауза' : 'Слушать');
+  $('#prate').textContent = `${S.play.rate}×`;
+  const cur = d.lines.find(l => !l.fold && l.s != null && t >= l.s && t <= l.e + .5 && (l.who === 'client' || l.who === 'operator'));
+  $$('.msg.now').forEach(e => e.classList.remove('now'));
+  if (cur) { const el = $('#L' + cur.n); if (el) el.classList.add('now'); }
+  $('#pnow').textContent = cur ? `звучит реплика ${cur.n}` : '';
+}
+function flashLine(n) {
+  const el = $('#L' + n); if (!el) return false;
+  el.scrollIntoView({block:'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  return true;
+}
+
+/* ---------- 3. Апелляции ---------- */
+function appeals(id) {
+  const list = S.ap.filter(a => a.kind === 'appeal');
+  const pend = list.filter(a => a.status === 'pending'), done = list.filter(a => a.status !== 'pending');
+  const a = S.ap.find(x => x.id === id) || pend[0] || done[0];
+  const item = x => { const c = crit(x.cid), d = dlgById(x.dlg);
+    return `<a class="qitem" href="#/appeals/${x.id}" aria-current="${a && x.id === a.id}"><span class="row" style="justify-content:space-between"><b>${esc(titleOf(d))}</b><span class="muted xs">${esc(x.at)}</span></span>
+      <span class="small">${x.cid} ${esc(c ? c.name : '')}</span><span class="muted xs">${esc(ansTxt(c, x.from))} → просят ${esc(ansTxt(c, x.ask))}${x.status !== 'pending' ? (x.status === 'changed' ? ', изменена' : ', подтверждена') : ''}</span></a>`; };
+  const decided = S.ap.filter(x => x.status === 'changed' || x.status === 'confirmed').slice().sort((x, y) => (y.decidedAt || '').localeCompare(x.decidedAt || ''));
+  return `
+  <div class="head"><div><h1 class="h1">Апелляции</h1><p class="sub">Спорная оценка, довод и фрагмент разговора на одном экране</p></div></div>
+  <div class="split">
+    <aside class="card" style="padding:8px" aria-label="Очередь апелляций">
+      <p class="label" style="padding:6px 12px">Ждут решения: ${pend.length}</p>${pend.map(item).join('') || '<p class="muted small" style="padding:0 12px 8px">Очередь пуста.</p>'}
+      <p class="label" style="padding:14px 12px 6px">Решённые: ${done.length}</p>${done.map(item).join('')}
+    </aside>
+    <div class="stack" style="gap:14px">${a ? appealDetail(a) : '<div class="card empty">Апелляций пока нет. Оспорить оценку можно в карточке разговора.</div>'}
+      <section class="card pad" aria-label="История решений"><h2 class="h2" style="margin-bottom:12px">История решений</h2><div class="timeline">
+        ${decided.map(x => { const c = crit(x.cid), d = dlgById(x.dlg); return `<div class="ev"><i class="${x.status === 'changed' ? '' : 'k'}"></i><div>
+          <b>${esc(titleOf(d))}, ${x.cid}: ${x.status === 'changed' ? `${esc(ansTxt(c, x.from))} → ${esc(ansTxt(c, x.to))}` : 'оценка подтверждена'}</b>
+          <p class="muted small">${esc(x.reviewer)}, ${esc(x.decidedAt)}. ${esc(x.reason)}</p></div></div>`; }).join('') || '<p class="muted small">Решений пока нет.</p>'}
+      </div></section>
+    </div>
+  </div>`;
+}
+function appealDetail(a) {
+  const d = dlgById(a.dlg), c = crit(a.cid), r = d.res[a.cid] || {};
+  if (!c) return `<div class="card empty">Критерий ${a.cid} удалён из чек-листа. Апелляция закрыта без решения.</div>`;
+  const st = S.dec[a.id] = S.dec[a.id] || {mode:'change', val:a.ask, reason:''};
+  const before = calc(d).total, after = calc(d, {cid:a.cid, val: st.mode === 'confirm' ? a.from : st.val}).total;
+  const nset = new Set([...(r.ev || []), ...(a.ev || [])]);
+  let frag = '<p class="muted small">Расшифровка этого диалога не входит в учебный макет.</p>';
+  if (d.lines) {
+    const ns = [...nset].sort((x, y) => x - y), lo = Math.min(...ns) - 2, hi = Math.max(...((r.ev && r.ev.length) ? r.ev : ns)) + 1;
+    frag = d.lines.filter(l => !l.fold && ((l.n >= lo && l.n <= hi) || (a.ev || []).includes(l.n))).map(l => {
+      const m = (r.ev || []).includes(l.n), ap = (a.ev || []).includes(l.n);
+      return `<div class="quote" style="${m ? 'background:var(--ev-soft);border-color:var(--ev-line)' : ap ? 'background:var(--info-soft);border-color:var(--info-line)' : ''}"><div><span class="muted xs">${l.n}, ${l.who === 'client' ? 'клиент' : l.who === 'operator' ? 'оператор' : 'система'}${m ? ', основание модели' : ''}${ap ? ', довод оспаривающего' : ''}</span><br>${esc(l.text)}</div>
+        ${d.ch === 'call' ? `<a class="btn sm" href="#/d/${encodeURIComponent(d.id)}">▶ ${mmss(l.s)}</a>` : ''}</div>`; }).join('');
+  }
+  const decided = a.status !== 'pending';
+  return `<section class="card pad stack" style="gap:14px" aria-label="Рассмотрение">
+    <div class="row" style="justify-content:space-between"><div><h2 class="h2">${esc(titleOf(d))}, ${c.id} ${esc(c.name)}</h2>
+      <p class="muted small">Подал: ${esc(a.by)}, ${esc(a.at)}. Вес критерия ${c.w}. <a href="#/d/${encodeURIComponent(d.id)}">Открыть карточку</a></p></div>
+      <span class="chip ${decided ? (a.status === 'changed' ? 'c-info' : 'c-ok') : 'c-ev'}">${decided ? (a.status === 'changed' ? 'Оценка изменена' : 'Оценка подтверждена') : 'Ждёт решения'}</span></div>
+    <div class="compare">
+      <div><span class="label">Оценка модели</span><strong>${esc(ansTxt(c, a.from))}</strong><span class="small">${esc(r.why || '')}</span>${r.alt !== undefined ? `<span class="small" style="color:var(--info)">Второе мнение: ${esc(ansTxt(c, r.alt))}</span>` : ''}</div>
+      <div><span class="label">Просит оспаривающий</span><strong>${esc(ansTxt(c, a.ask))}</strong><span class="small">«${esc(a.comment)}»</span></div>
+    </div>
+    <div class="stack" style="gap:6px"><span class="label">Фрагмент разговора</span>${frag}</div>
+    ${decided ? `<div class="box ${a.status === 'changed' ? 'info' : 'good'}"><b>${esc(a.reviewer)}, ${esc(a.decidedAt)}:</b> ${esc(a.reason)}</div>` : `
+    <p class="only-rv-note box na">Решение принимает проверяющий. Переключите роль вверху страницы, чтобы показать этот шаг.</p>
+    <fieldset class="only-rv stack" style="gap:14px;border-top:1px solid var(--line2);padding-top:14px">
+      <legend class="h2" style="margin-bottom:10px">Решение проверяющего</legend>
+      <div class="row">
+        <label class="opt"><input type="radio" name="dm" value="confirm" data-act="dmode" ${st.mode === 'confirm' ? 'checked' : ''}>Подтвердить оценку модели</label>
+        <label class="opt"><input type="radio" name="dm" value="change" data-act="dmode" ${st.mode === 'change' ? 'checked' : ''}>Изменить оценку</label>
+      </div>
+      ${st.mode === 'change' ? `<div class="stack" style="gap:6px"><span class="field"><span>Новый ответ</span></span><div class="ladder" role="group" aria-label="Новый ответ">
+        ${allowed(c).map(v => `<button type="button" class="step" data-act="dval" data-v="${v}" aria-pressed="${v === st.val}">${v === 'yes' ? 'Да' : v === 'no' ? 'Нет' : v === 'na' ? 'N/A' : v}</button>`).join('')}</div>
+        ${c.type === 'scale' && c.stepText && c.stepText[st.val] ? `<span class="muted xs">${st.val}: ${esc(c.stepText[st.val])}</span>` : ''}
+        <span class="muted xs">Доступны только ступени шкалы${c.na ? ' и N/A, он разрешён у этого критерия' : ''}.</span></div>` : ''}
+      <label class="field"><span>Причина решения, обязательно</span><textarea id="decReason" class="fld" placeholder="Например: регламент не позволяет называть срок, следующий шаг дан полностью">${esc(st.reason)}</textarea></label>
+      <div class="row" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:12px">
+        <span>Итог разговора: <s class="muted">${f2(before)}</s> → <b style="font-size:20px">${f2(after)}</b></span>
+        <button type="button" class="btn pri" id="decSave" data-act="dsave" data-id="${a.id}" ${st.reason.trim().length < 5 ? 'disabled' : ''}>Сохранить решение</button>
+      </div>
+    </fieldset>`}
+  </section>`;
+}
+
+/* ---------- 4. Аналитика ---------- */
+function analytics() {
+  const ds = S.ds, cs = scored(), langs = ['RU', 'KZ', 'EN'];
+  const st = cs.map(c => {
+    const xs = ds.map(d => ({d, a:ans(d, c.id)}));
+    const app = xs.filter(x => frac(c, x.a) != null);
+    const lost = app.filter(x => frac(c, x.a) < 1);
+    const val = !app.length ? null : c.type === 'scale' ? app.reduce((s, x) => s + x.a, 0) / app.length : 100 * app.filter(x => x.a === 'yes').length / app.length;
+    return {c, n:app.length, na:xs.filter(x => x.a === 'na').length, pend:xs.filter(x => x.a === 'pending').length, lost:lost.length, share: app.length ? lost.length / app.length : null, val,
+      by: langs.map(Lg => { const a2 = app.filter(x => x.d.lang === Lg); return {n:a2.length, lost:a2.filter(x => frac(c, x.a) < 1).length}; })};
+  });
+  const reasons = {};
+  for (const d of ds) for (const c of cs) { const r = d.res[c.id]; const f = frac(c, ans(d, c.id)); if (!r || !r.tag || f == null || f >= 1) continue;
+    const g = reasons[r.tag] = reasons[r.tag] || {tag:r.tag, ds:new Set(), cs:new Set(), langs:new Set()}; g.ds.add(d.id); g.cs.add(c.id); g.langs.add(d.lang); }
+  const rs = Object.values(reasons).sort((a, b) => b.ds.size - a.ds.size);
+  const fl = flagCs()[0];
+  const fcount = fl ? fl.questions.map(q => ({q, n:ds.filter(d => d.res[fl.id] && d.res[fl.id].a[q.k]).length})) : [];
+  const flagged = ds.filter(d => flagsOf(d).length);
+  const dev = st.filter(x => x.n >= 3 && x.share != null).sort((a, b) => b.share - a.share)[0];
+  const alts = []; for (const d of ds) for (const c of cs) { const r = d.res[c.id]; if (r) alts.push(r.alt === undefined || r.alt === r.a); }
+  const decided = S.ap.filter(a => a.kind === 'appeal' && a.status !== 'pending');
+  const maxR = rs.length ? rs[0].ds.size : 1;
+  const rsRep = rs.filter(g => g.ds.size > 1), single = rs.length - rsRep.length;
+  const pct = x => x == null ? '—' : `${Math.round(100 * x)}%`;
+  const hcls = (k, n) => !n ? 'hm0' : k / n >= .6 ? 'hm4' : k / n >= .4 ? 'hm3' : k / n >= .2 ? 'hm2' : k ? 'hm1' : 'hm0';
+  const nextN = ds.filter(nextStep).length;
+  return `
+  <div class="head"><div><h1 class="h1">Аналитика</h1><p class="sub">Каждое число открывает список диалогов, из него карточку и реплику</p></div>
+    <span class="muted small">Набор DEV в макете: ${ds.length} диалогов. RU ${ds.filter(d => d.lang === 'RU').length}, KZ ${ds.filter(d => d.lang === 'KZ').length}, EN ${ds.filter(d => d.lang === 'EN').length}</span></div>
+  <section class="lens" aria-label="Что получает бизнес">
+    <a class="card" href="#/queue" data-act="grp" data-g="next"><span class="label">Качество сервиса</span><strong>${nextN}</strong><span>${nextN === 1 ? 'запрос остался' : 'запросов остались'} без решения или понятного следующего шага</span></a>
+    <a class="card" href="#/queue" data-act="grp" data-g="risk"><span class="label">Контроль рисков</span><strong>${flagged.length}</strong><span>разговоров с грубыми ошибками, проверено ${flagged.filter(d => d.reviewed).length}</span></a>
+    <a class="card" href="#/coaching"><span class="label">Развитие сотрудников</span><strong>${dev ? pct(dev.share) : '—'}</strong><span>${dev ? `применимых разговоров теряют баллы на критерии «${esc(dev.c.name)}»` : 'мало данных'}</span></a>
+    <a class="card" href="#reasons"><span class="label">Улучшение процессов</span><strong>${rs[0] ? rs[0].ds.size : 0}</strong><span>${rs[0] ? `разговоров с одной причиной: ${esc(rs[0].tag.toLowerCase())}` : 'повторяющихся причин нет'}</span></a>
+  </section>
+
+  <section class="card" aria-label="Результат по критериям">
+    <div class="pad" style="padding-bottom:6px"><h2 class="h2">Результат по критериям</h2>
+      <p class="muted small">Доля считается среди применимых оценок, N/A показан отдельно. Где применимых меньше пяти, выводы ненадёжны.</p></div>
+    <div class="tablewrap"><table style="min-width:820px"><thead><tr><th>Критерий</th><th class="num">Вес</th><th class="num">Применимо</th><th class="num">N/A</th><th class="num">Результат</th><th>Теряют баллы</th><th></th></tr></thead><tbody>
+      ${st.map(x => `<tr class="click" data-act="crfilter" data-cid="${x.c.id}"><td><span class="muted">${x.c.id}</span> ${esc(x.c.name)}</td><td class="num">${x.c.w}</td><td class="num">${x.n}</td><td class="num">${x.na}</td>
+        <td class="num">${x.val == null ? '—' : x.c.type === 'scale' ? `${fn(x.val)} из ${maxOf(x.c)}` : `${Math.round(x.val)}% «Да»`}</td>
+        <td><span class="hbar" style="width:${x.share == null ? 0 : Math.max(2, 140 * x.share)}px"></span> <span class="small">${x.lost} из ${x.n}</span></td>
+        <td>${x.pend ? '<span class="chip c-ev">ждёт оценки</span>' : x.n < 5 ? '<span class="chip c-na">мало данных</span>' : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+  </section>
+
+  <div class="two">
+    <section class="card pad stack" aria-label="Критерий и язык">
+      <div><h2 class="h2">Критерий и язык</h2><p class="muted small">Сколько применимых разговоров потеряли баллы. В ячейке число, а не только процент: на малых выборках процент обманчив.</p></div>
+      <div class="tablewrap"><table><thead><tr><th>Критерий</th>${langs.map(Lg => `<th class="num">${Lg}</th>`).join('')}</tr></thead><tbody>
+        ${st.map(x => `<tr><td><span class="muted">${x.c.id}</span> ${esc(x.c.name)}</td>${x.by.map(b => `<td style="width:84px;padding:4px"><div class="heat ${hcls(b.lost, b.n)}">${b.n ? `${b.lost} из ${b.n}` : '—'}</div></td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="row xs muted"><span>Светлее — реже теряют</span><span style="display:inline-flex;gap:2px"><i class="heat hm1" style="width:24px;min-height:12px"></i><i class="heat hm2" style="width:24px;min-height:12px"></i><i class="heat hm3" style="width:24px;min-height:12px"></i><i class="heat hm4" style="width:24px;min-height:12px"></i></span><span>темнее — чаще</span></div>
+    </section>
+    <section class="card pad stack" aria-label="Грубые ошибки и качество оценки">
+      <h2 class="h2">Грубые ошибки по видам</h2>
+      ${fcount.map(x => `<div class="row" style="justify-content:space-between"><span>${esc(x.q.label)}</span><span><span class="hbar" style="background:var(--risk);width:${(flagged.length ? 120 * x.n / flagged.length : 0)}px"></span> <b>${x.n}</b></span></div>`).join('')}
+      <p class="muted xs">Флаг не входит в итог. Все такие разговоры стоят первыми в очереди, пока специалист их не проверит.</p>
+      <h2 class="h2" style="margin-top:8px">Качество самой оценки</h2>
+      <div class="grid2"><div><strong style="font-size:24px">${alts.length ? Math.round(100 * alts.filter(Boolean).length / alts.length) : '—'}%</strong><p class="muted small">ответов двух моделей совпали (${alts.filter(Boolean).length} из ${alts.length})</p></div>
+        <div><strong style="font-size:24px">${decided.filter(a => a.status === 'changed').length} из ${decided.length}</strong><p class="muted small">решённых апелляций изменили оценку</p></div></div>
+      <p class="muted xs">Тренда по неделям нет: в данных нет дат. После 11:00 здесь же сравниваем наборы DEV и контрольный.</p>
+    </section>
+  </div>
+
+  <section class="card" id="reasons" aria-label="Повторяющиеся причины">
+    <div class="pad row" style="justify-content:space-between;padding-bottom:6px"><div><h2 class="h2">Повторяющиеся причины</h2><p class="muted small">Причины снижения сгруппированы по смыслу. Кому их исправлять, решает человек.</p></div>
+      <button type="button" class="btn sm" data-act="csv">Скачать CSV</button></div>
+    <div class="tablewrap"><table style="min-width:820px"><thead><tr><th>Причина</th><th>Разговоров</th><th>Критерии</th><th>Языки</th><th>Что менять</th><th>Примеры</th></tr></thead><tbody>
+      ${rsRep.map((g, k) => `<tr><td style="font-weight:600">${esc(g.tag)}</td><td><span class="hbar" style="width:${80 * g.ds.size / maxR}px"></span> <b>${g.ds.size}</b></td><td>${[...g.cs].join(', ')}</td><td>${[...g.langs].join(', ')}</td>
+        <td><label class="sr" for="own${k}">Что менять: ${esc(g.tag)}</label><select id="own${k}" class="fld" data-owner="${esc(g.tag)}">${['Не назначено', 'Инструкция', 'Сервис', 'Продукт'].map(o => `<option ${(S.owners[g.tag] || 'Не назначено') === o ? 'selected' : ''}>${o}</option>`).join('')}</select></td>
+        <td class="small">${[...g.ds].slice(0, 3).map(id => `<a href="#/d/${encodeURIComponent(id)}">${esc(titleOf(dlgById(id)))}</a>`).join(', ')}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Повторяющихся причин нет.</td></tr>'}
+    </tbody></table></div>
+    ${single ? `<p class="muted small pad">Ещё ${single} причин встретились по одному разу. Они видны в карточках и в разделе «Обучение».</p>` : ''}
+  </section>`;
+}
+
+/* ---------- 5. Обучение ---------- */
+function coaching() {
+  const items = [];
+  for (const d of S.ds) for (const c of scored()) { const r = d.res[c.id]; const f = frac(c, ans(d, c.id)); if (r && r.better && f != null && f < 1) items.push({key:d.id + '|' + c.id, d, c, r}); }
+  const byC = {}; items.forEach(x => (byC[x.c.id] = byC[x.c.id] || []).push(x));
+  const ids = Object.keys(byC).sort((a, b) => byC[b].length - byC[a].length);
+  if (!S.coachC || !byC[S.coachC]) S.coachC = ids[0];
+  const sel = byC[S.coachC] || [];
+  const goodC = crit(S.coachC);
+  const good = goodC ? S.ds.flatMap(d => { const r = d.res[goodC.id]; if (!r || !r.ev || frac(goodC, ans(d, goodC.id)) !== 1 || !d.lines) return [];
+    return r.ev.map(n => lineBy(d, n)).filter(l => l && l.who === 'operator').map(l => ({d, l})); }) : [];
+  const sheet = items.filter(x => S.sheet.has(x.key));
+  return `
+  <div class="head"><div><h1 class="h1">Обучение</h1><p class="sub">Обратная связь на конкретных репликах из наших разговоров</p></div>
+    <a class="btn pri no-print" href="#sheet">Разбор для встречи: ${sheet.length}</a></div>
+  <div class="seg no-print" role="group" aria-label="Критерий" style="align-self:flex-start;flex-wrap:wrap">
+    ${ids.map(id => `<button type="button" data-act="coach" data-cid="${id}" aria-pressed="${id === S.coachC}">${id} ${esc(crit(id).name)}: ${byC[id].length}</button>`).join('')}</div>
+  <div class="cols no-print">
+    <section class="stack" aria-label="Где теряем баллы"><h2 class="h2">Где теряем баллы</h2>
+      ${sel.map(x => { const l = x.r.ev && lineBy(x.d, x.r.ev.find(n => (lineBy(x.d, n) || {}).who === 'operator') || x.r.ev[0]);
+        return `<article class="card pad stack">
+          <div class="row" style="justify-content:space-between"><span class="small"><a href="#/d/${encodeURIComponent(x.d.id)}">${esc(titleOf(x.d))}</a>, ${LANG[x.d.lang]}</span><span class="chip ${tone(x.c, ans(x.d, x.c.id))}">${esc(ansTxt(x.c, ans(x.d, x.c.id)))}</span></div>
+          ${l ? `<p style="font-size:15px">«${esc(l.text)}»</p>` : ''}
+          <p class="small"><b>Что не так:</b> ${esc(x.r.why)}</p>
+          <div class="box good"><b>Как сказать лучше:</b> «${esc(x.r.better)}»</div>
+          <label class="row small" style="gap:8px"><input type="checkbox" data-pick="${esc(x.key)}" ${S.sheet.has(x.key) ? 'checked' : ''}>Добавить в разбор</label>
+        </article>`; }).join('') || '<div class="card empty">По этому критерию подсказок нет.</div>'}
+    </section>
+    <section class="stack" aria-label="Как звучит хороший ответ"><h2 class="h2">Как звучит хороший ответ</h2>
+      ${good.slice(0, 3).map(g => `<article class="card pad stack"><div class="row" style="justify-content:space-between"><span class="small"><a href="#/d/${encodeURIComponent(g.d.id)}">${esc(titleOf(g.d))}</a></span><span class="chip c-ok">полный балл</span></div><p style="font-size:15px">«${esc(g.l.text)}»</p></article>`).join('')
+        || `<div class="card pad muted">В наборе пока нет ответа с полным баллом и цитатой по критерию «${esc(goodC ? goodC.name : '')}». Примеры появятся, когда модели согласятся на полном балле.</div>`}
+    </section>
+  </div>
+  <section class="card pad stack" id="sheet" aria-label="Разбор для встречи с оператором">
+    <div class="row" style="justify-content:space-between"><h2 class="h2">Разбор для встречи с оператором</h2>
+      <div class="row no-print"><button type="button" class="btn" data-act="copy" ${sheet.length ? '' : 'disabled'}>Скопировать текст</button><button type="button" class="btn" data-act="print" ${sheet.length ? '' : 'disabled'}>Печать</button></div></div>
+    ${sheet.length ? `<ol class="stack" style="padding-left:20px;margin:0">${sheet.map(x => `<li><b>${esc(titleOf(x.d))}, ${esc(x.c.name)}.</b> ${esc(x.r.why)} Лучше: «${esc(x.r.better)}»</li>`).join('')}</ol>`
+      : '<p class="muted">Отметьте моменты выше, и они соберутся в один лист для встречи.</p>'}
+  </section>`;
+}
+
+/* ---------- 6. Чек-лист ---------- */
+const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
+function checklist() {
+  if (!S.draft) S.draft = clone(S.cl);
+  const dr = S.draft;
+  const c = dr.criteria.find(x => x.id === S.cSel) || dr.criteria[0];
+  if (c) S.cSel = c.id;
+  const sum = scored(dr).reduce((s, x) => s + (Number(x.w) || 0), 0);
+  const dirty = JSON.stringify(dr) !== JSON.stringify(S.cl);
+  const pendIds = scored().filter(x => S.ds.some(d => !d.res[x.id])).map(x => x.id);
+  const changed = id => { const o = S.cl.criteria.find(x => x.id === id), n = dr.criteria.find(x => x.id === id); return !o || JSON.stringify(o) !== JSON.stringify(n); };
+  const typeName = {bool:'Да/Нет', scale:'Шкала', flag:'Флаг'};
+  return `
+  <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${S.cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
+    <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
+      <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn pri" data-act="csave" ${dirty ? '' : 'disabled'}>Сохранить как v${S.cl.version + 1}</button></div></div>
+  ${pendIds.length ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
+    <span>Критерии ${pendIds.join(', ')} ждут оценки: <b>${pendIds.length * S.ds.length} вызовов</b> основной модели, около ${Math.max(10, pendIds.length * 45 * S.ds.length / 65 | 0)} с, около $${fn(pendIds.length * S.ds.length * 0.0012)}. Остальные ответы берутся из кэша.</span>
+    <button type="button" class="btn pri only-qa" data-act="crun" ${S.running ? 'disabled' : ''}>${S.running ? 'Идёт оценка…' : 'Оценить набор'}</button></section>` : ''}
+  <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
+    <section class="card" style="padding:10px" aria-label="Структура чек-листа">
+      ${dr.sections.map((s, si) => { const cs = dr.criteria.filter(x => x.sec === si); return `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${scored(dr).filter(x => x.sec === si).reduce((a, x) => a + (Number(x.w) || 0), 0) || ''}</span></p><div class="clist">
+        ${cs.map(x => `<button type="button" class="citem" data-act="csel" data-cid="${x.id}" aria-current="${x.id === S.cSel}"><span class="muted small">${x.id}</span><span>${esc(x.name)}${changed(x.id) ? ' <span class="chip c-ev">изменён</span>' : ''}${x.signal ? ` <span class="chip c-info">${esc(SIGNALS.find(s => s[0] === x.signal)[1])}</span>` : ''}</span><span class="muted xs">${typeName[x.type]}${x.na ? ', N/A' : ''}</span><b class="num">${x.type === 'flag' ? '—' : x.w}</b></button>`).join('')}</div>`; }).join('')}
+      <div class="row" style="padding:12px 10px 4px;border-top:1px solid var(--line2);margin-top:8px">
+        <span class="chip ${sum === 100 ? 'c-ok' : 'c-ev'}">Сумма весов ${sum}</span>${sum !== 100 ? '<span class="muted xs">Итог всё равно приводится к 100</span>' : ''}
+        <button type="button" class="btn sm only-qa" data-act="cadd" style="margin-left:auto">Добавить критерий</button></div>
+      <div class="stack small" style="padding:12px 10px 4px;gap:4px"><span class="label">Версии</span>${S.versions.slice().reverse().map(v => `<span>v${v.v}: ${esc(v.note)}${v.v === S.cl.version ? ' <span class="chip c-ok">применяется</span>' : ''}</span>`).join('')}</div>
+    </section>
+    ${c ? `<section class="card pad" aria-label="Редактор критерия"><fieldset class="stack" style="gap:16px" ${S.role === 'qa' ? '' : 'disabled'}>
+      <legend class="row" style="justify-content:space-between;width:100%;margin-bottom:12px"><span class="h2">Критерий ${c.id}</span>${S.role !== 'qa' ? '<span class="chip c-na">Только просмотр: редактирует специалист КК</span>' : ''}</legend>
+      <div class="grid2">
+        <label class="field"><span>Название</span><input id="cf-name" class="fld" data-cf="name" value="${esc(c.name)}"></label>
+        <label class="field"><span>Секция</span><select id="cf-sec" class="fld" data-cf="sec">${dr.sections.map((s, i) => `<option value="${i}" ${c.sec === i ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+      </div>
+      <label class="field"><span>Что проверяем</span><textarea id="cf-text" class="fld" data-cf="text">${esc(c.text)}</textarea><span class="muted xs">Этот текст модель получает дословно. Названий критериев нет ни в коде, ни в промпте.</span></label>
+      <div class="grid2">
+        <label class="field"><span>Тип ответа</span><select id="cf-type" class="fld" data-cf="type">${[['bool', 'Да / Нет'], ['scale', 'Шкала'], ['flag', 'Флаг нарушения, без баллов']].map(([v, t]) => `<option value="${v}" ${c.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        ${c.type !== 'flag' ? `<label class="field"><span>Вес</span><input id="cf-w" class="fld" type="number" min="0" max="100" data-cf="w" value="${c.w}"></label>` : '<span></span>'}
+      </div>
+      ${c.type !== 'flag' ? `<div class="stack box na" style="gap:8px"><label class="row" style="gap:8px;font-weight:600"><input id="cf-na" type="checkbox" data-cf="na" ${c.na ? 'checked' : ''}>N/A разрешён</label>
+        ${c.na ? `<label class="field"><span>Условие N/A</span><input id="cf-nac" class="fld" data-cf="naCond" value="${esc(c.naCond || '')}"></label>` : ''}</div>` : ''}
+      ${c.type === 'scale' ? `<label class="field"><span>Ступени шкалы, по строке на ступень: «балл: что значит»</span><textarea id="cf-steps" class="fld" data-cf="steps" style="min-height:130px">${esc((c.steps || []).map(s => `${s}: ${(c.stepText || {})[s] || ''}`).join('\n'))}</textarea><span class="muted xs">Верхняя ступень даёт полный вес, остальные пропорционально.</span></label>` : ''}
+      ${c.type === 'flag' ? `<label class="field"><span>Подвопросы, по строке на вид нарушения</span><textarea id="cf-q" class="fld" data-cf="questions">${esc((c.questions || []).map(q => q.label).join('\n'))}</textarea><span class="muted xs">Каждый подвопрос идёт к модели отдельно. Флаг ставится, если выполнен хотя бы один.</span></label>` : ''}
+      <label class="field"><span>Сигнал для списка и аналитики</span><select id="cf-sig" class="fld" data-cf="signal">${SIGNALS.map(([v, t]) => `<option value="${v}" ${(c.signal || '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <span class="muted xs">Метка «Без следующего шага» и плитки аналитики строятся по сигналу, а не по номеру критерия, поэтому замена критерия их не ломает.</span></label>
+      <div class="row only-qa" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:14px">
+        <span class="muted small">Смена веса пересчитывает итоги сразу. Смена текста, типа, шкалы или N/A требует новой оценки этого критерия.</span>
+        <button type="button" class="btn" data-act="cdel">Удалить критерий</button></div>
+    </fieldset></section>` : '<section class="card empty">Критериев нет. Добавьте первый.</section>'}
+  </div>`;
+}
+function saveChecklist() {
+  const old = S.cl, dr = S.draft, pend = [], light = [];
+  const sem = x => JSON.stringify([x.text, x.type, x.steps, x.na, x.naCond, x.questions]);
+  for (const c of dr.criteria) { const o = old.criteria.find(x => x.id === c.id);
+    if (!o || sem(o) !== sem(c)) pend.push(c.id); else if (JSON.stringify(o) !== JSON.stringify(c)) light.push(c.id); }
+  const removed = old.criteria.filter(o => !dr.criteria.some(c => c.id === o.id)).map(o => o.id);
+  dr.version = old.version + 1;
+  S.versions.push({v:dr.version, note:[pend.length ? `изменены ${pend.join(', ')}` : '', light.length ? `веса или названия ${light.join(', ')}` : '', removed.length ? `удалены ${removed.join(', ')}` : ''].filter(Boolean).join('; ')});
+  for (const id of pend) for (const d of S.ds) delete d.res[id];
+  S.ap.forEach(a => { if (pend.includes(a.cid) || removed.includes(a.cid)) { if (a.status === 'pending') a.status = 'closed'; } });
+  S.cl = clone(dr); S.draft = null;
+  toast(pend.length ? `Сохранена версия v${dr.version}. Критерии ${pend.join(', ')} ждут оценки: ${pend.length * S.ds.length} вызовов.` : `Сохранена версия v${dr.version}. Итоги пересчитаны без вызова модели.`);
+}
+
+/* ---------- окно: подача апелляции и решение по расхождению ---------- */
+const dlg = $('#dlg'), dlgForm = $('#dlgForm');
+let dlgCtx = null;
+function openAppeal(d, cid) {
+  dlgCtx = {mode:'appeal', d};
+  const cs = scored().filter(c => d.res[c.id] && !pendAppeal(d.id, c.id));
+  const fill = id => { const c = crit(id), a = ans(d, id);
+    return {now:`Сейчас: <b>${esc(ansTxt(c, a))}</b>. ${esc((d.res[id] || {}).why || '')}`, opts: allowed(c).filter(v => v !== a).map(v => `<option value="${v}">${esc(ansTxt(c, v))}</option>`).join('')}; };
+  const f = fill(cid);
+  dlgForm.innerHTML = `<header><h2 class="h2" id="dlgTitle">Оспорить оценку</h2><p class="muted small">${esc(titleOf(d))}, роль: ${ROLE[S.role]}</p></header>
+    <label class="field"><span>Критерий</span><select name="cid" class="fld" id="dCid">${cs.map(c => `<option value="${c.id}" ${c.id === cid ? 'selected' : ''}>${c.id} ${esc(c.name)}</option>`).join('')}</select></label>
+    <p class="box na" id="dNow">${f.now}</p>
+    <label class="field"><span>Какой ответ вы считаете верным</span><select name="ask" class="fld" id="dAsk">${f.opts}</select></label>
+    <label class="field"><span>Комментарий, обязательно</span><textarea name="comment" class="fld" required minlength="10" placeholder="Почему оценка неверна, со ссылкой на реплику"></textarea></label>
+    ${d.lines ? `<label class="field"><span>Реплика в подтверждение</span><select name="ev" class="fld"><option value="">Не выбрана</option>${d.lines.filter(l => !l.fold && l.who !== 'system').map(l => `<option value="${l.n}">${l.n}: ${esc(l.text.slice(0, 60))}${l.text.length > 60 ? '…' : ''}</option>`).join('')}</select></label>` : ''}
+    <p class="muted small">Апелляцию рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.</p>
+    <footer><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn pri" value="ok">Отправить апелляцию</button></footer>`;
+  dlgCtx.fill = fill;
+  dlg.showModal();
+}
+function openDecide(d, cid, val) {
+  const c = crit(cid), r = d.res[cid];
+  dlgCtx = {mode:'decide', d, cid, val};
+  const keep = val === r.a;
+  dlgForm.innerHTML = `<header><h2 class="h2" id="dlgTitle">${keep ? 'Оставить оценку модели' : 'Принять второе мнение'}</h2><p class="muted small">${esc(titleOf(d))}, ${c.id} ${esc(c.name)}</p></header>
+    <p class="box na">${keep ? `Оценка остаётся <b>${esc(ansTxt(c, val))}</b>.` : `Оценка меняется с <b>${esc(ansTxt(c, r.a))}</b> на <b>${esc(ansTxt(c, val))}</b>.`} Итог: ${f2(calc(d).total)} → <b>${f2(calc(d, {cid, val}).total)}</b></p>
+    <label class="field"><span>Причина решения, обязательно</span><textarea name="reason" class="fld" required minlength="5" placeholder="Что в разговоре подтверждает этот ответ"></textarea></label>
+    <footer><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn pri" value="ok">Сохранить решение</button></footer>`;
+  dlg.showModal();
+}
+dlgForm.addEventListener('change', e => {
+  if (e.target.id === 'dCid' && dlgCtx && dlgCtx.fill) { const f = dlgCtx.fill(e.target.value); $('#dNow').innerHTML = f.now; $('#dAsk').innerHTML = f.opts; }
+});
+dlg.addEventListener('close', () => {
+  if (dlg.returnValue !== 'ok' || !dlgCtx) return;
+  const fd = new FormData(dlgForm), d = dlgCtx.d;
+  if (dlgCtx.mode === 'appeal') {
+    const cid = fd.get('cid'), c = crit(cid);
+    S.ap.push({id:'a' + Date.now(), kind:'appeal', dlg:d.id, cid, from:ans(d, cid), ask:parseVal(fd.get('ask')), ev: fd.get('ev') ? [Number(fd.get('ev'))] : [], by: S.role === 'operator' ? 'Оператор' : 'Специалист КК', at:now(), status:'pending', comment:fd.get('comment')});
+    toast(`Апелляция по критерию «${c.name}» отправлена проверяющему.`);
+  } else {
+    const r = d.res[dlgCtx.cid];
+    S.ap.push({id:'r' + Date.now(), kind:'review', dlg:d.id, cid:dlgCtx.cid, from:r.a, to:dlgCtx.val, status: dlgCtx.val === r.a ? 'confirmed' : 'changed', reviewer:'Специалист КК', reason:fd.get('reason'), decidedAt:now(), at:now(), by:'Специалист КК'});
+    toast(`Решение сохранено. Итог ${f2(calc(d).total)}.`);
+  }
+  dlgCtx = null; render();
+});
+
+/* ---------- события ---------- */
+const A = {
+  role: t => { S.role = t.dataset.role; app.dataset.role = S.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
+  grp: (t, e) => { if (t.tagName === 'A') { e.preventDefault(); } S.grp = S.grp === t.dataset.g && S.r.page === 'queue' ? '' : t.dataset.g; if (S.r.page !== 'queue') location.hash = '#/queue'; else render(); },
+  clear: () => { S.grp = S.q = S.lang = S.ch = ''; render(); },
+  open: (t, e) => { if (e.target.closest('a')) return; location.hash = '#/d/' + encodeURIComponent(t.dataset.id); },
+  load: () => toast(`Набор «${$('#gid').value}» запрашивается через сервер: прямой запрос из браузера блокирует CORS. В макете уже загружен DEV.`),
+  crit: t => { const id = S.r.id; S.open[id] = S.open[id] === t.dataset.cid ? null : t.dataset.cid; render(); },
+  goto: t => { const d = curD(); S.open[d.id] = t.dataset.cid; render(); const r = d.res[t.dataset.cid]; if (r && r.ev && r.ev.length) { flashLine(r.ev[0]); const l = lineBy(d, r.ev[0]); if (l && l.s != null) seek(l.s); } },
+  ev: t => flashLine(Number(t.dataset.n)),
+  seek: t => { const d = curD(); const l = lineBy(d, Number(t.dataset.n)); if (!l) return; seek(l.s); flashLine(l.n); if (!S.play.on) togglePlay(); },
+  pin: t => { const d = curD(); S.open[d.id] = t.dataset.cid; render(); const r = d.res[t.dataset.cid]; const l = lineBy(d, r.ev[0]); seek(l.s); flashLine(l.n); },
+  play: () => togglePlay(),
+  skip: t => seek(S.play.t + Number(t.dataset.s)),
+  rate: () => { S.play.rate = S.play.rate === 1 ? 1.5 : S.play.rate === 1.5 ? 2 : 1; updatePlayer(); if (S.play.on) { stopPlay(); togglePlay(); } },
+  wave: (t, e) => { const d = curD(); const b = t.getBoundingClientRect(); seek((e.clientX - b.left) / b.width * d.dur); },
+  reviewed: () => { const d = curD(); d.reviewed = !d.reviewed; render(); toast(d.reviewed ? `${titleOf(d)} отмечен проверенным и уходит из верхних групп очереди.` : 'Отметка снята.'); },
+  appeal: t => openAppeal(curD(), t.dataset.cid),
+  decide: t => openDecide(curD(), t.dataset.cid, parseVal(t.dataset.val)),
+  dmode: t => { const a = parse().id || S.ap.find(x => x.status === 'pending')?.id; const id = $('#decSave') && $('#decSave').dataset.id; if (!id) return; S.dec[id].mode = t.value; render(); },
+  dval: t => { const id = $('#decSave').dataset.id; S.dec[id].val = parseVal(t.dataset.v); render(); },
+  dsave: t => { const a = S.ap.find(x => x.id === t.dataset.id), st = S.dec[a.id], d = dlgById(a.dlg); const before = calc(d).total;
+    a.to = st.mode === 'confirm' ? a.from : st.val; a.status = a.to === a.from ? 'confirmed' : 'changed'; a.reason = st.reason.trim(); a.reviewer = 'Проверяющий'; a.decidedAt = now();
+    render(); toast(`Решение сохранено. Итог ${titleOf(d)}: ${f2(before)} → ${f2(calc(d).total)}.`); },
+  crfilter: () => { location.hash = '#/queue'; },
+  csv: () => { const rows = [['Причина', 'Разговоров', 'Критерии', 'Языки', 'Что менять', 'Диалоги']];
+    $$('#reasons tbody tr').forEach(tr => { const td = tr.querySelectorAll('td'); if (td.length < 6) return; rows.push([td[0].textContent, td[1].textContent.trim(), td[2].textContent, td[3].textContent, td[4].querySelector('select').value, td[5].textContent]); });
+    const blob = new Blob(['﻿' + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(';')).join('\n')], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cqa-reasons.csv'; a.click(); URL.revokeObjectURL(a.href); },
+  coach: t => { S.coachC = t.dataset.cid; render(); },
+  copy: () => { navigator.clipboard.writeText($('#sheet ol').innerText).then(() => toast('Текст разбора скопирован.'), () => toast('Браузер не дал доступа к буферу обмена. Выделите текст вручную.')); },
+  print: () => window.print(),
+  csel: t => { S.cSel = t.dataset.cid; render(); },
+  cadd: () => { const ids = S.draft.criteria.map(c => Number(c.id)).filter(Boolean); const id = String(Math.max(0, ...ids) + 1).padStart(2, '0');
+    S.draft.criteria.push({id, sec:Math.max(0, S.draft.sections.length - 2), name:'Новый критерий', type:'bool', w:5, na:false, text:'Да — …'}); S.cSel = id; render(); },
+  cdel: () => { S.draft.criteria = S.draft.criteria.filter(c => c.id !== S.cSel); S.cSel = S.draft.criteria[0] && S.draft.criteria[0].id; render(); },
+  creset: () => { S.draft = null; render(); },
+  csave: () => { saveChecklist(); render(); },
+  crun: () => { S.running = true; render(); setTimeout(() => { S.running = false; render(); toast('Учебный макет не вызывает модель. В рабочей версии ответы появляются по мере готовности, итоги пересчитываются сами.'); }, 1400); }
+};
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]');
+  if (!t || (t.tagName === 'INPUT' && t.dataset.act !== 'dmode')) return;
+  const f = A[t.dataset.act]; if (f) f(t, e);
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'q') { S.q = t.value; render(); }
+  else if (t.id === 'decReason') { const id = $('#decSave').dataset.id; S.dec[id].reason = t.value; $('#decSave').disabled = t.value.trim().length < 5; }
+  else if (t.dataset.cf && t.type !== 'checkbox' && t.tagName !== 'SELECT') setField(t);
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.id === 'fl') { S.lang = t.value; render(); }
+  else if (t.id === 'fc') { S.ch = t.value; render(); }
+  else if (t.dataset.owner) S.owners[t.dataset.owner] = t.value;
+  else if (t.dataset.pick) { t.checked ? S.sheet.add(t.dataset.pick) : S.sheet.delete(t.dataset.pick); render(); }
+  else if (t.dataset.cf) setField(t);
+  else if (t.id === 'jsonf' && t.files[0]) t.files[0].text().then(txt => { try { const j = JSON.parse(txt); const n = (j.data && j.data.records || j.records || []).length; toast(n ? `В файле ${n} диалогов. В рабочей версии они уходят на оценку.` : 'В файле нет поля records: ожидается формат ответа API организаторов.'); } catch (err) { toast('Файл не читается как JSON. Проверьте, что это выгрузка API организаторов.'); } });
+});
+function setField(t) {
+  const c = S.draft.criteria.find(x => x.id === S.cSel), k = t.dataset.cf;
+  if (k === 'w') c.w = Number(t.value) || 0;
+  else if (k === 'sec') c.sec = Number(t.value);
+  else if (k === 'na') c.na = t.checked;
+  else if (k === 'signal') { if (t.value) c.signal = t.value; else delete c.signal; }
+  else if (k === 'type') { c.type = t.value;
+    if (c.type === 'scale' && !c.steps) { c.steps = [10, 5, 0]; c.stepText = {10:'Полностью', 5:'Частично', 0:'Нет'}; }
+    if (c.type === 'flag' && !c.questions) c.questions = [{k:'q1', label:'Нарушение'}]; }
+  else if (k === 'steps') { const lines = t.value.split('\n').map(s => s.match(/^\s*(\d+)\s*[:—-]?\s*(.*)$/)).filter(Boolean);
+    if (lines.length) { c.steps = lines.map(m => Number(m[1])).sort((a, b) => b - a); c.stepText = Object.fromEntries(lines.map(m => [Number(m[1]), m[2]])); } }
+  else if (k === 'questions') c.questions = t.value.split('\n').map(s => s.trim()).filter(Boolean).map((label, i) => ({k:(c.questions[i] && c.questions[i].k) || 'q' + i, label}));
+  else c[k] = t.value;
+  render(); // кнопки «Сохранить» и сумма весов должны видеть каждое изменение
+}
+// подсветка реплик при наведении или фокусе на критерии
+let hov = null;
+const hl = el => { $$('.hl').forEach(x => x.classList.remove('hl')); if (el && el.dataset.ev) el.dataset.ev.split(',').filter(Boolean).forEach(n => { const l = $('#L' + n); if (l) l.classList.add('hl'); }); };
+view.addEventListener('mouseover', e => { const c = e.target.closest('.crit'); if (c !== hov) { hov = c; hl(c); } });
+view.addEventListener('focusin', e => { const c = e.target.closest('.crit'); if (c !== hov) { hov = c; hl(c); } });
+// J и K — соседний диалог в очереди
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select,dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (S.r && S.r.page === 'd' && (e.key === 'j' || e.key === 'k' || e.key === 'о' || e.key === 'л')) {
+    const ord = queueOrder(), i = ord.indexOf(S.r.id), n = ord[i + (e.key === 'j' || e.key === 'о' ? 1 : -1)];
+    if (n) location.hash = '#/d/' + encodeURIComponent(n);
+  }
+});
+
+/* ---------- самопроверка расчёта: пример из чек-листа и звонок 024 ---------- */
+(function selfCheck() {
+  const ex = {id:'x', res:{'01':{a:'yes'},'02':{a:'na'},'03':{a:'na'},'04':{a:15},'05':{a:'yes'},'06':{a:7},'07':{a:'no'}}};
+  console.assert(calc(ex, null, CL0).total === 77.69, 'пример из чек-листа должен давать 77,69');
+  console.assert(calc(D[0], null, CL0).total === 82.94, 'звонок 024 должен давать 82,94');
+  const c = calc(D[0], null, CL0);
+  console.assert(Math.abs(c.losses.reduce((s, r) => s + r.loss, 0) - (100 - c.total)) < 0.01, 'потери в сумме дают 100 − итог');
+})();
+
+if (!location.hash) history.replaceState(null, '', '#/queue');
+render();
+})();
+</script>
+</body>
+</html>
