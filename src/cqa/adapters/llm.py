@@ -137,9 +137,7 @@ class ChatClient:
         body |= profile[self._settings.llm_reasoning]
         # ключа может не быть в replay (кассеты не ходят в сеть); в live отсутствие ключа
         # раньше этого места блокирует LlmEvaluator через config_error
-        api_key = (
-            self._settings.llm_api_key.get_secret_value() if self._settings.llm_api_key else ""
-        )
+        api_key = self._settings.llm_api_key.get_secret_value() if self._settings.llm_api_key else ""
         headers = {"Authorization": f"Bearer {api_key}"}
         http_ms: list[float] = []
         async with self._semaphore:
