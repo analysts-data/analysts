@@ -198,6 +198,11 @@ def test_unknown_section_is_invalid() -> None:
         save_checklist(make_store(), draft({"04": {"sec": 7}}))
 
 
+def test_scale_without_steps_is_invalid() -> None:
+    with pytest.raises(Invalid, match="Критерий 06: у шкалы нет ступеней"):
+        save_checklist(make_store(), draft({"06": {"steps": []}}))
+
+
 def test_channel_without_na_is_invalid() -> None:
     with pytest.raises(Invalid, match="Критерий 05: для канала chat нужен na: true"):
         save_checklist(make_store(), draft({"05": {"channel": "chat"}}))
