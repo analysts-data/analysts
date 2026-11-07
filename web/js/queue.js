@@ -11,7 +11,7 @@ const resolution = cl => scored(cl).find(c => c.signal === 'resolution');
 export const twoModels = S => S.mode?.verifier != null || S.dialogs.some(d => Object.values(d.res).some(r => r.alt != null));
 
 export function groupOf(d, checklist, appeals) {
-  if (!d.reviewed && flagsOf(d, checklist).length) return 'risk';
+  if (!d.reviewed && flagsOf(d, checklist, appeals).length) return 'risk';
   if (!d.reviewed && (disagree(d, checklist, appeals).length || evFail(d, checklist, appeals).length)) return 'review';
   const nextStep = scored(checklist).some(c => {
     if (c.signal !== 'resolution') return false;
@@ -32,14 +32,14 @@ export const queueOrder = (dialogs, checklist, appeals) => dialogs
 // Колонка «Почему в очереди»: {cls, text} для чипа.
 export function reasonOf(d, checklist, appeals) {
   const g = groupOf(d, checklist, appeals);
-  if (g === 'risk') return { cls: 'c-risk', text: flagsOf(d, checklist).join(', ') };
+  if (g === 'risk') return { cls: 'c-risk', text: flagsOf(d, checklist, appeals).join(', ') };
   if (g === 'review') {
     const dc = disagree(d, checklist, appeals)[0];
     if (dc) { const r = d.res[dc.id]; return { cls: 'c-info', text: `Модели разошлись: ${dc.id}, ${ansTxt(dc, r.a)} и ${ansTxt(dc, r.alt)}` }; }
     return { cls: 'c-ev', text: `Цитата для ${evFail(d, checklist, appeals)[0].id} не найдена в реплике` };
   }
   if (g === 'next') { const c = resolution(checklist); return { cls: 'c-ev', text: `${c.name}: ${ansTxt(c, ans(d, c.id, appeals))}` }; }
-  return flagsOf(d, checklist).length ? { cls: 'c-na', text: 'Грубая ошибка проверена' } : { cls: '', text: '' };
+  return flagsOf(d, checklist, appeals).length ? { cls: 'c-na', text: 'Грубая ошибка проверена' } : { cls: '', text: '' };
 }
 
 // Строка автосинхронизации из state.source; ссылку сервер не отдаёт.

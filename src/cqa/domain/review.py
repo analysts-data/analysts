@@ -10,7 +10,7 @@ from cqa.domain.models import Answer as ResultAnswer
 from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
 
 ASTANA = timezone(timedelta(hours=5))
-Answer = str | int  # ответ критерия bool или scale; флаги не оспариваются
+Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true | false}
 
 # Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
 MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel"}
