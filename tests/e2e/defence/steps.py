@@ -29,6 +29,7 @@ CALL = "call-024"
 HOLD = "Удержание и разговор с коллегой"
 APPEAL_DLG, APPEAL_CID = "p1-ru-003", "04"
 DECISION = "Срок ответа назван в реплике 8"
+WHERE = {"kz": "Казахстан", "local": "локально", "external": "внешний провайдер"}  # плашка cqa-web-ui
 
 
 @dataclass
@@ -53,6 +54,29 @@ class Defence:
     def total(self, dialog_id: str) -> float | None:
         """`calc(...).total` из `web/js/scoring.js` на `GET /api/state`, в странице сервера."""
         return self.page.evaluate(CALC_JS, dialog_id)
+
+
+def mode_and_roles(d: Defence) -> None:
+    """Перед шагами: плашка режима из `state.mode`, решение у проверяющего, «Оспорить» у оператора.
+
+    Подаёт апелляцию на критерий из `replacement_criterion.json`: её закрывает шаг замены.
+    """
+    s = d.state()
+    d.go("#/queue")
+    expect(d.body).to_contain_text(s["mode"]["model"])
+    expect(d.body).to_contain_text(WHERE[s["mode"]["where"]])
+    c = criterion(s["checklist"], load_fixture("replacement_criterion.json")["id"])
+    current = dialog(s, CARD)["res"][c["id"]]["a"]
+    ask = next(v for v in allowed(c) if v != current)
+    body = {"dlg": CARD, "cid": c["id"], "ask": ask, "ev": [], "comment": "Итог подведён.", "by": "Оператор"}
+    d.open_appeal = d.api.post("/api/appeals", json=body).raise_for_status().json()
+    d.page.reload()
+    role(d.page, "reviewer")
+    d.go("#/appeals")
+    expect(d.page.locator('[data-act="decide"]')).to_be_visible()
+    role(d.page, "operator")
+    d.go(f"#/d/{APPEAL_DLG}")
+    expect(open_criterion(d.page, APPEAL_CID).locator('[data-act="appeal"]')).to_be_visible()
 
 
 def queue(d: Defence) -> None:
@@ -273,6 +297,11 @@ def f2(total: float | None) -> str:
 
 def mmss(seconds: float) -> str:
     return f"{int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
+
+
+def allowed(c: dict[str, Any]) -> list[Any]:
+    """Допустимые ответы критерия, как в окне апелляции."""
+    return (["yes", "no"] if c["type"] == "bool" else list(c["steps"])) + (["na"] if c["na"] else [])
 
 
 def answer_text(c: dict[str, Any], a: Any) -> str:
