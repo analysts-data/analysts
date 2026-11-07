@@ -45,7 +45,7 @@
 | 5 | `analytics-coaching` | Аналитика и обучение на данных состояния, адресаты повторяющихся причин | 0, 4 | GLM-5.3 | GLM-5.3 5 |
 | 6 | `eval-and-delivery` | Эталон, `make eval`, пороги, отложенные критерии, сквозной сценарий защиты, README, свежий клон, регламент контроля | 0 | Opus | Opus 1 + GLM-flash 2–3 |
 
-Лимит: до 4 агентов Opus и до 8 агентов pi одновременно. В таблице 3 Opus и 8 pi в пике.
+Лимит: до 4 агентов Opus и до 8 агентов pi одновременно. В пике волны 1 работают 3 Opus и 7 pi, восьмой слот pi — ревьюер PR.
 
 ## Агенты и роли
 
@@ -80,7 +80,7 @@
 
 Записанные ответы модели (`tests/cassettes/`) делают тесты быстрыми, бесплатными и детерминированными. Записывает их только `make record` с живой моделью на синтетических чатах.
 
-Защищённые пути (`eval/gold/`, `eval/thresholds.yaml`, `design/contract.md`, `.github/`) проверяет `scripts/protected_paths.sh`: PR без метки `human-ok` с правкой этих путей падает. Тот же скрипт не пускает в git файлы агентов и план. `openspec validate --all --strict` выполняется в локальном `make check`, потому что в CI каталога `openspec/` нет.
+Защищённые пути (`eval/gold/`, `eval/thresholds.yaml`, `eval/baseline.json`, `design/contract.md`, `.github/`) проверяет `scripts/protected_paths.sh`: PR без метки `human-ok` с правкой этих путей падает. Тот же скрипт не пускает в git файлы агентов и план. `openspec validate --all --strict` выполняется в локальном `make check`, потому что в CI каталога `openspec/` нет.
 
 ## Таймлайн
 
@@ -106,12 +106,63 @@
 
 Не режем: переход к реплике и моменту записи, N/A и пересчёт, грубые ошибки наверху, апелляцию, редактор чек-листа, стоимость оценки.
 
-## Запуск агентов
+## Оркестрация
+
+### Волны
+
+| Волна | Старт | Агенты | Что делают | Выход |
+| --- | --- | --- | --- | --- |
+| 0 | 16:15 | Opus 1, GLM-flash 1 | `bootstrap-harness`: каркас, контракт в коде, фикстуры, `make check`, CI | M0 в 17:00: каркас в `main` |
+| 1 | 17:00 | Opus 2, Opus 3, GLM-5.3 ×5, GLM-flash ×2 | Шесть треков параллельно, каждый по группам задач своего изменения | M1 в 19:00: один диалог насквозь |
+| 2 | 19:00 | те же | Оставшиеся группы, интеграция, `make e2e` | M2 в 22:00: весь сценарий на синтетике |
+| 3 | 22:00 | Opus 1–3, GLM-5.3 ×3 | `make eval`, правка промпта по эталону, звонки и запись, обезличивание, отложенные критерии | M3 в 02:00: эталон выше порогов |
+| 4 | 02:00 | GLM-5.3 ×2, люди | Устойчивость, README, свежий клон, репетиции | M4 в 09:00: заморозка |
+
+Первые задачи волны 1, чтобы треки не ждали друг друга: интерфейс и аналитика работают на `tests/fixtures/`, сервер — на записанных ответах модели, ingest — на синтетических звонках.
+
+### Запуск агента Claude (Opus)
+
+Оркестратор запускает субагента через `Agent` с `isolation: "worktree"` и промптом:
+
+```
+Прочитай AGENTS.md. Выполни /opsx:apply <change>, только группу <N>.
+TDD: тест, красный прогон, код, зелёный прогон. После каждой задачи make check, коммит, push.
+Первый push: gh pr create --draft --fill. Когда группа готова: rebase на origin/main, make check, gh pr ready.
+Отчёт: номер PR, что сделано, что не прошло.
+```
+
+### Запуск агента pi (GLM)
 
 ```bash
-# Claude Code: Opus в отдельном worktree через Agent с isolation: worktree, промпт: /opsx:apply <change>
-# pi: один агент на worktree
-scripts/wt.sh new review-workflow storage
-cd .worktrees/review-workflow-storage
-pi -p --model zai/glm-5.3 --thinking high "Прочитай AGENTS.md и выполни /opsx-apply review-workflow, группу 1" </dev/null
+scripts/wt.sh new <change> <slug>
+cd .worktrees/<change>-<slug>
+pi -p --no-session --no-extensions --approve --model zai/glm-5.3 --thinking high \
+  "Прочитай AGENTS.md и .pi/prompts/opsx-apply.md и действуй по нему для изменения <change>, только группа <N>. TDD, make check перед каждым push, PR как в AGENTS.md." \
+  </dev/null > ../<change>-<slug>.log 2>&1 &
 ```
+
+Для мелких задач модель `zai/glm-5.3-flash`. Одновременно не больше 8 агентов pi. `--no-extensions` отключает расширение разрешений, которое иначе ждёт ответа человека бесконечно. `--approve` разрешает читать файлы проекта. Шаблон `opsx-apply` агент читает как файл: подстановка шаблонов в режиме `-p` не гарантирована.
+
+Волна 0 стартует до появления `scripts/wt.sh`, поэтому её worktree оркестратор создаёт вручную:
+
+```bash
+git fetch origin main
+git worktree add .worktrees/bootstrap-harness-core -b feat/bootstrap-harness-core origin/main
+for p in openspec AGENTS.md CLAUDE.md .claude .pi; do ln -s "$PWD/$p" ".worktrees/bootstrap-harness-core/$p"; done
+```
+
+### Ревью и слияние
+
+```bash
+gh pr list --state open                       # доска PR
+gh pr diff <n> | head -400                    # ревьюер другой модели читает изменения
+gh pr review <n> --comment --body "..."       # замечания
+gh pr checks <n>                              # CI зелёный?
+gh pr merge <n> --squash --delete-branch      # сливает только оркестратор
+scripts/wt.sh rm <change> <slug>              # убрать worktree
+openspec archive <change>                     # после последней группы изменения
+```
+
+### Доска статуса
+
+`openspec list` показывает прогресс задач по изменениям, `gh pr list` — открытые PR, `gh run list` — CI. Оркестратор раз в 30 минут сверяет доску с контрольными точками и перебрасывает агентов на отстающий трек.

@@ -12,13 +12,14 @@ data/
 # agent worktrees
 .worktrees/
 
-# agent and planning files: local only, shared into worktrees by scripts/wt.sh
-.claude/
-.pi/
+# agent and planning files: local only, shared into worktrees by scripts/wt.sh as symlinks
+# (no trailing slash: a symlink is a file to git, "dir/" would not match it)
+.claude
+.pi
 AGENTS.md
 AGENT.md
 CLAUDE.md
-openspec/
+openspec
 
 # python
 __pycache__/
