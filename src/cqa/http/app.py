@@ -49,7 +49,7 @@ def create_app(
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"https://.*\.dynamics\.com",
+        allow_origin_regex=r"https://[a-z0-9-]+(\.[a-z0-9-]+)*\.dynamics\.com",
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT"],
         allow_headers=["Content-Type"],
