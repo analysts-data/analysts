@@ -18,6 +18,7 @@ from cqa.domain.models import (
     Line,
 )
 from cqa.domain.prompt import Message, build_messages, render_dialog
+from cqa.services.errors import ConfigError
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,8 @@ class LlmEvaluator:
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
     ) -> DialogEvaluation:
+        if self.config_error:
+            raise ConfigError(self.config_error)
         if dialog.lines is None:
             raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
         # реальный звонок уходит наружу только с разрешения человека (design.md п. 19)
