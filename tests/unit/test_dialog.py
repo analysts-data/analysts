@@ -213,3 +213,34 @@ def test_warnings_name_the_conversation() -> None:
 
 def test_same_records_and_now_give_equal_results() -> None:
     assert ingest(records()) == ingest(records())
+
+
+# --- время в записи ---
+
+
+def test_paused_call_uses_paused_shift_for_every_line() -> None:
+    dialog, _ = build(raw("syn-call-pause"))
+    assert line(dialog, 2).s == line(dialog, 2).t == 22.5
+    assert line(dialog, 4).s is None
+    assert line(dialog, 4).t == 40.0
+    assert line(dialog, 6).s == line(dialog, 6).t == 47.5
+
+
+def test_hold_call_lines_before_recording_have_no_start() -> None:
+    dialog, _ = build(raw("syn-call-hold"))
+    assert line(dialog, 1).s is None and line(dialog, 2).s is None
+    assert line(dialog, 4).s is not None
+    assert line(dialog, 4).t == line(dialog, 4).s
+
+
+def test_call_time_matches_player() -> None:
+    turns = [
+        (iso(0), "bot", "Здравствуйте!"),
+        (iso(4), "client", "Алло."),
+        (iso(6), "bot", "Соединяю."),
+        (iso(8), "system", "Запись и транскрибирование запущены"),
+        (iso(18), "operator", TEXT_29),
+    ]
+    dialog, _ = build(call(turns))
+    assert [line(dialog, n).t for n in (1, 2, 3)] == [0.0, 4.0, 6.0]
+    assert line(dialog, 5).t == line(dialog, 5).s == 8.3

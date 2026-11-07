@@ -1,4 +1,4 @@
-"""Ответ организаторов → `Dialog`: метки времени, конверт, события, сегменты, свёртки.
+"""Ответ организаторов → `Dialog`: метки времени, конверт, события, сегменты, свёртки, время записи.
 
 Чистое ядро без ввода-вывода.
 """
@@ -13,6 +13,7 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ValidationError
 
+from cqa.domain.audio_timeline import audio_starts
 from cqa.domain.events import EventKind, classify_event, normalize
 from cqa.domain.models import Dialog, Fold, IngestResult, Line
 
@@ -201,6 +202,8 @@ def build_dialog(
     t: list[float | str]
     fold_t: Sequence[float | str]
     if ch == "call":
+        texts = [turn.text for turn in turns]
+        starts = audio_starts(secs, texts, who, kinds, shift_s=shift_s, shift_paused_s=shift_paused_s)
         t = [s if s is not None else round(x - secs[0], 1) for s, x in zip(starts, secs, strict=True)]
         fold_t = t
         dur = round(secs[-1] - secs[0], 1) if secs else None
