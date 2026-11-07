@@ -5,13 +5,15 @@
 нужен новый `make record` в том же PR.
 """
 
+import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from cqa.compose import build_evaluator
-from cqa.domain.models import Checklist, CriterionResult, Dialog
+from cqa.domain.models import Checklist, CriterionResult, Dialog, DialogEvaluation
 from cqa.settings import Settings
 
 pytestmark = pytest.mark.cassette
@@ -27,9 +29,16 @@ CHATS = [
 ]
 
 
-async def test_prototype_chats_are_evaluated_from_recorded_answers() -> None:
+async def _evaluate_all() -> dict[str, DialogEvaluation]:
     evaluator = build_evaluator(Settings())
-    outs = {d.id: await evaluator.evaluate(d, CHECKLIST, CHECKLIST.criteria) for d in CHATS}
+    return {d.id: await evaluator.evaluate(d, CHECKLIST, CHECKLIST.criteria) for d in CHATS}
+
+
+def test_prototype_chats_are_evaluated_from_recorded_answers() -> None:
+    # make record гонит этот тест в одной сессии с e2e: синхронный Playwright держит цикл событий в
+    # главном потоке, поэтому оценка идёт в своём потоке со своим циклом
+    with ThreadPoolExecutor(1) as pool:
+        outs = pool.submit(asyncio.run, _evaluate_all()).result()
     assert sorted(outs) == ["p1-ru-003", "p1-ru-022", "p1-ru-025"]
     for out in outs.values():
         assert out.results
