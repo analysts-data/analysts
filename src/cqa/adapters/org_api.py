@@ -1,14 +1,47 @@
 """HTTP-клиент API организаторов: адрес не попадает ни в журнал, ни в текст ошибок."""
 
 import re
+from html.parser import HTMLParser
 from typing import Final
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 
 FETCH_TIMEOUT_S: Final = 30.0
+AUDIO_TIMEOUT_S: Final = 10.0
 
 _GROUP_ID_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+class _AudioSrcParser(HTMLParser):
+    """Первый `<source src>` или `<audio src>`; сущности HTML раскрываются сами."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.src: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.src is not None or tag not in ("source", "audio"):
+            return
+        for name, value in attrs:
+            if name == "src" and value:
+                self.src = value
+                return
+
+
+def extract_audio_src(html: str, base_url: str) -> str | None:
+    """Адрес первого `<source src>` или `<audio src>`; относительный достраивается от `base_url`.
+
+    Принимаются только схемы `http` и `https`; иначе `None`.
+    """
+    parser = _AudioSrcParser()
+    parser.feed(html)
+    if parser.src is None:
+        return None
+    link = urljoin(base_url, parser.src)
+    if urlsplit(link).scheme not in ("http", "https"):
+        return None
+    return link
 
 
 class OrgApiError(Exception):
