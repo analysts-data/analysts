@@ -4,6 +4,7 @@ Optional fields are the ones the prototype mocks (design/cqa-v3) omit. Dump with
 `model_dump(mode="json", exclude_unset=True)` to get exactly the contract shape back.
 """
 
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -128,3 +129,31 @@ class Appeal(BaseModel):
     reviewer: str | None = None
     reason: str | None = None
     decidedAt: str | None = None
+
+
+class Mode(BaseModel):  # mode in GET /api/state
+    where: Literal["kz", "local", "external"]
+    anonymized: bool
+    model: str
+    verifier: Literal["jev", "self"] | None  # contract.md allows "self"; Settings.verifier never sets it
+
+
+@dataclass(frozen=True)
+class IngestResult:
+    dialogs: list[Dialog]  # one per id, source order, without res and reviewed
+    audio: dict[str, str]  # call id -> audio_url; goes to dialogs.audio_url, never into Dialog
+    skipped: int  # broken records, == len(errors)
+    errors: list[str]  # "<conversation_id>: <reason>"
+
+
+@dataclass(frozen=True)
+class Evaluation:
+    cid: str
+    result: CriterionResult
+
+
+@dataclass(frozen=True)
+class DialogEvaluation:
+    results: list[Evaluation]  # one per answered criterion, in the order of the criteria argument
+    verifier_calls: int  # second-opinion requests in this call (0 or 1)
+    verifier_usd: float  # their price; not included in CriterionResult.cost
