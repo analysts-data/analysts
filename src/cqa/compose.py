@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 
 from cqa.adapters.cassette import CassetteTransport
+from cqa.adapters.jev import JevVerifier
 from cqa.adapters.llm import PROFILES, ChatClient
 from cqa.adapters.org_api import OrgApi
 from cqa.services.evaluation import LlmEvaluator, Verifier
@@ -27,27 +28,33 @@ def _config_error(settings: Settings) -> str | None:
         return f"Нет ключа модели для режима {settings.llm_mode}: задайте CQA_LLM_API_KEY"
     if settings.llm_mode != "replay" and not settings.llm_base_url:
         return f"Нет адреса модели для режима {settings.llm_mode}: задайте CQA_LLM_BASE_URL"
-    if settings.verifier == "jev":
-        # стык: JevVerifier (llm-evaluation, группа 6) заменяет эту строку и _verifier
-        return "Второе мнение Jev ещё не подключено: оставьте CQA_VERIFIER пустым"
+    if settings.verifier == "jev" and settings.llm_mode != "replay" and settings.jev_api_key is None:
+        return f"Нет ключа второго мнения для режима {settings.llm_mode}: задайте CQA_JEV_API_KEY"
     return None
 
 
-def _verifier(settings: Settings, http: httpx.AsyncClient) -> Verifier | None:
-    return None  # CQA_VERIFIER=jev → JevVerifier(settings.jev_api_key, http) после слияния группы 6
+def _http(settings: Settings, kind: str) -> httpx.AsyncClient:
+    """Клиент с записями tests/cassettes/{kind} по CQA_LLM_MODE."""
+    return httpx.AsyncClient(
+        transport=CassetteTransport(settings.llm_mode, CASSETTES / kind), timeout=settings.llm_timeout_s
+    )
+
+
+def _verifier(settings: Settings) -> Verifier | None:
+    if settings.verifier != "jev":
+        return None
+    key = settings.jev_api_key.get_secret_value() if settings.jev_api_key else ""  # в replay ключ не нужен
+    return JevVerifier(key, _http(settings, "jev"))
 
 
 def build_evaluator(settings: Settings) -> LlmEvaluator:
     """Не бросает и не ходит в сеть: replay и record читают записи, record и live — сеть только при вызове."""
-    http = httpx.AsyncClient(
-        transport=CassetteTransport(settings.llm_mode, CASSETTES / "llm"), timeout=settings.llm_timeout_s
-    )
     return LlmEvaluator(
-        ChatClient(settings, http),
+        ChatClient(settings, _http(settings, "llm")),
         model_name=settings.llm_model,
         reasoning=settings.llm_reasoning,
         anonymize=settings.anonymize,
-        verifier=_verifier(settings, http),
+        verifier=_verifier(settings),
         sends_real_data=settings.llm_mode == "live",
         allow_real_data=settings.allow_real_data,
         config_error=_config_error(settings),

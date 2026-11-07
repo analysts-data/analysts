@@ -17,6 +17,18 @@ DIALOG_TEXT = "[1 · 00:01] client: Алло.\n[2 · 00:05] operator: Здрав
 _EMPTY_OK = {"answers": {}, "usage": {"input_tokens": 0}}
 
 
+def v1(answers: dict) -> dict:
+    """Ответы в форме API v1: choice — {"choice": ключ criteria}, noul — {"noul": вероятность}."""
+    out = {}
+    for key, value in answers.items():
+        if "_" in key:
+            out[key] = {"type": "noul", "noul": value}
+        else:
+            choice = str(value)
+            out[key] = {"type": "choice", "choice": choice, "confidence": 0.9, "probabilities": {choice: 0.9}}
+    return out
+
+
 def _checklist() -> Checklist:
     raw = json.loads(
         (Path(__file__).parents[1] / "fixtures" / "checklist_v3.json").read_text(encoding="utf-8")
@@ -27,7 +39,8 @@ def _checklist() -> Checklist:
 async def _verify(mock_body: dict, *, max_parallel: int = 8):
     checklist = _checklist()
     with respx.mock(assert_all_called=False) as mock:
-        route = mock.post(JEV_URL).respond(200, json=mock_body)
+        body = {**mock_body, "answers": v1(mock_body.get("answers", {}))}
+        route = mock.post(JEV_URL).respond(200, json=body)
         async with httpx.AsyncClient() as http:
             verdict = await JevVerifier(KEY, http, max_parallel=max_parallel).verify(
                 DIALOG_TEXT, checklist.rules, checklist.criteria
@@ -51,27 +64,29 @@ async def test_request_has_positional_choice_and_noul_questions_without_identifi
     assert len(choice) == 7
     assert len(noul) == 3
     for question in questions.values():
-        assert "Оцени по dialog только реплики оператора" in question["text"]
+        assert "Оцени по dialog только реплики оператора" in question["instructions"]
+        assert "text" not in question and "options" not in question
     raw = json.dumps(body, ensure_ascii=False)
     for criterion in checklist.criteria:
         assert criterion.name not in raw
         assert criterion.id not in questions
 
 
-async def test_choice_options_follow_criterion_type_and_na_permission():
+async def test_choice_criteria_follow_criterion_type_and_na_permission():
     _, body, _ = await _verify(_EMPTY_OK)
     questions = body["questions"]
     for i, criterion in enumerate(_checklist().criteria):
         if criterion.type == "flag":
             continue
-        options = questions[f"q{i}"]["options"]
+        criteria = questions[f"q{i}"]["criteria"]
+        na = {"na": criterion.naCond} if criterion.na else {}
         if criterion.type == "scale":
-            assert options == {
+            assert criteria == {
                 **{str(s): (criterion.stepText or {})[str(s)] for s in criterion.steps or []},
-                **({"na": criterion.naCond} if criterion.na else {}),
+                **na,
             }
         else:
-            assert options == ["yes", "no"] + (["na"] if criterion.na else [])
+            assert criteria == {"yes": "Да", "no": "Нет", **na}
 
 
 async def test_request_carries_bearer_authorization():
@@ -207,7 +222,7 @@ def _evaluator(verifier, model=None):
 
 async def _evaluate_with_jev(answers: dict, usage: int = 4000, *, violation: bool = False):
     checklist, criteria = _criteria()
-    body = {"answers": answers, "usage": {"input_tokens": usage}}
+    body = {"answers": v1(answers), "usage": {"input_tokens": usage}}
     with respx.mock(assert_all_called=False) as mock:
         route = mock.post(JEV_URL).respond(200, json=body)
         async with httpx.AsyncClient() as http:
