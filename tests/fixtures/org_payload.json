@@ -1,0 +1,270 @@
+{
+  "error": null,
+  "isSuccess": true,
+  "data": {
+    "dataset_group_id": "SYN",
+    "total_records": 5,
+    "records": [
+      {
+        "conversation_id": "syn-chat-ru",
+        "channel": "agent chat",
+        "language": "ru",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Опишите ваш вопрос."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:20",
+            "speaker": "client",
+            "text": "Здравствуйте, хочу уточнить статус заказа 12345."
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Проверю ваш заказ, минуту."
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "operator",
+            "text": "Заказ 12345 отправлен, доставка ожидается завтра до 18:00."
+          },
+          {
+            "timestamp": "03:00",
+            "speaker": "client",
+            "text": "Спасибо, всё понятно."
+          },
+          {
+            "timestamp": "03:16",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "syn-chat-kz",
+        "channel": "agent chat",
+        "language": "kz",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Мен көмекшімін. Сұрағыңызды жазыңыз."
+          },
+          {
+            "timestamp": "00:09",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:24",
+            "speaker": "client",
+            "text": "Сәлеметсіз бе, тапсырыстың күйін білгім келеді."
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто], қазір тексеремін."
+          },
+          {
+            "timestamp": "02:10",
+            "speaker": "operator",
+            "text": "Тапсырыс жолда, ертең жеткізіледі."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Рахмет, барлығы түсінікті."
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "system",
+            "text": "Клиент чаттан кетті"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "syn-chat-en",
+        "channel": "agent chat",
+        "language": "en",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. How can I help you today?"
+          },
+          {
+            "timestamp": "00:10",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:35",
+            "speaker": "client",
+            "text": "Hello, I'd like to check my order status."
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "operator",
+            "text": "Hello, my name is [Имя скрыто]. I'll check that for you."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "operator",
+            "text": "Your order has been shipped and arrives tomorrow."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "system",
+            "text": "Client joined the chat from a mobile app"
+          },
+          {
+            "timestamp": "02:55",
+            "speaker": "client",
+            "text": "Great, thank you for the help."
+          },
+          {
+            "timestamp": "03:10",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "syn-call-hold",
+        "channel": "voice call",
+        "language": "ru",
+        "transcript": [
+          {
+            "timestamp": "2026-11-01T10:00:00.0000000+05:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Вы позвонили в банк. Останьтесь на линии."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:02.5000000+05:00",
+            "speaker": "client",
+            "text": "Алло, здравствуйте, слышу вас."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:04.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:10.0000000+05:00",
+            "speaker": "operator",
+            "text": "Добрый день! Меня зовут Алина, чем могу помочь?"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:12.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте, у меня вопрос по кредиту."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:16.0000000+05:00",
+            "speaker": "operator",
+            "text": "Да, конечно, задавайте ваш вопрос."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:18.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:19.0000000+05:00",
+            "speaker": "system",
+            "text": "Инициирована консультация с агентом [Имя скрыто]"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:25.0000000+05:00",
+            "speaker": "operator",
+            "text": "Привет, посмотри, пожалуйста, договор 77-112."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:30.0000000+05:00",
+            "speaker": "operator",
+            "text": "Сейчас проверю, одну секунду."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:35.0000000+05:00",
+            "speaker": "system",
+            "text": "Агент вышел из разговора"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:36.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:40.0000000+05:00",
+            "speaker": "operator",
+            "text": "Минуту, проверю."
+          },
+          {
+            "timestamp": "2026-11-01T10:00:41.0000000+05:00",
+            "speaker": "operator",
+            "text": "минуту,  проверю"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:43.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          },
+          {
+            "timestamp": "2026-11-01T10:00:43.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо за звонок, обращайтесь."
+          }
+        ],
+        "audio_url": "https://org.test/player/syn-call-hold"
+      },
+      {
+        "conversation_id": "syn-call-pause",
+        "channel": "voice call",
+        "language": "ru",
+        "transcript": [
+          {
+            "timestamp": "2026-11-01T09:00:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-01T09:00:20.0000000+05:00",
+            "speaker": "operator",
+            "text": "Добрый день! Меня зовут Алина"
+          },
+          {
+            "timestamp": "2026-11-01T09:00:30.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование приостановлены"
+          },
+          {
+            "timestamp": "2026-11-01T09:00:40.0000000+05:00",
+            "speaker": "client",
+            "text": "Да, я готов немного подождать"
+          },
+          {
+            "timestamp": "2026-11-01T09:00:45.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование возобновлены"
+          },
+          {
+            "timestamp": "2026-11-01T09:01:00.0000000+05:00",
+            "speaker": "client",
+            "text": "Хорошо, я подожду ещё минутку"
+          }
+        ],
+        "audio_url": "https://org.test/player/syn-call-pause"
+      }
+    ]
+  }
+}
