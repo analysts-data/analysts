@@ -61,7 +61,9 @@ export function view(S, id) {
   const C = 2 * Math.PI * 52, dash = sum.total == null ? 0 : (C * sum.total) / 100;
   const naRows = scored(cl).filter(c => ans(d, c.id, S.appeals) === 'na');
   const flags = flagsOf(d, cl);
-  const answered = scored(cl).filter(c => d.res[c.id] && d.res[c.id].alt != null).length;
+  // как в прототипе и аналитике: ответ без второго мнения считается совпавшим; строка видна, если второе мнение было
+  const withRes = scored(cl).filter(c => d.res[c.id]);
+  const answered = withRes.some(c => d.res[c.id].alt != null) ? withRes.length : 0;
   const fr = cl.criteria.find(c => c.type === 'flag'), frr = fr && d.res[fr.id];
   return `
   <nav class="row" aria-label="Навигация по очереди" style="justify-content:space-between">
@@ -199,7 +201,7 @@ function listen(d, l, mini) {
   if (l.s == null) return `<a class="small" href="${esc(api.playerUrl(d.id))}" target="_blank" rel="noopener">Открыть в плеере</a>`;
   return mini
     ? `<button type="button" class="mini" data-act="seek" aria-label="Слушать реплику ${l.n} с ${mmss(l.s)}" title="Слушать с ${mmss(l.s)}">▶</button>`
-    : `<button type="button" class="btn sm" data-act="seek" data-n="${l.n}">▶ Перейти к фрагменту, ${mmss(l.s)}</button>`;
+    : `<button type="button" class="btn sm" data-act="seek" data-n="${l.n}" aria-label="Перейти к фрагменту, ${mmss(l.s)}" title="Перейти к фрагменту">▶ ${mmss(l.s)}</button>`;
 }
 
 function evidence(d, r) {
