@@ -1,0 +1,120 @@
+"""Data contract from design/contract.md and cross-track types from design/ports.md.
+
+Optional fields are the ones the prototype mocks (design/cqa-v3) omit. Dump with
+`model_dump(mode="json", exclude_unset=True)` to get exactly the contract shape back.
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# "yes" | "no" | "na", a scale step, or a flag object {"insult": false, ...}
+Answer = Literal["yes", "no", "na"] | int | dict[str, bool]
+
+# `from` is a Python keyword: field `from_`, JSON key "from"
+_BY_ALIAS = ConfigDict(validate_by_name=True, serialize_by_alias=True)
+
+
+class Question(BaseModel):
+    k: str
+    label: str
+    text: str | None = None
+
+
+class Criterion(BaseModel):
+    id: str
+    sec: int
+    name: str
+    type: Literal["bool", "scale", "flag"]
+    w: float
+    na: bool = False
+    naCond: str | None = None
+    signal: Literal["resolution", "risk"] | None = None
+    steps: list[int] | None = None
+    stepText: dict[str, str] | None = None
+    questions: list[Question] | None = None
+    text: str
+    channel: Literal["all", "chat", "call"] = "all"
+
+
+class Checklist(BaseModel):
+    version: int
+    rules: str
+    sections: list[str]
+    criteria: list[Criterion]
+
+
+class Line(BaseModel):
+    n: int
+    t: float | str  # call: seconds; chat: "MM:SS" as in the source
+    ts: str | None = None
+    who: Literal["client", "operator", "bot", "system"]
+    text: str
+    s: float | None = None
+    seg: Literal["pre", "conv", "internal", "after"] | None = None
+    dup: bool | None = None
+
+
+class Fold(BaseModel):
+    model_config = _BY_ALIAS
+    fold: Literal[True]
+    from_: int = Field(validation_alias="from", serialization_alias="from")
+    to: int
+    t0: float | str
+    t1: float | str
+    label: str
+
+
+class CriterionResult(BaseModel):
+    a: Answer
+    alt: Answer | None = None
+    ev: list[int] = []
+    seg: str | None = None
+    why: str | None = None
+    quote: str | None = None
+    tag: str | None = None
+    better: str | None = None
+    evFail: bool = False
+    model: str | None = None
+    calls: int = 0
+    cost: float = 0.0
+    ms: int = 0
+
+
+class Cost(BaseModel):  # Dialog.cost
+    calls: int
+    verifier_calls: int
+    usd: float
+    ms: int
+
+
+class Dialog(BaseModel):
+    id: str
+    title: str | None = None
+    ch: Literal["chat", "call"]
+    lang: str
+    dur: float | None = None
+    at: str
+    lines: list[Line | Fold] | None
+    res: dict[str, CriterionResult] = {}
+    reviewed: bool = False
+    cost: Cost | None = None
+
+
+class Appeal(BaseModel):
+    model_config = _BY_ALIAS
+    id: str
+    kind: Literal["appeal", "review"]
+    dlg: str
+    cid: str
+    from_: Answer = Field(validation_alias="from", serialization_alias="from")
+    ask: Answer | None = None
+    to: Answer | None = None
+    ev: list[int] = []
+    by: str
+    at: str
+    status: Literal["pending", "confirmed", "changed", "closed"]
+    comment: str
+    reviewer: str | None = None
+    reason: str | None = None
+    decidedAt: str | None = None
