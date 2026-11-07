@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from cqa.domain.ingest import ts_seconds
+from cqa.domain.ingest import (
+    OrgPayload,
+    OrgRecord,
+    OrgTurn,
+    PayloadError,
+    parse_payload,
+    ts_seconds,
+)
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "org_payload.json"
 
@@ -42,6 +49,67 @@ def test_ts_seconds_without_timezone_is_utc() -> None:
 @pytest.mark.parametrize("bad", ["??", "", "10:99", "01.10"])
 def test_ts_seconds_unparsable_returns_none(bad: str) -> None:
     assert ts_seconds(bad) is None
+
+
+def test_org_record_ignores_extra_fields() -> None:
+    record = OrgRecord.model_validate(
+        {
+            "conversation_id": "syn-chat-ru",
+            "channel": "agent chat",
+            "language": "ru",
+            "transcript": [{"timestamp": "00:00", "speaker": "bot", "text": "Привет", "extra": 1}],
+            "audio_url": None,
+            "meta": {"source": "dev"},
+        }
+    )
+    assert record.transcript == [OrgTurn(timestamp="00:00", speaker="bot", text="Привет")]
+    assert "meta" not in record.model_dump()
+    assert record.audio_url is None
+
+
+def test_parse_payload_reads_fixture_envelope() -> None:
+    body = FIXTURE.read_bytes()
+    payload = parse_payload(body)
+    assert isinstance(payload, OrgPayload)
+    assert payload.group_id == "SYN"
+    assert len(payload.records) == 5
+    assert payload.warnings == []
+
+
+def test_parse_payload_rejects_non_json_body() -> None:
+    with pytest.raises(PayloadError):
+        parse_payload(b"<html>oops</html>")
+
+
+def test_parse_payload_rejects_is_success_false_with_error_text() -> None:
+    body = json.dumps({"error": "group not found", "isSuccess": False, "data": None}).encode()
+    with pytest.raises(PayloadError) as excinfo:
+        parse_payload(body)
+    assert "group not found" in str(excinfo.value)
+
+
+def test_parse_payload_rejects_records_not_a_list() -> None:
+    body = json.dumps({"error": None, "isSuccess": True, "data": {"records": {}}}).encode()
+    with pytest.raises(PayloadError):
+        parse_payload(body)
+
+
+def test_parse_payload_warns_when_total_records_mismatches() -> None:
+    body = json.dumps(
+        {
+            "error": None,
+            "isSuccess": True,
+            "data": {
+                "dataset_group_id": "SYN",
+                "total_records": 5,
+                "records": [{}, {}, {}],
+            },
+        }
+    ).encode()
+    payload = parse_payload(body)
+    assert len(payload.records) == 3
+    assert len(payload.warnings) == 1
+    assert "5" in payload.warnings[0] and "3" in payload.warnings[0]
 
 
 def test_org_payload_fixture_is_valid_envelope() -> None:
