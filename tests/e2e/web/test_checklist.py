@@ -203,3 +203,23 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
     expect(page.locator('[data-act="open"][data-id="call-024"]')).to_contain_text(
         "83,75"
     )  # было 82,94 при весе 15
+
+
+@pytest.mark.parametrize(
+    ("cid", "field", "typed"),
+    [
+        ("04", "#cf-name", "Полная консультация по запросу"),
+        ("04", "#cf-text", "Оцените ответ, следующий шаг и срок."),
+        ("04", "#cf-steps", "10: Полностью\n5: Частично\n0: Нет"),
+        ("08", "#cf-q", "Оскорбление клиента\nПлатная услуга"),
+    ],
+)
+def test_typing_key_by_key_keeps_every_character_and_focus(
+    page: Page, web_url: str, cid: str, field: str, typed: str
+) -> None:
+    open_checklist(page, web_url)
+    item(page, cid).click()
+    page.locator(field).fill("")
+    page.locator(field).press_sequentially(typed)
+    expect(page.locator(field)).to_have_value(typed)
+    expect(page.locator(field)).to_be_focused()
