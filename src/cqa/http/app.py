@@ -46,7 +46,6 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="CQA")
     settings = settings or Settings()
-    source = source if source is not None else build_source(settings)  # dialog-ingest, ports.md
     app.state.settings = settings
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
@@ -62,7 +61,7 @@ def create_app(
             Checklist.model_validate_json(SEED_CHECKLIST.read_text(encoding="utf-8")), "начальная версия"
         )
     app.state.store = store
-    app.state.source = source
+    app.state.source = source if source is not None else build_source(settings)
     app.state.runner = (
         Runner(store, evaluator, parallel=settings.llm_max_parallel) if evaluator is not None else None
     )

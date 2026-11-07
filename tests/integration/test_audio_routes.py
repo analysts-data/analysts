@@ -11,6 +11,7 @@ import respx
 from cqa.adapters.org_api import OrgApi
 from cqa.domain.ingest import ingest_records, parse_payload
 from cqa.http.app import create_app
+from cqa.services.ingest import OrgDialogSource
 from cqa.settings import Settings
 
 TEMPLATE = "https://org.test/api/dialogs?group_id=DEV&token=t"
@@ -206,6 +207,23 @@ def test_audio_routes_are_connected_in_create_app() -> None:
     paths = set(create_app(Settings(_env_file=None, db_path=":memory:")).openapi()["paths"])
     assert "/api/dialogs/{id}/audio" in paths
     assert "/api/dialogs/{id}/player" in paths
+
+
+@respx.mock
+def test_create_app_without_source_builds_one_without_requests() -> None:
+    app = create_app(Settings(_env_file=None, db_path=":memory:"))
+
+    assert isinstance(app.state.source, OrgDialogSource)
+    assert len(respx.calls) == 0
+
+
+@respx.mock
+def test_create_app_keeps_the_source_it_was_given() -> None:
+    given = FakeSource()
+    app = create_app(Settings(_env_file=None, db_path=":memory:"), source=given)
+
+    assert app.state.source is given
+    assert len(respx.calls) == 0
 
 
 @respx.mock

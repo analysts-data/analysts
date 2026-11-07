@@ -125,7 +125,7 @@ class Appeal(BaseModel):
     by: str
     at: str
     status: Literal["pending", "confirmed", "changed", "closed"]
-    comment: str
+    comment: str | None = None  # null у kind "review"
     reviewer: str | None = None
     reason: str | None = None
     decidedAt: str | None = None

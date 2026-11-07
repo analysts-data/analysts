@@ -185,3 +185,41 @@ export function criteriaStats(S) {
       };
     });
 }
+
+const lineOf = (d, n) => (d.lines || []).find(l => l.n === n);
+
+// Моменты обучения: задан better и доля ответа по ans < 1; line — первая реплика-основание оператора.
+// Группы по критерию, по убыванию числа моментов, при равенстве — в порядке чек-листа.
+// {groups: [{cid, items: [{key, dialogId, lang, answer, line, why, better}]}]}
+export function coachingStats(S) {
+  const groups = [];
+  for (const c of S.checklist.criteria) {
+    if (c.type === 'flag') continue;
+    const items = [];
+    for (const d of S.dialogs) {
+      const r = d.res[c.id];
+      const a = ans(d, c.id, S.appeals);
+      const f = frac(c, a);
+      if (!r || !r.better || f == null || f >= 1) continue;
+      const line = (r.ev || []).map(n => lineOf(d, n)).find(l => l && l.who === 'operator') || null;
+      items.push({ key: `${d.id}/${c.id}`, dialogId: d.id, lang: d.lang, answer: a, line, why: r.why, better: r.better });
+    }
+    if (items.length) groups.push({ cid: c.id, items });
+  }
+  return { groups: groups.sort((x, y) => y.items.length - x.items.length) };
+}
+
+// «Как звучит хороший ответ»: реплики оператора из оснований ответов с полным баллом.
+export function goodExamples(S, cid, limit = 3) {
+  const c = S.checklist.criteria.find(x => x.id === cid);
+  const out = [];
+  for (const d of S.dialogs) {
+    const r = d.res[cid];
+    if (!r || !r.ev || frac(c, ans(d, cid, S.appeals)) !== 1) continue;
+    for (const n of r.ev) {
+      const l = lineOf(d, n);
+      if (l && l.who === 'operator') out.push({ dialogId: d.id, lineNo: n, text: l.text });
+    }
+  }
+  return out.slice(0, limit);
+}
