@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,13 @@ class CassetteMissing(Exception):
 def _key(body: dict[str, Any]) -> str:
     canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _audit(path: Path) -> None:
+    """Белый список записей (eval-and-delivery 5.2): make e2e задаёт CQA_CASSETTE_LOG, сервер наследует."""
+    if log := os.environ.get("CQA_CASSETTE_LOG"):
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"{path.parent.name}/{path.name}\n")
 
 
 class CassetteTransport(httpx.AsyncBaseTransport):
@@ -34,6 +42,7 @@ class CassetteTransport(httpx.AsyncBaseTransport):
         body: dict[str, Any] = json.loads(request.content)
         path = self._directory / f"{_key(body)}.json"
         if self._mode != "live" and path.exists():
+            _audit(path)
             record = json.loads(path.read_text(encoding="utf-8"))
             response = httpx.Response(record["status"], json=record["response"])
             response.request = request

@@ -1,6 +1,8 @@
 """Shared fixtures; also puts tests/ on sys.path so tests can `import fakes`."""
 
+import os
 import sqlite3
+import tempfile
 from collections.abc import Iterator
 
 import pytest
@@ -13,6 +15,17 @@ from cqa.settings import Settings
 from fakes import FakeEvaluator, FakeSource, prototype_checklist, prototype_dialogs
 
 AUDIO = {"call-024": "https://storage.test/call-024.mp3"}
+AUDIT_TEST = "test_every_cassette_is_replayed"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """make e2e (CQA_CASSETTE_AUDIT=1): каждая воспроизведённая запись пишется в общий журнал."""
+    if os.environ.get("CQA_CASSETTE_AUDIT") == "1" and "CQA_CASSETTE_LOG" not in os.environ:
+        os.environ["CQA_CASSETTE_LOG"] = tempfile.mkstemp(prefix="cqa-cassettes-", suffix=".log")[1]
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    items.sort(key=lambda item: item.name == AUDIT_TEST)  # сверка журнала — после всех прогонов
 
 
 @pytest.fixture
