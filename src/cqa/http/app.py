@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
+from cqa.compose import build_source
 from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.audio import router as audio_router
@@ -60,7 +61,7 @@ def create_app(
             Checklist.model_validate_json(SEED_CHECKLIST.read_text(encoding="utf-8")), "начальная версия"
         )
     app.state.store = store
-    app.state.source = source
+    app.state.source = source if source is not None else build_source(settings)
     app.state.runner = (
         Runner(store, evaluator, parallel=settings.llm_max_parallel) if evaluator is not None else None
     )

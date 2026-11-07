@@ -22,6 +22,7 @@ from cqa.settings import Settings
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "org_payload.json"
 TEMPLATE = "https://org.test/api/dialogs?group_id=DEV&token=t"
 API = "https://org.test/api/dialogs"
+PLAYER_URL = "https://org.test/player/syn-call-hold"
 NOW = datetime(2026, 11, 7, 15, 30)
 
 
@@ -183,3 +184,39 @@ def test_audio_shift_comes_from_settings(tmp_path: Path, monkeypatch: pytest.Mon
 def test_build_source_makes_no_requests(tmp_path: Path) -> None:
     build_source(Settings(_env_file=None, org_api_url=SecretStr(TEMPLATE), raw_dir=tmp_path))
     assert len(respx.calls) == 0
+
+
+# --- audio_link ---
+
+
+@respx.mock
+async def test_audio_link_returns_fresh_mp3_from_player(tmp_path: Path) -> None:
+    route = respx.get(PLAYER_URL).mock(
+        return_value=httpx.Response(
+            200, text='<audio controls><source src="https://storage.test/rec.mp3?a=1&amp;b=2"></audio>'
+        )
+    )
+    link = await make_source(tmp_path).audio_link(PLAYER_URL)
+
+    assert route.call_count == 1
+    assert link == "https://storage.test/rec.mp3?a=1&b=2"
+
+
+@respx.mock
+async def test_audio_link_player_failure_returns_none(tmp_path: Path) -> None:
+    respx.get(PLAYER_URL).mock(return_value=httpx.Response(500))
+    assert await make_source(tmp_path).audio_link(PLAYER_URL) is None
+
+
+@respx.mock
+async def test_audio_link_has_no_cache_two_calls_two_requests(tmp_path: Path) -> None:
+    route = respx.get(PLAYER_URL).mock(
+        return_value=httpx.Response(200, text='<source src="https://storage.test/rec.mp3">')
+    )
+    source = make_source(tmp_path)
+
+    first = await source.audio_link(PLAYER_URL)
+    second = await source.audio_link(PLAYER_URL)
+
+    assert first == second == "https://storage.test/rec.mp3"
+    assert route.call_count == 2

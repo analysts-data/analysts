@@ -1,4 +1,4 @@
-.PHONY: check e2e eval eval-holdout record run fmt backup
+.PHONY: check e2e eval eval-holdout record run fmt backup demo
 
 check:
 	uv run ruff check --no-cache src tests
@@ -26,6 +26,10 @@ record:
 
 run:
 	uv run uvicorn cqa.http.app:create_app --factory --reload --port 8000
+
+demo:
+	# без ключа: replay, база data/demo.db, набор tests/e2e/fixtures/defence_set.json
+	uv run python scripts/demo.py serve
 
 fmt:
 	uv run ruff format src tests
