@@ -27,6 +27,8 @@ CARD = "p1-ru-022"
 NA = "p1-ru-025"
 CALL = "call-024"
 HOLD = "Удержание и разговор с коллегой"
+APPEAL_DLG, APPEAL_CID = "p1-ru-003", "04"
+DECISION = "Срок ответа назван в реплике 8"
 
 
 @dataclass
@@ -134,6 +136,47 @@ def na_and_call(d: Defence) -> None:
     expect(line(d.page, hold["from"])).to_be_visible()
 
 
+def appeal(d: Defence) -> None:
+    """Апелляция (60 с): оператор просит ступень выше, решение без причины невозможно, итоги рядом."""
+    s = d.state()
+    c, res = criterion(s["checklist"], APPEAL_CID), dialog(s, APPEAL_DLG)["res"][APPEAL_CID]
+    ask = min((x for x in c["steps"] if isinstance(res["a"], int) and x > res["a"]), default=None)
+    assert ask is not None, f"{APPEAL_DLG} {APPEAL_CID}: нет ступени выше {res['a']!r}"
+    d.go(f"#/d/{APPEAL_DLG}")
+    before = d.total(APPEAL_DLG)
+    role(d.page, "operator")
+    open_criterion(d.page, APPEAL_CID).locator('[data-act="appeal"]').click()
+    form = d.page.get_by_role("dialog")
+    form.get_by_label("Какой ответ вы считаете верным").select_option(str(ask))
+    form.get_by_label("Комментарий").fill("Срок вывода назван в реплике 8, это существенная часть ответа.")
+    with d.page.expect_response(
+        lambda r: r.request.method == "POST" and r.url.endswith("/api/appeals")
+    ) as filed:
+        form.get_by_role("button", name="Отправить апелляцию").click()
+    a = filed.value.json()
+    assert (a["kind"], a["status"], a["ask"]) == ("appeal", "pending", ask), a
+
+    role(d.page, "reviewer")
+    d.go(f"#/appeals/{a['id']}")
+    decide = d.page.locator('[data-act="decide"]')
+    expect(decide).to_be_disabled()
+    d.page.locator('[data-view="appeals"] textarea').fill(DECISION)
+    with d.page.expect_response(lambda r: r.url.endswith(f"/api/appeals/{a['id']}/decision")) as decided:
+        decide.click()
+    assert decided.value.json()["status"] == "changed"
+
+    s = d.state()
+    a = next(x for x in s["appeals"] if x["id"] == a["id"])
+    assert (a["status"], a["to"], a["reason"]) == ("changed", ask, DECISION), a
+    assert dialog(s, APPEAL_DLG)["res"][APPEAL_CID] == res, "исходный res изменился"
+    after = d.total(APPEAL_DLG)
+    assert after != before, f"итог не изменился: {before}"
+    d.go(f"#/d/{APPEAL_DLG}")
+    open_criterion(d.page, APPEAL_CID)
+    for text in (answer_text(c, res["a"]), f2(before), f2(after)):
+        expect(d.body).to_contain_text(text)
+
+
 def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
     deadline = time.monotonic() + RUN_TIMEOUT_S
     while (run := api.get(f"/api/runs/{run_id}").raise_for_status().json())["status"] == "running":
@@ -148,6 +191,10 @@ def load_fixture(name: str) -> Any:
 
 def dialog(state: dict[str, Any], dialog_id: str) -> dict[str, Any]:
     return next(x for x in state["dialogs"] if x["id"] == dialog_id)
+
+
+def criterion(checklist: dict[str, Any], cid: str) -> dict[str, Any]:
+    return next(c for c in checklist["criteria"] if c["id"] == cid)
 
 
 def scored(checklist: dict[str, Any]) -> list[dict[str, Any]]:
@@ -174,6 +221,13 @@ def mmss(seconds: float) -> str:
     return f"{int(seconds) // 60:02d}:{int(seconds) % 60:02d}"
 
 
+def answer_text(c: dict[str, Any], a: Any) -> str:
+    """Ответ на экране: «Да», «Нет», «N/A» или «15 из 20»."""
+    if c["type"] == "scale" and a != "na":
+        return f"{a} из {max(c['steps'])}"
+    return {"yes": "Да", "no": "Нет", "na": "N/A"}[a]
+
+
 def points_text(c: dict[str, Any], a: Any) -> str:
     """Балл и вес критерия: «7,5 / 15», у N/A — «—»."""
     if a == "na":
@@ -198,3 +252,7 @@ def open_criterion(page: Page, cid: str) -> Locator:
 def line(page: Page, n: int) -> Locator:
     """Реплика расшифровки, не кнопка с тем же `data-n`."""
     return page.locator(f'[data-n="{n}"]:not([data-act])')
+
+
+def role(page: Page, name: str) -> None:
+    page.locator(f'[data-act="role"][data-role="{name}"]').click()
