@@ -36,6 +36,9 @@ class Defence:
     page: Page
     api: httpx.Client
     console_errors: list[str] = field(default_factory=list)
+    open_appeal: dict[str, Any] | None = (
+        None  # на заменяемый критерий: подаёт mode_and_roles, закрывает replace
+    )
 
     def go(self, route: str) -> None:
         self.page.goto(f"{self.api.base_url}{route}")
@@ -175,6 +178,57 @@ def appeal(d: Defence) -> None:
     open_criterion(d.page, APPEAL_CID)
     for text in (answer_text(c, res["a"]), f2(before), f2(after)):
         expect(d.body).to_contain_text(text)
+
+
+def replace(d: Defence) -> None:
+    """Замена критерия (30 с): версия +1, «Ждёт оценки», апелляция закрыта, оценка набора с прогрессом."""
+    new = load_fixture("replacement_criterion.json")
+    cid = new["id"]
+    s = d.state()
+    old = criterion(s["checklist"], cid)
+    assert all(old.get(k) == v for k, v in new.items() if k != "text"), (
+        "черновик отличается не только текстом"
+    )
+    assert d.open_appeal and d.open_appeal["cid"] == cid, (
+        "апелляцию на заменяемый критерий подаёт mode_and_roles"
+    )
+    role(d.page, "qa")
+    d.go("#/checklist")
+    d.page.locator(f'[data-view="checklist"] [data-cid="{cid}"]').first.click()
+    d.page.get_by_label("Что проверяем").fill(new["text"])
+    with d.page.expect_response(
+        lambda r: r.request.method == "PUT" and r.url.endswith("/api/checklist")
+    ) as put:
+        d.page.locator('[data-act="csave"]').click()
+    saved = put.value.json()
+    assert saved["version"] == s["checklist"]["version"] + 1 and cid in saved["pending"], saved
+
+    s = d.state()
+    assert s["checklist"]["version"] == saved["version"]
+    assert criterion(s["checklist"], cid)["text"] == new["text"]
+    assert not [x["id"] for x in s["dialogs"] if cid in x["res"]], "заменённый критерий не ждёт оценки"
+    closed = next(a for a in s["appeals"] if a["id"] == d.open_appeal["id"])
+    assert closed["status"] == "closed", closed
+    d.go(f"#/d/{closed['dlg']}")
+    expect(criterion_box(d.page, cid)).to_contain_text(re.compile("ждёт оценки", re.IGNORECASE))
+
+    d.go("#/checklist")
+    with d.page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith("/api/runs")) as post:
+        d.page.locator('[data-act="crun"]').click()
+    run_id = post.value.json()["run_id"]
+    total = d.api.get(f"/api/runs/{run_id}").raise_for_status().json()["total"]
+    progress = d.page.get_by_text(re.compile(rf"\b\d+ из {total}\b")).first
+    expect(progress).to_be_visible()
+    expect(progress.locator("xpath=..")).to_contain_text("$")
+    run = wait_run(d.api, run_id)
+    assert (run["status"], run["errors"], run["done"]) == ("done", [], run["total"]), run
+    s = d.state()
+    assert all(cid in x["res"] for x in s["dialogs"]), "не у всех диалогов есть ответ на новый критерий"
+    calls = dialog(s, CARD)["cost"]["calls"]
+    d.go(f"#/d/{CARD}")
+    d.page.reload()  # стоимость последней оценки, а не снимок до опроса запуска
+    expect(d.body).to_contain_text(re.compile(rf"\b{calls}\b\D*вызов"))
+    expect(d.body).to_contain_text("$")
 
 
 def wait_run(api: httpx.Client, run_id: int) -> dict[str, Any]:
