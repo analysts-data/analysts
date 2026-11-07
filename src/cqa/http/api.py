@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 from cqa.domain.models import Appeal, Checklist
 from cqa.domain.review import ASTANA
@@ -21,6 +21,8 @@ from cqa.services.state import build_state
 router = APIRouter(prefix="/api")
 
 Owner = Literal["Не назначено", "Инструкция", "Сервис", "Продукт"]
+# ответ bool или scale; флаг — объект {"<k>": true | false}, строгие bool: 0 и "false" дают 422
+AnswerIn = str | int | dict[str, StrictBool]
 
 
 class ReviewedIn(BaseModel):
@@ -74,14 +76,14 @@ async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]
 class AppealIn(BaseModel):
     dlg: str
     cid: str
-    ask: str | int
+    ask: AnswerIn
     ev: list[int] = []
     comment: str
     by: str
 
 
 class DecisionIn(BaseModel):
-    to: str | int
+    to: AnswerIn
     reason: str
     reviewer: str
 
@@ -89,8 +91,8 @@ class DecisionIn(BaseModel):
 class ReviewIn(BaseModel):
     dlg: str
     cid: str
-    from_: str | int = Field(alias="from")
-    to: str | int
+    from_: AnswerIn = Field(alias="from")
+    to: AnswerIn
     reason: str
     reviewer: str
 

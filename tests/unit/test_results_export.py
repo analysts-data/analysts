@@ -132,6 +132,23 @@ def test_latest_decision_overrides_model_answer_rationale_and_score() -> None:
     assert (before["score"]["final_score"], after["score"]["final_score"]) == (41.0, 51.0)
 
 
+def test_latest_flag_decision_clears_critical_value_and_flag_but_not_score() -> None:
+    dialog = proto("p1-ru-022")
+    clear = Appeal.model_validate(
+        {"id": "a1", "kind": "appeal", "dlg": "p1-ru-022", "cid": "08", "from": dialog.res["08"].a,
+         "ask": {"insult": False, "paid": False, "leak": False}, "to": {"insult": False, "paid": False, "leak": False},
+         "by": "Оператор", "at": "08.11 11:10", "status": "changed", "reason": "Платной услуги не было"}
+    )  # fmt: skip
+
+    before, after = record(dialog), record(dialog, [clear])
+
+    assert by_code(after)["critical"] == by_code(before)["critical"] | {
+        "value": False,
+        "rationale": "Платной услуги не было",
+    }
+    assert after["score"] == before["score"] | {"critical_flag": False}
+
+
 def test_pending_appeal_does_not_change_the_answer() -> None:
     rec = record(proto("p1-ru-003"), [decision(None, status="pending", reason="")])
 

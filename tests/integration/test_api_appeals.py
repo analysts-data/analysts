@@ -27,6 +27,8 @@ REVIEW = {
     "reason": "Срок ответа клиенту не назван",
     "reviewer": "Специалист КК",
 }
+FLAG = {"insult": False, "paid": True, "leak": False}
+CLEAR = {"insult": False, "paid": False, "leak": False}
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +39,8 @@ def results(store: Store) -> None:
     fp = fingerprint(checklist, c04)
     store.add_result("p1-ru-003", "04", 3, fp, CriterionResult(a=5))
     store.add_result("call-024", "04", 3, fp, CriterionResult(a=15, alt=10))
+    c08 = next(c for c in checklist.criteria if c.id == "08")
+    store.add_result("p1-ru-003", "08", 3, fingerprint(checklist, c08), CriterionResult(a=FLAG))
 
 
 def state_of(client: TestClient, dlg: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -74,6 +78,27 @@ def test_decision_sits_next_to_unchanged_model_answer(client: TestClient) -> Non
     assert [(a["id"], a["to"], a["status"]) for a in appeals] == [("a1", 10, "changed")]
 
 
+def test_flag_appeal_and_decision_carry_objects_and_keep_model_answer(client: TestClient) -> None:
+    filed = client.post("/api/appeals", json=APPEAL | {"cid": "08", "ask": CLEAR})
+    assert filed.status_code == 200
+    assert (filed.json()["from"], filed.json()["ask"]) == (FLAG, CLEAR)
+
+    decided = client.post("/api/appeals/a1/decision", json=DECISION | {"to": CLEAR})
+
+    assert (decided.status_code, decided.json()["status"], decided.json()["to"]) == (200, "changed", CLEAR)
+    dialog, appeals = state_of(client, "p1-ru-003")
+    assert dialog["res"]["08"]["a"] == FLAG
+    assert [(a["cid"], a["to"]) for a in appeals] == [("08", CLEAR)]
+
+
+@pytest.mark.parametrize("ask", [CLEAR | {"paid": 0}, CLEAR | {"paid": "false"}, CLEAR | {"paid": None}])
+def test_flag_appeal_values_must_be_booleans(client: TestClient, ask: dict[str, object]) -> None:
+    response = client.post("/api/appeals", json=APPEAL | {"cid": "08", "ask": ask})
+
+    assert response.status_code == 422
+    assert client.get("/api/state").json()["appeals"] == []
+
+
 def test_review_accepts_second_opinion_without_ask(client: TestClient) -> None:
     response = client.post("/api/decisions", json=REVIEW)
 
@@ -104,9 +129,9 @@ def test_review_accepts_second_opinion_without_ask(client: TestClient) -> None:
         ),
         (
             "/api/appeals",
-            APPEAL | {"cid": "08"},
+            APPEAL | {"cid": "08", "ask": {"insult": True}},
             422,
-            "Флаг нарушения не оспаривается: у критерия 08 нет баллов",
+            "Ответ по флагу 08 — объект с ключами insult, paid, leak и значениями true или false",
         ),
         ("/api/appeals/a999/decision", DECISION, 404, "Апелляция a999 не найдена"),
         (
