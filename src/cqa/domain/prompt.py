@@ -1,11 +1,8 @@
 """Промпт оценки по одному критерию: отрисовка диалога и сообщения модели (design.md, п. 2–6)."""
 
-from __future__ import annotations
+from typing import Literal, TypedDict
 
-from typing import TYPE_CHECKING, Literal, TypedDict
-
-if TYPE_CHECKING:
-    from cqa.domain.models import Criterion, Dialog, Question
+from cqa.domain.models import Criterion, Dialog, Fold, Question
 
 # Правка только вместе с make eval и make record
 PROMPT_VERSION = "1"
@@ -64,16 +61,15 @@ def render_dialog(dialog: Dialog) -> str:
     rows: list[str] = []
     prev: int | None = None
     for item in dialog.lines or []:
-        if getattr(item, "fold", False):
+        if isinstance(item, Fold):
             label = item.label.translate(_SAFE)
             rows.append(f"— реплики {item.from_}–{item.to}: {label}, не оценивается —")
             continue
         head = [str(item.n)]
-        sec: int | None = None
         if isinstance(item.t, str):
             head.append(item.t)
             sec = _clock(item.t)
-        elif item.t is not None:
+        else:
             sec = int(item.t)
             head.append(f"{sec // 60:02d}:{sec % 60:02d}")
         if sec is not None:
@@ -91,7 +87,8 @@ def criterion_block(criterion: Criterion, question: Question | None = None) -> s
         return f"Нарушение для проверки:\n{question.text or question.label}\n\n{_FLAG_JSON}"
     na = f'"na" — неприменимо, только если: {criterion.naCond}' if criterion.na else None
     if criterion.type == "scale":
-        rows = [f"{s} — {criterion.stepText[str(s)]}" for s in criterion.steps]
+        steps, texts = criterion.steps or [], criterion.stepText or {}
+        rows = [f"{s} — {texts[str(s)]}" for s in steps]
         answer = "\n".join(["Ответ answer — одно число из шкалы:", *rows, *([na] if na else [])])
     else:
         answer = 'Ответ answer: "yes" — да, "no" — нет' + (f", {na}" if na else "") + "."
@@ -103,7 +100,7 @@ def build_messages(dialog_text: str, rules: str, criterion: Criterion) -> list[l
     system: Message = {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nОбщие правила чек-листа:\n{rules}"}
     head = f"<dialog>\n{dialog_text}\n</dialog>\n\n"
     blocks = (
-        [criterion_block(criterion, q) for q in criterion.questions]
+        [criterion_block(criterion, q) for q in criterion.questions or []]
         if criterion.type == "flag"
         else [criterion_block(criterion)]
     )

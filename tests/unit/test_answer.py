@@ -2,7 +2,7 @@ from typing import Any
 
 from test_prompt import BOOL, FLAG, SCALE, crit
 
-from cqa.domain.answer import allowed_answer, check, normalize, parse_answer
+from cqa.domain.answer import allowed_answer, check, merge_flag, normalize, parse_answer, to_result
 
 
 def test_parse_answer_skips_json_inside_think_and_unwraps_fence() -> None:
@@ -135,3 +135,99 @@ def test_found_violation_needs_turn_and_quote_while_absent_one_needs_nothing() -
 def test_malformed_turn_ids_are_errors_not_crashes() -> None:
     for bad in ([[4]], ["4"], [True], 4):
         assert check(raw(turn_ids=bad, quote="Здравствуйте"), crit(BOOL), LINES)
+
+
+def test_scale_result_with_lost_points_keeps_reason_tag_and_better() -> None:
+    answer = {
+        "reason_ru": "Срок не назван",
+        "turn_ids": [9, 10],
+        "quote": "Я передам вопрос специалистам",
+        "checked_range": [9, 12],
+        "answer": "15",
+        "tag": "Не назван срок ответа",
+        "better": "Ответ придёт за два дня",
+    }
+    res = to_result(answer, crit(SCALE), ev_fail=False, model="qwen3-6", calls=1, cost=0.002, ms=900)
+    assert res.model_dump(exclude_unset=True) == {
+        "a": 15,
+        "ev": [9, 10],
+        "seg": "реплики 9–12",
+        "why": "Срок не назван",
+        "quote": "Я передам вопрос специалистам",
+        "tag": "Не назван срок ответа",
+        "better": "Ответ придёт за два дня",
+        "evFail": False,
+        "model": "qwen3-6",
+        "calls": 1,
+        "cost": 0.002,
+        "ms": 900,
+    }
+
+
+def test_full_marks_drop_tag_and_better() -> None:
+    answer = raw("yes", turn_ids=[4], quote="Здравствуйте", tag="лишнее", better="лишнее")
+    res = to_result(answer, crit(BOOL), ev_fail=False, model="m", calls=1, cost=0, ms=0)
+    assert res.a == "yes" and res.tag is None and res.better is None and res.seg is None
+
+
+def test_failed_evidence_keeps_answer_without_turns_quote_or_range() -> None:
+    answer = raw("no", turn_ids=[4], quote="Добрый вечер", checked_range=[3, 5], tag="Нет приветствия")
+    res = to_result(answer, crit(BOOL), ev_fail=True, model="m", calls=2, cost=0, ms=0)
+    assert (res.a, res.ev, res.quote, res.seg, res.evFail, res.calls) == ("no", [], None, None, True, 2)
+    assert res.tag == "Нет приветствия"
+
+
+def sub(
+    found: bool, reason: str, ids: list[int] | None = None, rng: list[int] | None = None
+) -> dict[str, Any]:
+    quote = f"цитата {ids[0]}" if ids else ""
+    return {
+        "reason_ru": reason,
+        "turn_ids": ids or [],
+        "quote": quote,
+        "checked_range": rng,
+        "violation_found": found,
+    }
+
+
+def test_flag_merges_found_questions() -> None:
+    subs = [(sub(False, "Нет"), False), (sub(True, "Есть", [6]), False), (sub(False, "Нет"), False)]
+    res = merge_flag(crit(FLAG), subs, model="m", calls=3, cost=0.3, ms=30)
+    assert res.a == {"q1": False, "q2": True, "q3": False}
+    assert (res.ev, res.quote, res.tag, res.seg, res.evFail) == (
+        [6],
+        "цитата 6",
+        "Второе нарушение",
+        None,
+        False,
+    )
+    assert res.why == "Первое нарушение: Нет; Второе нарушение: Есть; Третье нарушение: Нет"
+    assert (res.model, res.calls, res.cost, res.ms, res.better) == ("m", 3, 0.3, 30, None)
+
+
+def test_flag_joins_evidence_of_all_found_and_takes_range_of_first_with_one() -> None:
+    subs = [
+        (sub(True, "А", [9]), False),
+        (sub(True, "Б", [2, 9], [2, 4]), False),
+        (sub(True, "В", [5], [5, 6]), False),
+    ]
+    res = merge_flag(crit(FLAG), subs, model="m", calls=3, cost=0, ms=0)
+    assert res.ev == [2, 5, 9]
+    assert res.quote == "цитата 9"
+    assert res.seg == "реплики 2–4"
+    assert res.tag == "Первое нарушение, Второе нарушение, Третье нарушение"
+
+
+def test_flag_question_without_answer_counts_as_not_found_and_marks_flag() -> None:
+    subs = [(sub(False, "Нет"), False), (sub(True, "Есть", [6]), False), (None, False)]
+    res = merge_flag(crit(FLAG), subs, model="m", calls=2, cost=0, ms=0)
+    assert res.a == {"q1": False, "q2": True, "q3": False}
+    assert res.ev == [6] and res.evFail is True
+    assert "Третье нарушение: не найдено" in (res.why or "")
+
+
+def test_flag_question_with_failed_evidence_keeps_finding_and_marks_flag() -> None:
+    subs = [(sub(True, "Есть", [6]), True), (sub(False, "Нет"), False), (sub(False, "Нет"), False)]
+    res = merge_flag(crit(FLAG), subs, model="m", calls=4, cost=0, ms=0)
+    assert res.a == {"q1": True, "q2": False, "q3": False}
+    assert (res.ev, res.quote, res.evFail, res.tag) == ([], None, True, "Первое нарушение")

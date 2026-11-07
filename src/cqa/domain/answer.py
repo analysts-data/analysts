@@ -1,14 +1,11 @@
 """Разбор и проверка ответа модели по одному критерию (design.md, п. 7–9)."""
 
-from __future__ import annotations
-
 import json
 import re
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from cqa.domain.models import Criterion
+from cqa.domain.models import Criterion, CriterionResult
 
 _THINK = re.compile(r"<think>.*?</think>", re.S)
 _FENCE = re.compile(r"```(?:json)?")
@@ -40,17 +37,19 @@ def normalize(text: str) -> str:
 def allowed_answer(raw: dict[str, Any], criterion: Criterion) -> str | int | None:
     """Ответ, разрешённый типом критерия; ступень шкалы приводится к int, иначе None."""
     a: Any = raw.get("answer")
-    if a == "na":
-        return "na" if criterion.na else None
-    if criterion.type == "bool":
-        return a if a in ("yes", "no") else None
-    if criterion.type != "scale" or isinstance(a, bool):
+    if isinstance(a, bool) or criterion.type == "flag":
         return None
-    try:
-        step = float(a)
-    except (TypeError, ValueError):
-        return None
-    return int(step) if step.is_integer() and int(step) in criterion.steps else None
+    if criterion.type == "scale" and a != "na":
+        try:
+            step = float(a)
+        except (TypeError, ValueError):
+            return None
+        a = int(step) if step.is_integer() else None
+    return a if a is not None and criterion.accepts(a) else None
+
+
+def _loses_points(a: str | int | None, criterion: Criterion) -> bool:
+    return a == "no" or (isinstance(a, int) and a < max(criterion.steps or [0]))
 
 
 def _exists(n: Any, lines: Mapping[int, str]) -> bool:
@@ -62,7 +61,7 @@ def _answer_error(raw: dict[str, Any], criterion: Criterion) -> str:
         return "N/A для этого критерия не разрешён"
     na = ' или "na"' if criterion.na else ""
     if criterion.type == "scale":
-        return f"answer — одно число из шкалы: {', '.join(map(str, criterion.steps))}{na}"
+        return f"answer — одно число из шкалы: {', '.join(map(str, criterion.steps or []))}{na}"
     return f'answer — "yes" или "no"{na}'
 
 
@@ -104,7 +103,69 @@ def check(
     answer = allowed_answer(raw, criterion)
     if answer is None:
         errors.append(_answer_error(raw, criterion))
-    lost = answer == "no" or (isinstance(answer, int) and answer < max(criterion.steps))
-    if lost and not ids and rng is None:
+    if _loses_points(answer, criterion) and not ids and rng is None:
         errors.append("Для ответа с потерей баллов укажи реплику в turn_ids или участок в checked_range")
     return errors
+
+
+def _seg(rng: Any) -> str | None:
+    return f"реплики {rng[0]}–{rng[1]}" if rng else None
+
+
+def to_result(
+    raw: dict[str, Any], criterion: Criterion, *, ev_fail: bool, model: str, calls: int, cost: float, ms: int
+) -> CriterionResult:
+    """Проверенный ответ в CriterionResult; при ev_fail основание не подставляется."""
+    a = allowed_answer(raw, criterion)
+    lost = _loses_points(a, criterion)
+    return CriterionResult(
+        a=a,  # type: ignore[arg-type]
+        ev=[] if ev_fail else raw.get("turn_ids") or [],
+        seg=None if ev_fail else _seg(raw.get("checked_range")),
+        why=raw.get("reason_ru"),
+        quote=None if ev_fail else raw.get("quote") or None,
+        tag=(raw.get("tag") or None) if lost else None,
+        better=(raw.get("better") or None) if lost else None,
+        evFail=ev_fail,
+        model=model,
+        calls=calls,
+        cost=cost,
+        ms=ms,
+    )
+
+
+def merge_flag(
+    criterion: Criterion,
+    subs: list[tuple[dict[str, Any] | None, bool]],
+    *,
+    model: str,
+    calls: int,
+    cost: float,
+    ms: int,
+) -> CriterionResult:
+    """Флаг из подвопросов: (ответ или None, ev_fail) по порядку questions; None — «не найдено»."""
+    questions = criterion.questions or []
+    found = [
+        (q, raw, fail)
+        for q, (raw, fail) in zip(questions, subs, strict=True)
+        if raw and raw.get("violation_found") is True
+    ]
+    keys = {q.k for q, _, _ in found}
+    proven = [raw for _, raw, fail in found if not fail]
+    why = [
+        f"{q.label}: {raw.get('reason_ru') if raw else 'не найдено, модель не дала ответа'}"
+        for q, (raw, _) in zip(questions, subs, strict=True)
+    ]
+    return CriterionResult(
+        a={q.k: q.k in keys for q in questions},
+        ev=sorted({n for raw in proven for n in raw["turn_ids"]}),
+        seg=next((_seg(raw["checked_range"]) for raw in proven if raw.get("checked_range")), None),
+        why="; ".join(why),
+        quote=next((raw["quote"] for raw in proven), None),
+        tag=", ".join(q.label for q, _, _ in found) or None,
+        evFail=any(raw is None or fail for raw, fail in subs),
+        model=model,
+        calls=calls,
+        cost=cost,
+        ms=ms,
+    )
