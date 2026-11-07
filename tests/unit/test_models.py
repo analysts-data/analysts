@@ -1,9 +1,9 @@
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
 
 # JSON examples from design/contract.md, placeholders replaced by concrete values of the same shape
 CHECKLIST = {
@@ -126,3 +126,16 @@ APPEAL = {
 )
 def test_contract_example_round_trips_without_loss(model: type[BaseModel], example: dict[str, Any]) -> None:
     assert model.model_validate(example).model_dump(mode="json", exclude_unset=True) == example
+
+
+def test_unknown_criterion_type_is_rejected_naming_the_field() -> None:
+    with pytest.raises(ValidationError) as err:
+        Criterion.model_validate({**CHECKLIST["criteria"][0], "type": "stars"})
+    assert err.value.errors()[0]["loc"] == ("type",)
+
+
+def test_scale_answer_outside_steps_is_rejected() -> None:
+    scale = Criterion.model_validate(CHECKLIST["criteria"][1])
+    assert scale.accepts(15) and scale.accepts("na")
+    assert not scale.accepts(12)
+    assert not scale.accepts("yes")
