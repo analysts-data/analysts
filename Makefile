@@ -1,11 +1,11 @@
 .PHONY: check e2e eval eval-holdout record run fmt
 
 check:
-	uv run ruff check src tests
+	uv run ruff check --no-cache src tests
 	uv run ruff format --check src tests
 	uv run mypy
 	uv run pytest -q
-	@if ls web/js/*.test.js web/js/*/*.test.js tests/*/*.test.js >/dev/null 2>&1; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
+	@if find web tests -name '*.test.js' | grep -q .; then node --test "web/**/*.test.js" "tests/**/*.test.js"; fi
 	@if [ -x scripts/secret_scan.sh ]; then scripts/secret_scan.sh; fi
 	@if [ -x scripts/protected_paths.sh ]; then scripts/protected_paths.sh; fi
 	@if [ -d openspec ]; then openspec validate --all --strict >/dev/null && echo "openspec: ok"; fi
