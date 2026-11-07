@@ -22,7 +22,14 @@ CHECKLIST = {
     "criteria": [
         {"id": "01", "type": "bool", "w": 10, "na": False},
         {"id": "02", "type": "bool", "w": 15, "na": True, "naCond": "Данных хватало с начала."},
-        {"id": "04", "type": "scale", "w": 20, "steps": [20, 15, 10, 5, 0], "na": True},
+        {
+            "id": "04",
+            "type": "scale",
+            "w": 20,
+            "steps": [20, 15, 10, 5, 0],
+            "na": True,
+            "signal": "resolution",
+        },
         {"id": "08", "type": "flag", "w": 0, "questions": [{"k": "insult"}, {"k": "paid"}]},
     ]
 }
@@ -86,6 +93,36 @@ def test_dev_dialogs_are_not_control_candidates() -> None:
     assert picked["gross"]["id"] == "p1-ru-022"
     assert picked["gross"]["fallback"] is True
     assert "DEV" in picked["gross"]["say"]
+
+
+NO_DEADLINE = {"a": 15, "why": "Передал специалистам, срок ответа не назван.", "tag": "Не назван срок ответа"}
+
+
+def handoff(id_: str, ch: str = "chat", **res: dict[str, Any]) -> dict[str, Any]:
+    d = dialog(id_, ch=ch, **res)
+    d["lines"][2]["text"] = "Я передам вопрос специалистам."
+    return d
+
+
+def test_slide_example_is_a_chat_handing_off_to_specialists_without_a_deadline() -> None:
+    picked = demo.pick(
+        state(
+            handoff("full", **{"04": {"a": 20, "why": "Срок назван."}}),
+            dialog("no-handoff", **{"04": NO_DEADLINE}),
+            handoff("call", ch="call", **{"04": NO_DEADLINE}),
+            handoff("slide", **{"04": NO_DEADLINE}),
+        ),
+        dev_ids=set(),
+    )
+    assert picked["slide10"] == {"id": "slide", "cid": "04", "fallback": False}
+
+
+def test_slide_example_needs_the_deadline_as_the_reason() -> None:
+    other = handoff("h", **{"04": {"a": 15, "why": "Не уточнил номер счёта."}})
+    picked = demo.pick(state(other), dev_ids=set())
+    assert picked["slide10"]["fallback"] is True
+    assert picked["slide10"]["id"] == "p1-ru-010"
+    assert "DEV" in picked["slide10"]["say"]
 
 
 def test_serve_without_cassettes_names_make_record(tmp_path: Path) -> None:

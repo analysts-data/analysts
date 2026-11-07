@@ -1,34 +1,40 @@
 // <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
-import { S, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { S, api, cancelRun, init, postDataset, reload, render, resumeRun, toast, uploadDataset } from './state.js';
+import { modeText } from './config.js';
 import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
 import { parseHash } from './router.js';
 import * as appealForm from './appeal_form.js';
+import * as paste from './views/paste.js';
 import * as queue from './views/queue.js';
 import * as card from './views/card.js';
 import * as appeals from './views/appeals.js';
 import * as checklist from './views/checklist.js';
 import * as analytics from './views/analytics.js';
 import * as coaching from './views/coaching.js';
+import { openConfig } from './views/config.js';
+
+// Имя продукта: сайдбар, крошки; <title> в index.html — тем же именем.
+const NAME = 'CQA';
+// Тот же рисунок, что в ./favicon.svg, но currentColor: на плитке .brand он белый на --accent.
+const ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM8.3 11.4l2.3 2.3 4.8-4.8-1.3-1.3-3.5 3.5-1-1z"/></svg>';
 
 const VIEWS = { queue, d: card, appeals, checklist, analytics, coaching };
 const NAMES = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
-const WHERE = { kz: 'Казахстан', local: 'локально', external: 'внешний провайдер' };
-// Плашка режима данных: скрыть нельзя, это ответ про трансграничную передачу на защите.
-const modeText = m => [`Обработка: ${WHERE[m.where] || m.where}`, m.anonymized ? 'транскрипты обезличены' : 'без обезличивания',
-  `модель ${m.model}`, m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
 const ROLE = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
 const ACTS = Object.assign({
   role: t => { S.role = t.dataset.role; render(); toast(`Роль: ${ROLE[S.role]}.`); },
+  cfg: () => openConfig(),
   load: () => postDataset(document.getElementById('gid').value.trim()),
   jsonf: t => { if (t.files[0]) uploadDataset(t.files[0]); t.value = ''; },
   stop: () => cancelRun(),
-}, appealForm.actions, ...Object.values(VIEWS).map(v => v.actions || {}));
+}, appealForm.actions, paste.actions, ...Object.values(VIEWS).map(v => v.actions || {}));
 
 const SHELL = `
   <aside class="side">
-    <div class="brand"><i aria-hidden="true">CQ</i><div><b>CQA</b><span>Качество диалогов</span></div></div>
+    <div class="brand"><i aria-hidden="true">${ICON}</i><div><b>${NAME}</b><span>Качество диалогов</span></div></div>
     <div class="navgroup">Работа</div>
     <nav class="nav" aria-label="Работа">
       <a href="#/queue" data-page="queue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Диалоги<span class="badge" id="bQueue"></span></a>
@@ -46,7 +52,7 @@ const SHELL = `
     <header class="top">
       <div class="crumb" id="crumb"></div>
       <div class="row">
-        <span class="mode" id="mode" hidden></span>
+        <button type="button" class="mode" id="mode" data-act="cfg" title="Сменить режим оценки: модель, ключи, обезличивание, второе мнение" hidden></button>
         <span class="muted small" id="roleLbl">Роль</span>
         <div class="seg" role="group" aria-labelledby="roleLbl">
           <button type="button" data-act="role" data-role="qa" aria-pressed="true">Специалист КК</button>
@@ -74,6 +80,9 @@ class CqaApp extends HTMLElement {
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
     reload();
+    resumeRun(); // перезагрузка во время оценки: продолжаем опрос запомненного запуска
+    // llm_mode задаёт .env и из интерфейса не меняется: хватит одного запроса
+    api.getConfig().then(c => { S.llmMode = c.llm_mode; this.render(); }, () => {});
   }
 
   act(e, fieldEvent) {
@@ -95,12 +104,12 @@ class CqaApp extends HTMLElement {
     }
     const navPage = r.page === 'd' ? 'queue' : r.page;
     this.querySelectorAll('.nav a').forEach(a => a.dataset.page === navPage ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    this.querySelector('#crumb').innerHTML = `CQA / <b>${NAMES[r.page]}</b>`;
+    this.querySelector('#crumb').innerHTML = `${NAME} / <b>${NAMES[r.page]}</b>`;
     const mode = this.querySelector('#mode');
     mode.hidden = !S.mode;
     if (S.mode) {
-      mode.textContent = modeText(S.mode);
-      mode.classList.toggle('warn', S.mode.where === 'external' || !S.mode.anonymized);
+      mode.textContent = modeText(S.mode, S.llmMode);
+      mode.classList.toggle('warn', S.mode.where === 'external' || (S.mode.where !== 'local' && !S.mode.anonymized));
     }
     if (S.checklist) {
       this.querySelector('#bQueue').textContent = S.dialogs.filter(d => groupOf(d, S.checklist, S.appeals) !== 'other').length || '';

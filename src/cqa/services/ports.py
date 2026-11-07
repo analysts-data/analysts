@@ -7,7 +7,7 @@ from cqa.domain.models import Checklist, Criterion, Dialog, DialogEvaluation, In
 
 
 class DialogSource(Protocol):  # implemented by OrgDialogSource (dialog-ingest)
-    async def fetch(self, group_id: str) -> IngestResult: ...  # Invalid | Upstream
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult: ...  # Invalid | Upstream
     def upload(self, raw: bytes) -> IngestResult: ...  # Invalid
     async def audio_link(self, audio_url: str) -> str | None: ...  # fresh MP3 link; None if it failed
 

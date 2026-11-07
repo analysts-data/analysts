@@ -135,3 +135,49 @@ def test_evaluate_posts_visible_dialogs_in_queue_order(page: Page, web_url: str)
     with page.expect_request(lambda r: r.method == "POST" and r.url.endswith("/api/runs")) as req:
         page.locator('[data-act="run"]').click()
     assert req.value.post_data_json == {"dialogs": ["call-024"], "criteria": None}
+
+
+FAILED_RUN = {
+    "done": 16,
+    "total": 16,
+    "cost": 0.0,
+    "calls": 0,
+    "eta_s": 0,
+    "status": "done",
+    "errors": ["p1-ru-003: Нет записи ответа модели", "call-024/04: нет ответа модели, ждёт оценки"],
+}
+
+
+def test_run_with_errors_says_so_and_lists_failed_dialogs(page: Page, web_url: str) -> None:
+    open_queue(page, web_url)
+    page.route("**/api/runs", lambda route_: route_.fulfill(json={"run_id": 1}))
+    page.route("**/api/runs/*", lambda route_: route_.fulfill(json=FAILED_RUN))
+    page.locator('[data-act="run"]').click()
+    panel = page.get_by_role("region", name="Оценка набора")
+    expect(panel).to_contain_text("Оценка завершена: обработано 16 из 16 ответов по критериям")
+    expect(panel).to_contain_text("Оценка завершена с ошибками: 2, в диалогах: 2")
+    expect(page.locator("#toast")).to_contain_text("Оценка завершена с ошибками: 2")
+    panel.get_by_text("Показать ошибки").click()
+    expect(panel.get_by_role("link", name="p1-ru-003")).to_have_attribute("href", "#/d/p1-ru-003")
+    expect(panel.get_by_role("link", name="call-024")).to_have_attribute("href", "#/d/call-024")
+    expect(panel).to_contain_text("Нет записи ответа модели")
+
+
+def test_without_second_opinion_no_screen_speaks_of_two_models(page: Page, web_url: str) -> None:
+    state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    assert state["mode"]["verifier"] is None
+    for d in state["dialogs"]:
+        for r in d["res"].values():
+            r.pop("alt", None)
+    page.route("**/api/state", lambda route_: route_.fulfill(json=state))
+    page.goto(f"{web_url}/#/queue")
+    view = page.locator("#view")
+    expect(view).to_contain_text("Грубые ошибки: 3")
+    expect(view).not_to_contain_text("двух моделей")
+    expect(view).not_to_contain_text("модели разошлись")
+    page.evaluate("location.hash = '#/analytics'")
+    expect(view).to_contain_text("Качество самой оценки")
+    expect(view).not_to_contain_text("совпали")
+    page.evaluate("location.hash = '#/d/p1-kz-015'")
+    expect(view).to_contain_text("Грубые ошибки")
+    expect(view).not_to_contain_text("двух моделей")

@@ -331,3 +331,18 @@ class SilentTimeout(FakeEvaluator):
 async def test_error_without_a_message_names_the_exception(store: Store) -> None:
     run = store.get_run(await _execute(store, SilentTimeout(), ["call-024"]))
     assert run is not None and run.errors == ["call-024: TimeoutError"]
+
+
+async def test_use_swaps_the_evaluator_for_the_next_run(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1, clock=_clock())
+    other = FakeEvaluator()
+    runner.use(other)
+    assert runner._evaluator is other
+
+
+async def test_use_during_a_run_is_a_conflict(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1, clock=_clock())
+    runner.start(["call-024"], None)
+    with pytest.raises(Conflict, match="идёт"):
+        runner.use(FakeEvaluator())
+    runner.cancel(runner._active or 0)

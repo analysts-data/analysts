@@ -24,12 +24,13 @@ def open_page(page: Page, web_url: str, route: str) -> list[str]:
 
 def test_analytics_tiles_and_tables_from_state_only(page: Page, web_url: str) -> None:
     requests = open_page(page, web_url, "#/analytics")
-    expect(page.locator(".lens a strong")).to_have_text(["1", "4", "56%", "5"])
+    # «Качество сервиса» 2: передача специалистам на 15 из 20 тоже без следующего шага
+    expect(page.locator(".lens a strong")).to_have_text(["2", "4", "56%", "5"])
     expect(page.locator('[aria-label="Результат по критериям"] tbody tr')).to_have_count(7)
     expect(page.locator('[aria-label="Критерий и язык"] tbody tr')).to_have_count(7)
     expect(page.locator('[aria-label="Повторяющиеся причины"] tbody tr')).to_have_count(4)
     expect(page.locator('a[href="#/queue?lost=07&lang=KZ"]')).to_have_text("1 из 2")
-    assert requests == ["GET /state"]
+    assert requests == ["GET /state", "GET /config"]  # /config — один раз для плашки режима
 
 
 @pytest.mark.parametrize("route", ["#/analytics", "#/coaching"])
@@ -88,7 +89,7 @@ def test_coaching_moments_from_state_only(page: Page, web_url: str) -> None:
     expect(page.locator('[aria-label="Как звучит хороший ответ"]')).to_contain_text("Примеры появятся")
     page.click('[data-act="coach"][data-cid="07"]')
     expect(moments).to_have_count(2)
-    assert requests == ["GET /state"]
+    assert requests == ["GET /state", "GET /config"]  # /config — один раз для плашки режима
 
 
 def test_meeting_sheet_collects_and_copies(page: Page, context: BrowserContext, web_url: str) -> None:

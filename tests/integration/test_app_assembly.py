@@ -20,7 +20,7 @@ def _default() -> Settings:
 def test_app_from_default_settings_serves_the_state() -> None:
     response = TestClient(create_app(_default())).get("/api/state")
     assert response.status_code == 200
-    assert set(response.json()) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode"}
+    assert set(response.json()) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode", "source"}
 
 
 def test_loaded_call_has_record_redirects_but_no_signed_address_in_the_state(
