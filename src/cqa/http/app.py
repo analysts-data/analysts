@@ -14,6 +14,7 @@ from cqa.http import api
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.ports import DialogSource, Evaluator
+from cqa.services.runs import Runner
 from cqa.services.state import mode_from_settings
 from cqa.settings import Settings
 
@@ -61,8 +62,9 @@ def create_app(
         )
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
-    # review-workflow group 6: Runner(store, evaluator, parallel=settings.llm_max_parallel)
-    app.state.runner = None
+    app.state.runner = (
+        Runner(store, evaluator, parallel=settings.llm_max_parallel) if evaluator is not None else None
+    )
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
