@@ -161,6 +161,14 @@ def test_change_decision_previews_new_total_and_posts_new_answer(page: Page, web
     assert api.posts[0][0].endswith("/api/appeals/a1/decision")
     expect(page.get_by_label("История решений")).to_contain_text("Регламент не позволяет называть срок")
     expect(page.get_by_label("История решений")).to_contain_text("Проверяющий")
+    page.goto(f"{web_url}/#/d/call-024")
+    open_criterion(page, "04")
+    history = page.locator('.crit[data-cid="04"] .hist')
+    expect(history).to_contain_text("Исходная")
+    expect(history).to_contain_text("15 из 20")
+    expect(history).to_contain_text("Проверяющий, 07.11 16:00: «Регламент не позволяет называть срок»")
+    expect(history).to_contain_text("20 из 20")
+    expect(history).to_contain_text("88,82")
     assert api.errors == []
 
 
