@@ -33,7 +33,7 @@ export function view(S) {
       <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
   ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
-      ${run ? `Оценено <b>${run.done}/${run.total}</b>, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
+      ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
     <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
       ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">

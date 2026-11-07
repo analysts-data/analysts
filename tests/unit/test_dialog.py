@@ -155,6 +155,19 @@ def test_recognition_duplicate_is_marked_not_removed() -> None:
     assert any("реплика 14 повторяет 13" in w for w in warnings)
 
 
+def test_whole_line_masks_in_a_row_are_not_recognition_duplicates() -> None:
+    turns = [
+        (iso(0), "system", "Запись и транскрибирование запущены"),
+        (iso(4), "operator", TEXT_29),
+        (iso(9), "client", "[Номер скрыт]."),
+        (iso(12), "client", "[Номер скрыт]"),
+        (iso(15), "operator", "[Номер скрыт]"),
+    ]
+    dialog, warnings = build(call(turns))
+    assert [line(dialog, n).dup for n in (3, 4, 5)] == [None, None, None]
+    assert not any("повторяет" in w for w in warnings)
+
+
 def test_chat_fold_times_are_seconds_of_mmss() -> None:
     source = raw("syn-chat-ru")
     source["transcript"].insert(6, {"timestamp": "03:01", "speaker": "system", "text": "Клиент покинул чат"})
