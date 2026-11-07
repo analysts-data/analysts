@@ -101,3 +101,14 @@ async def test_record_does_not_save_non_200(tmp_path):
             response = await client.post(URL, json=BODY)
     assert response.status_code == 500
     assert list(tmp_path.iterdir()) == []
+
+
+async def test_replay_names_the_record_in_the_audit_log(tmp_path, monkeypatch):
+    """5.2: полный прогон make e2e собирает белый список использованных записей."""
+    log = tmp_path / "used.log"
+    monkeypatch.setenv("CQA_CASSETTE_LOG", str(log))
+    _write(tmp_path / "llm", BODY, {"choices": [{"message": {"content": "ответ"}}]})
+    async with httpx.AsyncClient(transport=CassetteTransport("replay", tmp_path / "llm")) as client:
+        await client.post(URL, json=BODY)
+        await client.post(URL, json=BODY)
+    assert log.read_text(encoding="utf-8").split() == [f"llm/{_key(BODY)}.json"] * 2
