@@ -63,6 +63,16 @@ def test_dataset_by_group_id_posts_and_reports_counts(page: Page, web_url: str) 
     assert posted == [{"group_id": "CTRL"}]
 
 
+def test_product_name_and_favicon(page: Page, web_url: str) -> None:
+    NAME = "CQA"
+    serve_state(page)
+    page.goto(f"{web_url}/#/queue")
+    assert page.title() == f"{NAME} — контроль качества диалогов"
+    expect(page.locator(".brand")).to_contain_text(NAME)
+    expect(page.locator("#crumb")).to_contain_text(NAME)
+    assert page.request.get(f"{web_url}/favicon.svg").status == 200
+
+
 def test_run_filtered_dialogs_then_stop(page: Page, web_url: str) -> None:
     serve_state(page)
     runs: list[object] = []
