@@ -2,18 +2,51 @@
 
 import logging
 import re
+from html.parser import HTMLParser
 from typing import Final
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 
 FETCH_TIMEOUT_S: Final = 30.0
+AUDIO_TIMEOUT_S: Final = 10.0
 
 _GROUP_ID_RE: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 # httpx пишет адрес запроса с подписью на INFO, httpcore — хост на DEBUG
 for _name in ("httpx", "httpcore"):
     logging.getLogger(_name).setLevel(logging.WARNING)
+
+
+class _AudioSrcParser(HTMLParser):
+    """Первый `<source src>` или `<audio src>`; сущности HTML раскрываются сами."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.src: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.src is not None or tag not in ("source", "audio"):
+            return
+        for name, value in attrs:
+            if name == "src" and value:
+                self.src = value
+                return
+
+
+def extract_audio_src(html: str, base_url: str) -> str | None:
+    """Адрес первого `<source src>` или `<audio src>`; относительный достраивается от `base_url`.
+
+    Принимаются только схемы `http` и `https`; иначе `None`.
+    """
+    parser = _AudioSrcParser()
+    parser.feed(html)
+    if parser.src is None:
+        return None
+    link = urljoin(base_url, parser.src)
+    if urlsplit(link).scheme not in ("http", "https"):
+        return None
+    return link
 
 
 class OrgApiError(Exception):
@@ -54,3 +87,16 @@ class OrgApi:
         if not 200 <= response.status_code < 300:
             raise OrgApiError(f"API организаторов ответил статусом {response.status_code}")
         return response.content
+
+    async def fresh_audio_link(self, audio_url: str) -> str | None:
+        """Свежая ссылка на MP3 из HTML плеера; `None`, если достать не удалось.
+
+        Каждый вызов — новый запрос, кэша нет: ссылки живут около часа.
+        """
+        try:
+            response = await self._http.get(audio_url, timeout=AUDIO_TIMEOUT_S)
+        except httpx.HTTPError:
+            return None
+        if not 200 <= response.status_code < 300:
+            return None
+        return extract_audio_src(response.text, str(response.url))
