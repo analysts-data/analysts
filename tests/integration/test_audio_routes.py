@@ -236,3 +236,20 @@ async def test_signed_links_never_leak_into_dialogs_or_logs(caplog: pytest.LogCa
     assert all("storage.test" not in dump for dump in dumps)
     assert "audio_url" not in caplog.text
     assert "storage.test" not in caplog.text
+
+
+@respx.mock
+async def test_app_without_injected_source_builds_its_own(tmp_path: Path) -> None:
+    respx.get("https://org.test/player/syn-call-hold").mock(
+        return_value=httpx.Response(200, text='<source src="https://storage.test/rec.mp3?token=abc">')
+    )
+    application = create_app(Settings(_env_file=None, db_path=str(tmp_path / "cqa.db")))
+    result = application.state.source.upload(Path("tests/fixtures/org_payload.json").read_bytes())
+    application.state.store.add_dialogs(result.dialogs, result.audio)
+
+    transport = httpx.ASGITransport(app=application)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/dialogs/syn-call-hold/audio")
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://storage.test/rec.mp3?token=abc"

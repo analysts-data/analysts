@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
+from cqa.compose import build_source
 from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.audio import router as audio_router
@@ -44,6 +45,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="CQA")
     settings = settings or Settings()
+    source = source if source is not None else build_source(settings)  # dialog-ingest, ports.md
     app.state.settings = settings
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
