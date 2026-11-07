@@ -1,5 +1,5 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
-import { S, api, reload, render, toast } from '../state.js';
+import { S, api, reload, render, startRun, toast } from '../state.js';
 import { ans, calc, flagsOf, flagWhy, frac, lastDec } from '../scoring.js';
 import { groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
@@ -33,6 +33,8 @@ function tone(c, a) {
   return frac(c, a) === 1 ? 'c-ok' : c.type === 'bool' ? 'c-risk' : 'c-ev';
 }
 const parseVal = v => (/^\d+$/.test(v) ? Number(v) : v);
+const MANUAL = 'вручную'; // CriterionResult.model ручного ответа (src/cqa/services/answers.py)
+const running = () => Boolean(S.run && S.run.status === 'running');
 const plural = (n, one, few, many) => {
   const m10 = n % 10, m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
@@ -66,6 +68,7 @@ export function view(S, id) {
   const withRes = scored(cl).filter(c => d.res[c.id]);
   const answered = withRes.some(c => d.res[c.id].alt != null) ? withRes.length : 0;
   const fr = cl.criteria.find(c => c.type === 'flag'), frr = fr && d.res[fr.id], fa = frr && ans(d, fr.id, S.appeals);
+  const todo = cl.criteria.filter(c => !d.res[c.id]).length;
   return `
   <nav class="row" aria-label="Навигация по очереди" style="justify-content:space-between">
     <a href="#/queue">Все диалоги</a>
@@ -77,6 +80,7 @@ export function view(S, id) {
     <div><h1 class="h1">${esc(titleOf(d))}</h1>
       <p class="sub">${call ? `Звонок, ${mmss(d.dur || 0)}` : 'Чат'}, ${esc(LANG[d.lang] || d.lang)}, ${esc(d.at)}, чек-лист v${cl.version}</p></div>
     <div class="row">${STATUS[groupOf(d, cl, S.appeals)]}${d.reviewed ? '<span class="chip c-ok">Проверен</span>' : ''}
+      ${todo ? `<button type="button" class="btn pri only-qa" data-act="evalone"${running() ? ' disabled' : ''} title="Ждут оценки: ${todo}. Ответы, поставленные вручную, модель не меняет">${running() ? 'Идёт оценка…' : 'Оценить моделью'}</button>` : ''}
       <button type="button" class="btn only-qa" data-act="reviewed">${d.reviewed ? 'Снять отметку' : 'Отметить проверенным'}</button></div>
   </div>
 
@@ -108,7 +112,7 @@ export function view(S, id) {
       <div class="row" style="justify-content:space-between"><h2 class="label">Грубые ошибки</h2>${flags.length ? `<span class="chip c-risk">Найдены: ${flags.length}</span>` : frr ? '<span class="chip c-ok">Не найдены</span>' : '<span class="chip c-ev">Ждут оценки</span>'}</div>
       ${fr ? (fr.questions || []).map(q => `<div class="kv"><span>${esc(q.label)}</span>${fa && fa[q.k] ? '<b style="color:var(--risk)">да</b>' : '<span class="muted">нет</span>'}</div>`).join('') : ''}
       ${flags.length && frr.ev && frr.ev.length ? `<button type="button" class="btn sm" data-act="goto" data-cid="${esc(fr.id)}">Показать реплику ${frr.ev.join(', ')}</button>` : ''}
-      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла хотя бы одна из двух моделей. Итог он не обнуляет.</p>
+      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла ${S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог он не обнуляет.</p>
       ${answered ? `<p class="small" style="margin-top:auto;border-top:1px solid var(--line2);padding-top:10px">Второе мнение совпало по ${answered - disagree(d).length} из ${answered} критериев</p>` : ''}
     </div>
   </section>
@@ -217,13 +221,15 @@ function evidence(d, r) {
 }
 
 function critBody(d, c, r, a) {
-  if (!r || a == null) return '<div class="box ev">Критерий ждёт оценки моделью. Пока итог считается без него.</div>';
+  if (!r || a == null) return `<div class="box ev stack" style="gap:8px"><span>Критерий ждёт оценки. Пока итог считается без него.</span>
+    <span class="row only-qa"><button type="button" class="btn sm" data-act="manual" data-cid="${esc(c.id)}">Оценить вручную</button></span></div>`;
   let out = c.type === 'flag' ? flagBody(d, c, r, a) : scoredBody(d, c, r, a);
   const hist = S.appeals.filter(x => x.dlg === d.id && x.cid === c.id && (x.status === 'confirmed' || x.status === 'changed'));
   if (hist.length) out += `<div class="stack" style="gap:6px"><span class="label">История оценки</span><div class="hist">
     <span class="muted">Исходная</span><span>Модель, ${esc(d.at)}</span><span class="chip c-na">${esc(ansTxt(c, r.a))}</span>
     ${hist.map(h => `<span class="muted">${h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span><span>${esc(h.reviewer)}, ${esc(h.decidedAt)}: «${esc(h.reason)}»</span><span class="chip ${h.status === 'changed' ? 'c-info' : 'c-ok'}">${h.status === 'changed' ? esc(ansTxt(c, h.to)) : 'подтверждено'}</span>`).join('')}
     ${c.type === 'flag' ? '' : `<span class="muted">Итог</span><span>Пересчитан по формуле чек-листа</span><b>${f2(calc(d, S.checklist, S.appeals).total)}</b>`}</div></div>`;
+  out += manualRow(d, c, r);
   const pa = S.appeals.find(x => x.dlg === d.id && x.cid === c.id && x.status === 'pending');
   out += pa ? `<p><span class="chip c-info">Апелляция на рассмотрении</span> <a href="${href('appeals', pa.id)}" class="small">Открыть</a></p>`
     : `<div class="no-rv"><button type="button" class="btn" data-act="appeal" data-cid="${esc(c.id)}">Оспорить оценку</button></div>`;
@@ -261,6 +267,44 @@ function scoredBody(d, c, r, a) {
   else if (r.alt != null && r.alt === r.a) out += `<p class="muted xs">Второе мнение совпало: ${esc(ansTxt(c, r.alt))}.</p>`;
   if (r.better && f != null && f < 1) out += `<div class="box good"><b>Как сказать лучше:</b> «${esc(r.better)}»</div>`;
   return out;
+}
+
+// Пометка ручного ответа и кнопка «Изменить ответ»: пока по паре нет апелляции и решения (они важнее ответа).
+function manualRow(d, c, r) {
+  const mark = r.model === MANUAL ? '<span class="chip c-info">Поставлено вручную</span>' : '';
+  const blocked = S.appeals.some(x => x.dlg === d.id && x.cid === c.id && x.status !== 'closed');
+  const btn = blocked ? '' : `<button type="button" class="btn sm only-qa" data-act="manual" data-cid="${esc(c.id)}">Изменить ответ</button>`;
+  return mark || btn ? `<div class="row">${mark}${btn}</div>` : '';
+}
+
+// Ручной ответ специалиста КК: окно с ответом и необязательной причиной, затем PUT /api/dialogs/{id}/answers/{cid}.
+function openManual(d, c) {
+  const dlg = document.getElementById('dlg'), form = document.getElementById('dlgForm');
+  const r = d.res[c.id], cur = r ? r.a : null, before = f2(calc(d, S.checklist, S.appeals).total);
+  const input = c.type === 'flag'
+    ? `<fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Грубые ошибки</legend>${(c.questions || []).map(q => `<label class="row small"><input type="checkbox" name="q" value="${esc(q.k)}"${cur && cur[q.k] ? ' checked' : ''}> ${esc(q.label)}</label>`).join('')}</fieldset>`
+    : `<label class="field"><span>Ответ</span><select name="a" class="fld">${allowed(c).map(v => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(ansTxt(c, v))}${c.type === 'scale' && c.stepText && c.stepText[v] ? ` — ${esc(c.stepText[v])}` : ''}</option>`).join('')}</select></label>`;
+  form.innerHTML = `<header><h2 class="h2" id="dlgTitle">${r ? 'Изменить ответ' : 'Оценить вручную'}</h2><p class="muted small">${esc(titleOf(d))}, ${esc(c.id)} ${esc(c.name)}</p></header>
+    ${input}
+    <label class="field"><span>Обоснование, по желанию</span><textarea name="reason" class="fld" placeholder="Что в разговоре подтверждает ответ"></textarea></label>
+    <p class="muted xs">Ручной ответ заменяет ответ модели, повторная оценка моделью его не меняет. Прежний ответ остаётся в истории базы.</p>
+    <footer><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn pri" value="ok">Сохранить ответ</button></footer>`;
+  dlg.returnValue = '';
+  dlg.onclose = async () => {
+    dlg.onclose = null;
+    if (dlg.returnValue !== 'ok') return;
+    const fd = new FormData(form), on = new Set(fd.getAll('q'));
+    const a = c.type === 'flag' ? Object.fromEntries((c.questions || []).map(q => [q.k, on.has(q.k)])) : parseVal(fd.get('a'));
+    try {
+      await api.putAnswer(d.id, c.id, { a, reason: String(fd.get('reason')).trim(), by: SIGN[S.role] });
+      await reload();
+      const now = S.dialogs.find(x => x.id === d.id) || d;
+      toast(`Ответ сохранён. Итог ${titleOf(d)}: ${before} → ${f2(calc(now, S.checklist, S.appeals).total)}.`);
+    } catch (e) {
+      toast(`Ответ не сохранён: ${e.message}`);
+    }
+  };
+  dlg.showModal();
 }
 
 // Решение по расхождению моделей или проваленному основанию: окно с причиной, затем POST /api/decisions.
@@ -327,6 +371,8 @@ export const actions = {
     flashLine(l.n);
   },
   ev: t => flashLine(Number(t.dataset.n)),
+  manual: t => openManual(current(), S.checklist.criteria.find(x => x.id === t.dataset.cid)),
+  evalone: () => { const d = current(); if (d && !running()) { toast(`Оценка ${titleOf(d)} запущена.`); startRun({ dialogs: [d.id], criteria: null }); } },
   fold: t => { const k = t.dataset.key; unfolded.has(k) ? unfolded.delete(k) : unfolded.add(k); render(); },
 };
 

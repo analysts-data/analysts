@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class StubSource:
-    async def fetch(self, group_id: str) -> IngestResult:
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult:
         return IngestResult(dialogs=[], audio={}, skipped=0, errors=[])
 
     def upload(self, raw: bytes) -> IngestResult:

@@ -159,8 +159,8 @@ test('reasonsStats: owner is "Не назначено" when owners has no record
   assert.equal(r.single, 0);
 });
 
-test('nextStepStats: dialogs of queue group next via groupOf', () => {
-  assert.deepEqual(nextStepStats(state), { dialogIds: ['p1-ru-003'] });
+test('nextStepStats: dialogs of queue group next via groupOf, the handoff at 15 of 20 included', () => {
+  assert.deepEqual(nextStepStats(state), { dialogIds: ['call-024', 'p1-ru-003'] });
 });
 
 test('reasonsCsv: BOM, header and 4 recurring reason rows', () => {

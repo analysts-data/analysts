@@ -1,6 +1,7 @@
 // Редактор чек-листа: черновик — копия применяемой версии, правки живут в браузере до сохранения.
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { esc, fn } from '../format.js';
+import { runErrors } from './queue.js';
 
 const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
 const TYPES = [['bool', 'Да / Нет'], ['scale', 'Шкала'], ['flag', 'Флаг нарушения, без баллов']];
@@ -11,13 +12,14 @@ const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
 const wsum = cs => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
 const selected = () => S.draft.criteria.find(x => x.id === S.cSel);
-// pending приходит только из ответа PUT /api/checklist и держится, пока у диалогов нет записи критерия
-const waiting = () => (S.pending || []).filter(cid => S.dialogs.some(d => !d.res[cid]));
+// pending приходит только из ответа PUT /api/checklist и держится, пока критерий есть в версии и у диалогов нет его записи
+const waiting = () => (S.pending || []).filter(cid => S.checklist.criteria.some(c => c.id === cid) && S.dialogs.some(d => !d.res[cid]));
 
 export function view(S) {
   // новая версия с сервера сбрасывает черновик; если сохранение упало, правки остаются
   if (S.draft?.version !== S.checklist.version) S.draft = structuredClone(S.checklist);
   const cl = S.checklist, dr = S.draft, pend = waiting(), run = S.run?.status === 'running' ? S.run : null;
+  const errs = runErrors(S.run); // запуск с ошибками остаётся на баннере до следующего запуска
   const c = selected() || dr.criteria[0];
   S.cSel = c?.id;
   const sum = wsum(scored(dr));
@@ -31,11 +33,11 @@ export function view(S) {
     <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
       <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
       <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
-  ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
+  ${pend.length || run || errs ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
     <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
-      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
+      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span>${errs}</section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
     <section class="card" style="padding:10px" aria-label="Структура чек-листа">
       ${dr.sections.map((s, si) => `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${wsum(scored(dr).filter(x => x.sec === si)) || ''}</span></p><div class="clist">
@@ -133,6 +135,7 @@ export const actions = {
     try {
       const { version, pending } = await api.putChecklist(S.draft);
       S.pending = [...new Set([...(S.pending || []), ...pending])];
+      if (S.run?.status !== 'running') S.run = null; // итог прошлого запуска относится к прежней версии
       await reload();
       toast(pending.length ? `Сохранена версия v${version}. Критерии ${pending.join(', ')} ждут оценки.` : `Сохранена версия v${version}. Итоги пересчитаны без вызова модели.`);
     } catch (e) {

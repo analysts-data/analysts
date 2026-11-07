@@ -1,6 +1,9 @@
 """FastAPI application factory (design/ports.md, "create_app и app.state")."""
 
+import asyncio
+import contextlib
 import sqlite3
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -14,9 +17,11 @@ from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
+from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.runs import Runner
 from cqa.services.state import mode_from_settings
+from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -32,6 +37,18 @@ STATUS: dict[type[Exception], int] = {
 }
 
 
+@contextlib.asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Автосинхронизация набора организаторов, пока работает сервер."""
+    syncer: Syncer | None = app.state.syncer
+    task = asyncio.create_task(syncer.run()) if syncer else None
+    yield
+    if task:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 async def _detail(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         {"detail": str(exc)}, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t))
@@ -45,7 +62,7 @@ def create_app(
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="CQA")
+    app = FastAPI(title="CQA", lifespan=_lifespan)
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
     app.add_middleware(
         CORSMiddleware,
@@ -64,6 +81,7 @@ def create_app(
         return {"ok": True}
 
     store = Store(conn if conn is not None else connect(settings.db_path))
+    settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
     if store.current_checklist() is None:
         store.add_checklist(
@@ -71,6 +89,7 @@ def create_app(
         )
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
+    app.state.syncer = Syncer(store, app.state.source)
     evaluator = evaluator if evaluator is not None else build_evaluator(settings)  # llm-evaluation, ports.md
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)

@@ -6,10 +6,11 @@ import httpx
 
 from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JevVerifier
-from cqa.adapters.llm import PROFILES, ChatClient
+from cqa.adapters.llm import ChatClient
 from cqa.adapters.org_api import OrgApi
 from cqa.services.evaluation import LlmEvaluator, Verifier
 from cqa.services.ingest import OrgDialogSource
+from cqa.services.llm_config import config_error
 from cqa.settings import Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
@@ -18,19 +19,6 @@ CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,
 def build_source(settings: Settings) -> OrgDialogSource:
     url = settings.org_api_url.get_secret_value() if settings.org_api_url else None
     return OrgDialogSource(settings, OrgApi(url, httpx.AsyncClient()))
-
-
-def _config_error(settings: Settings) -> str | None:
-    """Ошибка конфигурации; LlmEvaluator бросает её как ConfigError при evaluate, а не при сборке."""
-    if settings.llm_profile not in PROFILES:
-        return f"Неизвестный профиль модели {settings.llm_profile}, допустимы: {', '.join(PROFILES)}"
-    if settings.llm_mode != "replay" and settings.llm_api_key is None:
-        return f"Нет ключа модели для режима {settings.llm_mode}: задайте CQA_LLM_API_KEY"
-    if settings.llm_mode != "replay" and not settings.llm_base_url:
-        return f"Нет адреса модели для режима {settings.llm_mode}: задайте CQA_LLM_BASE_URL"
-    if settings.verifier == "jev" and settings.llm_mode != "replay" and settings.jev_api_key is None:
-        return f"Нет ключа второго мнения для режима {settings.llm_mode}: задайте CQA_JEV_API_KEY"
-    return None
 
 
 def _http(settings: Settings, kind: str) -> httpx.AsyncClient:
@@ -57,5 +45,5 @@ def build_evaluator(settings: Settings) -> LlmEvaluator:
         verifier=_verifier(settings),
         sends_real_data=settings.llm_mode == "live",
         allow_real_data=settings.allow_real_data,
-        config_error=_config_error(settings),
+        config_error=config_error(settings),
     )
