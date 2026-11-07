@@ -115,7 +115,7 @@ class Disagreement:
 
 @dataclass(frozen=True)
 class GrossMetrics:
-    """Грубые ошибки: полнота флага по подвопросам и языкам."""
+    """Полнота флага нарушений по подвопросам и языкам."""
 
     recall: dict[str, float | None]
     by_lang: dict[str, float | None]
@@ -216,9 +216,9 @@ def score_run(
     all_results = [res for per_dialog in results.values() for res in per_dialog.values()]
     tag_dialogs: dict[str, set[str]] = {}
     for dlg_id, per_dialog in results.items():
-        for res in per_dialog.values():
-            if res.tag:
-                tag_dialogs.setdefault(res.tag, set()).add(dlg_id)
+        for found in per_dialog.values():
+            if found.tag:
+                tag_dialogs.setdefault(found.tag, set()).add(dlg_id)
 
     for label in gold:
         if label.ok is None:
