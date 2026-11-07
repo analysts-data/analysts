@@ -167,7 +167,7 @@ def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: 
     save_text_change(page)
     page.locator('[data-act="crun"]').click()
     view = page.locator('[data-view="checklist"]')
-    expect(view).to_contain_text("3/10")
+    expect(view).to_contain_text("Оценено 3 из 10 ответов по критериям")
     expect(view).to_contain_text("$0,02")
     expect(view).to_contain_text("40 с")
     expect(page.locator('[data-act="crun"]')).to_be_disabled()
