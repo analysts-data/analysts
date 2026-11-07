@@ -1,5 +1,5 @@
 // <cqa-app>: каркас прототипа (сайдбар, верхняя панель, роли, toast, окно), роутинг и делегирование data-act.
-import { S, api, cancelRun, init, postDataset, reload, render, toast, uploadDataset } from './state.js';
+import { S, api, cancelRun, init, postDataset, reload, render, resumeRun, toast, uploadDataset } from './state.js';
 import { modeText } from './config.js';
 import { resolveBase } from './api.js';
 import { groupOf } from './queue.js';
@@ -80,6 +80,7 @@ class CqaApp extends HTMLElement {
     if (!location.hash) history.replaceState(null, '', '#/queue');
     this.render();
     reload();
+    resumeRun(); // перезагрузка во время оценки: продолжаем опрос запомненного запуска
     // llm_mode задаёт .env и из интерфейса не меняется: хватит одного запроса
     api.getConfig().then(c => { S.llmMode = c.llm_mode; this.render(); }, () => {});
   }

@@ -56,10 +56,17 @@ export function runNote(run) {
   return `${head}: оценено ${run.done} из ${run.total} ответов по критериям.`;
 }
 
+// localStorage может быть недоступен (приватный режим, песочница iframe): каждое обращение — в try/catch.
+const RUN_KEY = 'cqa.run';
+const storedRun = () => { try { return globalThis.localStorage?.getItem(RUN_KEY) ?? null; } catch { return null; } };
+const rememberRun = id => { try { globalThis.localStorage?.setItem(RUN_KEY, String(id)); } catch { /* без хранилища — без переживания перезагрузки */ } };
+const forgetRun = () => { try { globalThis.localStorage?.removeItem(RUN_KEY); } catch { /* без хранилища */ } };
+
 // Единственная реализация запуска оценки: POST /api/runs, опрос раз в секунду до done или cancelled, затем reload.
 export async function startRun({ dialogs, criteria }) {
   try {
     const { run_id } = await api.postRun({ dialogs, criteria });
+    rememberRun(run_id);
     S.run = { id: run_id, done: 0, total: 0, cost: 0, calls: 0, eta_s: null, errors: [], status: 'running' };
     toast('Оценка запущена.');
     render();
@@ -75,14 +82,32 @@ async function poll() {
   try {
     Object.assign(run, await api.getRun(run.id));
   } catch (e) {
+    forgetRun();
     S.run = null;
     toast(`Прогресс оценки недоступен: ${e.message}`);
     return render();
   }
   render();
   if (run.status === 'running') return setTimeout(poll, 1000);
+  forgetRun();
   toast(runNote(run));
   await reload();
+}
+
+// После перезагрузки страницы: running — прогресс снова на экране и опрос продолжается;
+// запуск завершён или неизвестен серверу — ключ удаляется молча, без toast.
+export async function resumeRun() {
+  const id = storedRun();
+  if (!id) return;
+  try {
+    const r = await api.getRun(id);
+    if (r.status !== 'running') return forgetRun();
+    S.run = { id, ...r };
+    render();
+    setTimeout(poll, 1000);
+  } catch {
+    forgetRun();
+  }
 }
 
 // Диалоги в полёте после отмены ещё дописываются: статус и reload приходят из опроса, а не из ответа cancel.
