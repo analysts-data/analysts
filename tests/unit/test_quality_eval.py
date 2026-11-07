@@ -10,7 +10,7 @@ from cqa.domain.agreement import GoldLabel, Thresholds
 from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog, DialogEvaluation, Evaluation
 from cqa.domain.prompt import PROMPT_VERSION
 from cqa.services import quality_eval
-from cqa.services.quality_eval import load_thresholds, run_eval
+from cqa.services.quality_eval import load_holdout, load_thresholds, run_eval
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -248,3 +248,85 @@ def test_eval_reports_are_ignored_by_git() -> None:
         ["git", "check-ignore", "-q", "eval/reports/20261107T000000Z.json"], cwd=ROOT, check=False
     )
     assert out.returncode == 0
+
+
+# --- отложенные критерии -----------------------------------------------------------------------
+
+HOLDOUT_TEXT = "Секретный текст отложенного критерия."
+
+
+def holdout_criteria(*replaces: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"h{i}",
+            "sec": 0,
+            "name": f"Отложенный {i}",
+            "type": "bool",
+            "w": 10,
+            "na": False,
+            "text": f"{HOLDOUT_TEXT} {i}",
+            "replaces": cid,
+        }
+        for i, cid in enumerate(replaces, start=1)
+    ]
+
+
+def write_holdout(root: Path, criteria: list[dict[str, Any]], labels: list[dict[str, Any]]) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "criteria.json").write_text(json.dumps(criteria, ensure_ascii=False), encoding="utf-8")
+    (root / "labels.jsonl").write_text("\n".join(json.dumps(r) for r in labels) + "\n", encoding="utf-8")
+    return root
+
+
+def hl(dlg: str, cid: str, *ok: Any) -> dict[str, Any]:
+    return {"dlg": dlg, "cid": cid, "ok": list(ok), "by": "team", "note": ""}
+
+
+def test_holdout_without_dir_returns_two_without_calls(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("CQA_HOLDOUT_DIR", raising=False)
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main([*ARGS, "--holdout"]) == 2
+    assert "вне репозитория" in capsys.readouterr().out
+    assert fake.calls == []
+
+
+def test_holdout_dir_inside_repository_returns_two_without_calls(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CQA_HOLDOUT_DIR", str(ROOT / "eval"))
+    fake = use(monkeypatch, FakeEvaluator([answers()]))
+    assert quality_eval.main([*ARGS, "--holdout"]) == 2
+    assert "вне репозитория" in capsys.readouterr().out
+    assert fake.calls == []
+
+
+def test_load_holdout_requires_replaces_of_known_criterion(tmp_path: Path) -> None:
+    good = holdout_criteria("01")
+    write_holdout(tmp_path, [{k: v for k, v in good[0].items() if k != "replaces"}], [])
+    with pytest.raises(ValueError, match="replaces"):
+        load_holdout(tmp_path, CHECKLIST)
+    write_holdout(tmp_path, holdout_criteria("99"), [])
+    with pytest.raises(ValueError, match="99"):
+        load_holdout(tmp_path, CHECKLIST)
+    write_holdout(tmp_path, [good[0] | {"type": "dice"}], [])
+    with pytest.raises(ValueError):
+        load_holdout(tmp_path, CHECKLIST)
+
+
+def test_load_holdout_checks_labels_against_replacing_criterion(tmp_path: Path) -> None:
+    write_holdout(
+        tmp_path,
+        holdout_criteria("01", "04"),
+        [hl("syn-chat-ru", "h1", "yes"), hl("syn-chat-ru", "h2", "no")],
+    )
+    criteria, labels = load_holdout(tmp_path, CHECKLIST)
+    assert [(c.id, replaces) for c, replaces in criteria] == [("h1", "01"), ("h2", "04")]
+    assert [(g.dlg, g.cid, g.ok) for g in labels] == [
+        ("syn-chat-ru", "h1", ("yes",)),
+        ("syn-chat-ru", "h2", ("no",)),
+    ]
+    write_holdout(tmp_path, holdout_criteria("01"), [hl("syn-chat-ru", "h1", 15)])
+    with pytest.raises(ValueError, match="строка 1"):
+        load_holdout(tmp_path, CHECKLIST)

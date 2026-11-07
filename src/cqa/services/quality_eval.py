@@ -6,13 +6,14 @@ import json
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Coroutine, Iterable, Sequence
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from cqa.compose import build_source
 from cqa.domain.agreement import (
@@ -26,7 +27,7 @@ from cqa.domain.agreement import (
     score_run,
     stability,
 )
-from cqa.domain.models import Checklist, CriterionResult, Dialog
+from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog
 from cqa.domain.prompt import PROMPT_VERSION
 from cqa.services.errors import ConfigError
 from cqa.services.evaluation import RealDataBlocked
@@ -39,6 +40,7 @@ GOLD = Path("eval/gold/labels.jsonl")
 THRESHOLDS = Path("eval/thresholds.yaml")
 BASELINE = Path("eval/baseline.json")
 REPORTS = Path("eval/reports")
+REPO = Path(__file__).resolve().parents[3]
 # поля Report, по которым gate сравнивает с лучшим прогоном; в baseline.json только они, без текстов
 _GATE = (
     "agree_total",
@@ -142,6 +144,36 @@ async def run_eval(
     )
 
 
+def load_holdout(
+    holdout_dir: Path, checklist: Checklist
+) -> tuple[list[tuple[Criterion, str]], list[GoldLabel]]:
+    """criteria.json: Criterion с полем replaces (id критерия чек-листа); labels.jsonl: формат эталона.
+
+    Разметка проверяется по чек-листу, где заменённые критерии уступили место отложенным.
+    """
+    known = {c.id for c in checklist.criteria}
+    criteria: list[tuple[Criterion, str]] = []
+    for i, item in enumerate(
+        json.loads((holdout_dir / "criteria.json").read_text(encoding="utf-8")), start=1
+    ):
+        body = dict(item)
+        replaces = body.pop("replaces", None)
+        if replaces not in known:
+            raise ValueError(
+                f"критерий {i}: replaces должен назвать критерий чек-листа, получено {replaces!r}"
+            )
+        try:
+            criteria.append((Criterion.model_validate(body), replaces))
+        except ValidationError as exc:
+            raise ValueError(f"критерий {i}: {exc.error_count()} ошибок формы Criterion") from None
+    ids = {c.id for c, _ in criteria}
+    merged = checklist.model_copy(
+        update={"criteria": [c for c in checklist.criteria if c.id not in ids] + [c for c, _ in criteria]}
+    )
+    lines = (holdout_dir / "labels.jsonl").read_text(encoding="utf-8").splitlines()
+    return criteria, load_gold(lines, merged)
+
+
 def _build_evaluator(settings: Settings) -> Evaluator:
     # ponytail: build_evaluator приходит с llm-evaluation 4.6 (после слияния клиента модели), тогда импорт
     # переедет наверх модуля.
@@ -187,8 +219,33 @@ def _table(report: Report) -> str:
     return "\n".join(rows)
 
 
+class _Stop(Exception):
+    """Ошибка конфигурации: main печатает текст и возвращает код 2 без вызовов оценщика."""
+
+
+def _snapshot(settings: Settings, ids: set[str]) -> list[Dialog]:
+    """Диалоги разметки из снимка CQA_EVAL_DATASET; звонок только с CQA_ALLOW_REAL_DATA=1."""
+    if not settings.eval_dataset.exists():
+        raise _Stop(f"Нет набора {settings.eval_dataset}: положите снимок DEV или задайте CQA_EVAL_DATASET")
+    raw = settings.eval_dataset.read_bytes()
+    dialogs = [d for d in build_source(settings).upload(raw).dialogs if d.id in ids]
+    calls = sorted(d.id for d in dialogs if d.ch == "call")
+    if calls and not settings.allow_real_data:
+        raise _Stop(f"Звонки в разметке без CQA_ALLOW_REAL_DATA=1, оценка не запущена: {', '.join(calls)}")
+    if absent := sorted(ids - {d.id for d in dialogs}):
+        print(f"Нет в снимке, пары считаются «ждёт оценки»: {', '.join(absent)}")
+    return dialogs
+
+
+def _evaluate[T](coro: Coroutine[Any, Any, T]) -> T:
+    try:
+        return asyncio.run(coro)
+    except (ConfigError, RealDataBlocked) as exc:
+        raise _Stop(f"Оценка не запущена: {exc}") from None
+
+
 def main(argv: list[str] | None = None) -> int:
-    """make eval: 0 — прошло, 1 — порог или регресс, 2 — ошибка конфигурации."""
+    """make eval и make eval-holdout: 0 — прошло, 1 — порог или регресс, 2 — ошибка конфигурации."""
     parser = argparse.ArgumentParser(prog="python -m cqa.services.quality_eval")
     parser.add_argument(
         "--checklist", type=Path, default=CHECKLIST, help="чек-лист или выгрузка GET /api/state"
@@ -196,33 +253,39 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--accept", action="store_true", help="записать eval/baseline.json, если прогон прошёл"
     )
+    parser.add_argument("--holdout", action="store_true", help="отложенные критерии из CQA_HOLDOUT_DIR")
     args = parser.parse_args(argv)
 
     settings = Settings()
-    if not settings.eval_dataset.exists():
-        print(f"Нет набора {settings.eval_dataset}: положите снимок DEV или задайте CQA_EVAL_DATASET")
-        return 2
     raw = json.loads(args.checklist.read_text(encoding="utf-8"))
     checklist = Checklist.model_validate(raw.get("checklist", raw))
-    gold = load_gold(GOLD.read_text(encoding="utf-8").splitlines(), checklist)
-    ids = {g.dlg for g in gold}
-    dialogs = [
-        d for d in build_source(settings).upload(settings.eval_dataset.read_bytes()).dialogs if d.id in ids
-    ]
-    calls = sorted(d.id for d in dialogs if d.ch == "call")
-    if calls and not settings.allow_real_data:
-        print(f"Звонки в эталоне без CQA_ALLOW_REAL_DATA=1, оценка не запущена: {', '.join(calls)}")
-        return 2
-    if absent := sorted(ids - {d.id for d in dialogs}):
-        print(f"Нет в снимке, пары считаются «ждёт оценки»: {', '.join(absent)}")
-
     try:
-        report = asyncio.run(run_eval(dialogs, gold, checklist, _build_evaluator(settings)))
-    except (ConfigError, RealDataBlocked) as exc:
-        print(f"Оценка не запущена: {exc}")
+        return (
+            _holdout_main(settings, checklist)
+            if args.holdout
+            else _eval_main(settings, checklist, args.accept)
+        )
+    except _Stop as exc:
+        print(exc)
         return 2
-    problems = gate(report, load_thresholds(THRESHOLDS.read_text(encoding="utf-8")), _load_baseline())
 
+
+def _holdout_main(settings: Settings, checklist: Checklist) -> int:
+    holdout = settings.holdout_dir
+    if holdout is None or holdout.resolve().is_relative_to(REPO):
+        raise _Stop("Отложенные критерии лежат вне репозитория: задайте CQA_HOLDOUT_DIR каталогом вне него")
+    try:
+        criteria, labels = load_holdout(holdout, checklist)
+    except ValueError as exc:
+        raise _Stop(f"Отложенные критерии: {exc}") from None
+    raise NotImplementedError
+
+
+def _eval_main(settings: Settings, checklist: Checklist, accept: bool) -> int:
+    gold = load_gold(GOLD.read_text(encoding="utf-8").splitlines(), checklist)
+    dialogs = _snapshot(settings, {g.dlg for g in gold})
+    report = _evaluate(run_eval(dialogs, gold, checklist, _build_evaluator(settings)))
+    problems = gate(report, load_thresholds(THRESHOLDS.read_text(encoding="utf-8")), _load_baseline())
     REPORTS.mkdir(parents=True, exist_ok=True)
     path = REPORTS / f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
     body: dict[str, Any] = asdict(report) | {
@@ -236,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Отчёт: {path}")
     if problems:
         return 1
-    if args.accept:
+    if accept:
         baseline = {
             "report": {k: body[k] for k in _GATE},
             "model": report.model,
