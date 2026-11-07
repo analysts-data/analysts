@@ -70,12 +70,11 @@ async function poll() {
   else await reload();
 }
 
+// Диалоги в полёте после отмены ещё дописываются: статус и reload приходят из опроса, а не из ответа cancel.
 export async function cancelRun() {
   if (!S.run) return;
   try {
-    Object.assign(S.run, await api.cancelRun(S.run.id));
-    if (S.run.status === 'running') render();
-    else await reload();
+    await api.cancelRun(S.run.id);
   } catch (e) {
     toast(`Оценка не остановлена: ${e.message}`);
   }

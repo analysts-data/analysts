@@ -87,5 +87,8 @@ def test_audio_link_is_in_the_store_but_not_in_the_state(settings: Settings) -> 
 def test_without_a_source_loading_is_503(
     settings: Settings, conn: sqlite3.Connection, path: str, kwargs: dict
 ) -> None:
-    response = _client(settings, conn, None).post(path, **kwargs)
+    # create_app builds the org source by default; the 503 branch covers an explicitly missing source
+    app = create_app(settings, conn=conn)
+    app.state.source = None
+    response = TestClient(app).post(path, **kwargs)
     assert (response.status_code, response.json()) == (503, {"detail": "Загрузка наборов не подключена"})

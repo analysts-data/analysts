@@ -46,6 +46,8 @@ class Api:
         route.fulfill(json={"run_id": "r9"})
 
     def on_poll(self, route: Route) -> None:
+        if self.cancels:  # as the server: cancelled once the dialogs in flight are saved
+            return route.fulfill(json={**RUNNING, "status": "cancelled"})
         if not self.finish:
             return route.fulfill(json=RUNNING)
         for d in self.state["dialogs"]:  # оценка готова: записи по pending снова есть
@@ -167,7 +169,7 @@ def test_run_evaluates_only_pending_criteria_with_progress(page: Page, web_url: 
     save_text_change(page)
     page.locator('[data-act="crun"]').click()
     view = page.locator('[data-view="checklist"]')
-    expect(view).to_contain_text("3/10")
+    expect(view).to_contain_text("Оценено 3 из 10 ответов по критериям")
     expect(view).to_contain_text("$0,02")
     expect(view).to_contain_text("40 с")
     expect(page.locator('[data-act="crun"]')).to_be_disabled()
@@ -197,3 +199,7 @@ def test_weight_only_change_sends_no_run(page: Page, web_url: str) -> None:
     expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
     expect(page.locator('[data-act="crun"]')).to_have_count(0)
     assert api.runs == []
+    page.evaluate("location.hash = '#/queue'")
+    expect(page.locator('[data-act="open"][data-id="call-024"]')).to_contain_text(
+        "83,75"
+    )  # было 82,94 при весе 15
