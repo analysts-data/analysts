@@ -28,6 +28,7 @@ CALL = "call-024"
 HOLD = "Удержание и разговор с коллегой"
 APPEAL_DLG, APPEAL_CID = "p1-ru-003", "04"
 DECISION = "Срок ответа назван в реплике 8"
+FLAG_DECISION = "Оператор направил клиента в приложение, платной услуги нет"
 WHERE = {"kz": "Казахстан", "local": "локально", "external": "внешний провайдер"}  # плашка cqa-web-ui
 
 
@@ -201,6 +202,43 @@ def appeal(d: Defence) -> None:
     open_criterion(d.page, APPEAL_CID)
     for text in (answer_text(c, res["a"]), f2(before), f2(after)):
         expect(d.body).to_contain_text(text)
+
+
+def flag_appeal(d: Defence) -> None:
+    """Грубая ошибка оспорена: оператор снимает нарушения, проверяющий решает с причиной; флаг уходит
+    из группы «Грубые ошибки», исходный `res` и итог прежние."""
+    s = d.state()
+    fc = next(c for c in s["checklist"]["criteria"] if c["type"] == "flag")
+    res, flags = dialog(s, CARD)["res"][fc["id"]], flags_of(dialog(s, CARD), s["checklist"])
+    assert flags, f"у {CARD} нет грубой ошибки"
+    before = d.total(CARD)
+    d.go(f"#/d/{CARD}")
+    role(d.page, "operator")
+    open_criterion(d.page, fc["id"]).locator('[data-act="appeal"]').click()
+    form = d.page.get_by_role("dialog")
+    for label in flags:
+        form.get_by_label(label).uncheck()
+    form.get_by_label("Комментарий").fill("Нарушения не было: клиенту предложили путь через приложение.")
+    with d.page.expect_response(
+        lambda r: r.request.method == "POST" and r.url.endswith("/api/appeals")
+    ) as filed:
+        form.get_by_role("button", name="Отправить апелляцию").click()
+    a = filed.value.json()
+    clear = {q["k"]: False for q in fc["questions"]}
+    assert (a["status"], a["from"], a["ask"]) == ("pending", res["a"], clear), a
+
+    role(d.page, "reviewer")
+    d.go(f"#/appeals/{a['id']}")
+    d.page.locator('[data-view="appeals"] textarea').fill(FLAG_DECISION)
+    with d.page.expect_response(lambda r: r.url.endswith(f"/api/appeals/{a['id']}/decision")) as decided:
+        d.page.locator('[data-act="decide"]').click()
+    assert (decided.value.json()["status"], decided.value.json()["to"]) == ("changed", clear)
+
+    s = d.state()
+    assert dialog(s, CARD)["res"][fc["id"]] == res, "исходный res изменился"
+    assert d.total(CARD) == before, "флаг изменил итог"
+    d.go("#/queue?grp=risk")
+    expect(d.page.locator(f'[data-act="open"][data-id="{CARD}"]')).to_have_count(0)
 
 
 def replace(d: Defence) -> None:

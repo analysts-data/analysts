@@ -105,7 +105,7 @@ export function view() {
     </div></div>
   <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}</section>
   <section class="tiles" aria-label="Быстрые фильтры">
-    ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.dialogs.filter(d => d.reviewed && flagsOf(d, S.checklist).length).length} проверено`)}
+    ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.dialogs.filter(d => d.reviewed && flagsOf(d, S.checklist, S.appeals).length).length} проверено`)}
     ${tile('review', 'Нужна проверка', cnt('review'), 'модели разошлись или цитата не найдена')}
     ${tile('next', 'Без следующего шага', cnt('next'), 'клиент не знает, что делать дальше')}
     <a class="tile" href="${href('appeals')}"><span class="t">Апелляции</span><strong>${pa}</strong><span class="muted small">ждут решения проверяющего</span></a>

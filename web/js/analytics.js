@@ -9,7 +9,7 @@ export function flagStats(S) {
   const questions = S.checklist.criteria
     .filter(c => c.type === 'flag')
     .flatMap(c => c.questions || []);
-  const labels = new Map(S.dialogs.map(d => [d.id, flagsOf(d, S.checklist)]));
+  const labels = new Map(S.dialogs.map(d => [d.id, flagsOf(d, S.checklist, S.appeals)]));
   const flaggedIds = S.dialogs.filter(d => labels.get(d.id).length).map(d => d.id);
   return {
     flaggedIds,
@@ -109,7 +109,7 @@ export function resultsCsv(dialogs, checklist, appeals) {
         d.ch,
         d.lang,
         calc(d, checklist, appeals).total ?? '—',
-        flagsOf(d, checklist).join(', '),
+        flagsOf(d, checklist, appeals).join(', '),
         ...cols.map(c => cell(ans(d, c.id, appeals))),
       ])
     ),
