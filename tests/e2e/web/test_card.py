@@ -1,42 +1,11 @@
-import json
 import re
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.e2e
-STATE: dict[str, Any] = json.loads(
-    (Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json").read_text(encoding="utf-8")
-)
-
-
-def dialog(state: dict[str, Any], dialog_id: str) -> dict[str, Any]:
-    return next(d for d in state["dialogs"] if d["id"] == dialog_id)
-
-
-@pytest.fixture
-def open_card(page: Page, web_url: str) -> Callable[..., list[str]]:
-    """Open `#/d/{id}` on the prototype state (optionally edited); returns the console error list."""
-
-    def go(dialog_id: str, edit: Callable[[dict[str, Any]], None] | None = None) -> list[str]:
-        state = json.loads(json.dumps(STATE))
-        if edit:
-            edit(state)
-        errors: list[str] = []
-        page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-        page.on("pageerror", lambda e: errors.append(str(e)))
-        page.route(
-            "**/api/state",
-            lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(state)),
-        )
-        page.goto(f"{web_url}/#/d/{dialog_id}")
-        expect(page.locator('[data-view="d"] h1')).to_be_visible()  # state loaded and card drawn
-        return errors
-
-    return go
 
 
 def test_call_card_shows_total_sections_losses_and_points(
@@ -66,8 +35,8 @@ def test_open_criterion_shows_why_checked_segment_and_jumps_to_line(
 
 
 def test_hold_is_folded_until_shown(page: Page, open_card: Callable[..., list[str]]) -> None:
-    def add_hold_lines(state: dict[str, Any]) -> None:
-        lines = dialog(state, "call-024")["lines"]
+    def add_hold_lines(d: dict[str, Any]) -> None:
+        lines = d["lines"]
         at = next(i for i, ln in enumerate(lines) if ln.get("fold")) + 1
         lines[at:at] = [
             {"n": 12, "t": 166.0, "s": 166.0, "who": "operator", "text": "Коллега, подскажи срок."},

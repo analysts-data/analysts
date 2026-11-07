@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 from playwright.sync_api import Page, expect
-from test_card import dialog, open_card  # noqa: F401  (open_card is a fixture)
 
 pytestmark = pytest.mark.e2e
 
@@ -21,13 +20,13 @@ def silence_wav(seconds: int = 60, rate: int = 8000) -> bytes:
     return buf.getvalue()
 
 
-def line(state: dict[str, Any], n: int) -> dict[str, Any]:
-    return next(ln for ln in dialog(state, "call-024")["lines"] if ln.get("n") == n)
+def line(d: dict[str, Any], n: int) -> dict[str, Any]:
+    return next(ln for ln in d["lines"] if ln.get("n") == n)
 
 
 def test_seek_from_evidence_plays_from_line_start(page: Page, open_card: Callable[..., list[str]]) -> None:
-    def start_line_2_at_4_1(state: dict[str, Any]) -> None:
-        line(state, 2)["s"] = line(state, 2)["t"] = 4.1
+    def start_line_2_at_4_1(d: dict[str, Any]) -> None:
+        line(d, 2)["s"] = line(d, 2)["t"] = 4.1
 
     wav = silence_wav()
     page.route("**/api/dialogs/*/audio", lambda r: r.fulfill(status=200, content_type="audio/wav", body=wav))
@@ -61,8 +60,8 @@ def test_chat_has_no_player(page: Page, open_card: Callable[..., list[str]]) -> 
 
 
 def test_line_without_start_links_to_org_player(page: Page, open_card: Callable[..., list[str]]) -> None:
-    def drop_start_of_line_3(state: dict[str, Any]) -> None:
-        del line(state, 3)["s"]
+    def drop_start_of_line_3(d: dict[str, Any]) -> None:
+        del line(d, 3)["s"]
 
     errors = open_card("call-024", drop_start_of_line_3)
     row = page.locator('#tr [data-n="3"]')
