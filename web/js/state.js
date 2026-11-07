@@ -3,7 +3,7 @@ import { createApi } from './api.js';
 
 export const S = {
   r: null, loading: true, error: null,
-  checklist: null, versions: [], dialogs: [], appeals: [], owners: {}, mode: null,
+  checklist: null, versions: [], dialogs: [], appeals: [], owners: {}, mode: null, llmMode: null, source: null,
   role: 'qa', q: '', open: {}, run: null,
 };
 
@@ -42,6 +42,7 @@ async function addDataset(request) {
 }
 export const postDataset = groupId => addDataset(api.postDataset(groupId));
 export const uploadDataset = file => addDataset(api.uploadDataset(file));
+export const saveSource = (url, groupId) => addDataset(api.putSource(url, groupId));
 
 // Единственная реализация запуска оценки: POST /api/runs, опрос раз в секунду до done или cancelled, затем reload.
 export async function startRun({ dialogs, criteria }) {

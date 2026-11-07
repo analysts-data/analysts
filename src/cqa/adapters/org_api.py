@@ -76,12 +76,13 @@ class OrgApi:
         self._url_template = url_template
         self._http = http
 
-    async def fetch_group(self, group_id: str) -> bytes:
-        """Тело ответа набора; ровно один GET с таймаутом `FETCH_TIMEOUT_S`."""
-        if self._url_template is None:
+    async def fetch_group(self, group_id: str, url: str | None = None) -> bytes:
+        """Тело ответа набора; один GET с таймаутом `FETCH_TIMEOUT_S`. `url` важнее `CQA_ORG_API_URL`."""
+        template = url or self._url_template
+        if template is None:
             raise OrgApiError("CQA_ORG_API_URL не задан")
         try:
-            response = await self._http.get(group_url(self._url_template, group_id), timeout=FETCH_TIMEOUT_S)
+            response = await self._http.get(group_url(template, group_id), timeout=FETCH_TIMEOUT_S)
         except httpx.HTTPError:
             raise OrgApiError("API организаторов недоступен") from None
         if not 200 <= response.status_code < 300:

@@ -26,6 +26,7 @@ from cqa.adapters.store import Store, connect
 from cqa.domain.ingest import PayloadError, parse_payload
 from cqa.domain.models import Dialog
 from cqa.domain.results import check_results, to_results
+from cqa.services.answers import MANUAL
 from cqa.services.state import current_state
 from cqa.settings import Settings
 
@@ -36,9 +37,9 @@ TEAM = "analysts"
 
 
 def model_names(dialogs: Iterable[Dialog]) -> str:
-    """Модели из поля model ответов в порядке появления; второе мнение, если есть alt."""
+    """Модели из поля model ответов в порядке появления; второе мнение, если есть alt. Ручной ответ — не модель."""
     rs = [r for d in dialogs for r in d.res.values()]
-    names = list(dict.fromkeys(r.model for r in rs if r.model))
+    names = list(dict.fromkeys(r.model for r in rs if r.model and r.model != MANUAL))
     if any(r.alt is not None for r in rs):
         names.append(_JEV_MODEL)
     return ", ".join(names)

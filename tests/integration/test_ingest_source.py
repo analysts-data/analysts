@@ -220,3 +220,10 @@ async def test_audio_link_has_no_cache_two_calls_two_requests(tmp_path: Path) ->
 
     assert first == second == "https://storage.test/rec.mp3"
     assert route.call_count == 2
+
+
+@respx.mock
+async def test_fetch_with_url_uses_it_when_settings_have_none(tmp_path: Path) -> None:
+    route = respx.get(API).mock(return_value=httpx.Response(200, content=FIXTURE.read_bytes()))
+    await make_source(tmp_path, url=None).fetch("CTRL1", TEMPLATE)
+    assert str(route.calls.last.request.url) == "https://org.test/api/dialogs?group_id=CTRL1&token=t"
