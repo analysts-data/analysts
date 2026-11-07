@@ -175,3 +175,29 @@ async def test_audio_for_chat_and_unknown_id_is_404(dialog_id: str) -> None:
     )
     assert response.status_code == 404
     assert "detail" in response.json()
+
+
+@respx.mock
+async def test_player_redirects_to_audio_url_without_external_requests() -> None:
+    outside = respx.route(host="org.test").mock(return_value=httpx.Response(200, text="nope"))
+    audio_url = "https://org.test/player/syn-call-hold"
+    response = await get(
+        "/api/dialogs/syn-call-hold/player", FakeStore({"syn-call-hold": audio_url}), FakeSource()
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == audio_url
+    assert outside.call_count == 0
+
+
+@pytest.mark.parametrize("dialog_id", ["syn-chat-ru", "nope"])
+async def test_player_for_chat_and_unknown_id_is_404(dialog_id: str) -> None:
+    response = await get(f"/api/dialogs/{dialog_id}/player", FakeStore({"syn-chat-ru": None}), FakeSource())
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_audio_routes_are_connected_in_create_app() -> None:
+    paths = set(create_app(Settings(_env_file=None)).openapi()["paths"])
+    assert "/api/dialogs/{id}/audio" in paths
+    assert "/api/dialogs/{id}/player" in paths
