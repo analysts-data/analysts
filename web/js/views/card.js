@@ -1,5 +1,5 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
-import { S, api, render } from '../state.js';
+import { S, api, reload, render, toast } from '../state.js';
 import { ans, calc, flagsOf, frac, lastDec } from '../scoring.js';
 import { groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
@@ -14,6 +14,7 @@ const STATUS = {
   next: '<span class="chip c-ev">Без следующего шага</span>',
   other: '',
 };
+const SIGN = { qa: 'Специалист КК', operator: 'Оператор', reviewer: 'Проверяющий' }; // by и reviewer в API
 const unfolded = new Set(); // ключи `${dialog}/${from}` раскрытых участков fold
 
 const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
@@ -30,6 +31,11 @@ function tone(c, a) {
   if (a === 'na') return 'c-na';
   return frac(c, a) === 1 ? 'c-ok' : c.type === 'bool' ? 'c-risk' : 'c-ev';
 }
+const parseVal = v => (/^\d+$/.test(v) ? Number(v) : v);
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+};
 const ptsTxt = (c, a) => { const f = frac(c, a); return f == null ? '—' : `${fn(c.w * f)} / ${c.w}`; };
 
 function defaultOpen(d, sum) {
@@ -124,7 +130,16 @@ export function view(S, id) {
         return `<div class="sechead"><span>${esc(s)}</span><span>${sc ? `${fn(sc.g)} / ${sc.w}` : ''}</span></div>${cs.map(c => critHTML(d, c, open)).join('')}`;
       }).join('')}
     </section>
-  </div>`;
+  </div>
+  <p class="muted xs meta">${costLine(d)}</p>`;
+}
+
+// Стоимость последней оценки — Dialog.cost как есть, по критериям не пересчитывается.
+function costLine(d) {
+  const model = esc(S.mode ? S.mode.model : '');
+  if (!d.cost) return `Модель ${model}. Диалог ещё не оценивался.`;
+  const { calls, verifier_calls: v, usd, ms } = d.cost;
+  return `Оценка: ${model}. ${calls} ${plural(calls, 'вызов', 'вызова', 'вызовов')} основной модели и ${v} ${plural(v, 'запрос', 'запроса', 'запросов')} второго мнения, ${fn(ms / 1000)} с, $${f2(usd)}.`;
 }
 
 function trHTML(d, open) {
@@ -212,10 +227,51 @@ function critBody(d, c, r, a) {
   else out += `<div><span class="label">Обоснование</span><p>${esc(r.why)}</p></div>`;
   if (a === 'no' && (r.seg || !(r.ev || []).length)) out += `<p class="small">Проверен участок: <b>${esc(r.seg || 'весь диалог')}</b>. Ожидаемого действия там нет.</p>`;
   if (evs) out += `<div class="stack" style="gap:6px"><span class="label">Основание</span>${evs}</div>`;
+  const dec = lastDec(d, c.id, S.appeals), cid = esc(c.id);
+  if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span><b>Цитата не нашлась в указанной реплике</b> и после повтора. Ответ <span class="chip c-ev">на проверку</span></span>
+    <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(a)}">Оставить ${esc(ansTxt(c, a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}">Изменить</button></span></div>`;
+  if (r.alt != null && r.alt !== r.a && !dec) out += `<div class="box info stack" style="gap:8px"><span><b>Второе мнение: ${esc(ansTxt(c, r.alt))}.</b> Модели разошлись, ответ ждёт решения специалиста.</span>
+    <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.a)}">Оставить ${esc(ansTxt(c, r.a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.alt)}">Принять ${esc(ansTxt(c, r.alt))}</button></span></div>`;
+  else if (r.alt != null && r.alt === r.a) out += `<p class="muted xs">Второе мнение совпало: ${esc(ansTxt(c, r.alt))}.</p>`;
+  if (r.better && frac(c, a) != null && frac(c, a) < 1) out += `<div class="box good"><b>Как сказать лучше:</b> «${esc(r.better)}»</div>`;
+  const hist = S.appeals.filter(x => x.dlg === d.id && x.cid === c.id && (x.status === 'confirmed' || x.status === 'changed'));
+  if (hist.length) out += `<div class="stack" style="gap:6px"><span class="label">История оценки</span><div class="hist">
+    <span class="muted">Исходная</span><span>Модель, ${esc(d.at)}</span><span class="chip c-na">${esc(ansTxt(c, r.a))}</span>
+    ${hist.map(h => `<span class="muted">${h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span><span>${esc(h.reviewer)}, ${esc(h.decidedAt)}: «${esc(h.reason)}»</span><span class="chip ${h.status === 'changed' ? 'c-info' : 'c-ok'}">${h.status === 'changed' ? esc(ansTxt(c, h.to)) : 'подтверждено'}</span>`).join('')}
+    <span class="muted">Итог</span><span>Пересчитан по формуле чек-листа</span><b>${f2(calc(d, S.checklist, S.appeals).total)}</b></div></div>`;
   const pa = S.appeals.find(x => x.dlg === d.id && x.cid === c.id && x.status === 'pending');
   out += pa ? `<p><span class="chip c-info">Апелляция на рассмотрении</span> <a href="${href('appeals', pa.id)}" class="small">Открыть</a></p>`
     : `<div class="no-rv"><button type="button" class="btn" data-act="appeal" data-cid="${esc(c.id)}">Оспорить оценку</button></div>`;
   return out;
+}
+
+// Решение по расхождению моделей или проваленному основанию: окно с причиной, затем POST /api/decisions.
+function openReview(d, c, val) {
+  const dlg = document.getElementById('dlg'), form = document.getElementById('dlgForm');
+  const from = ans(d, c.id, S.appeals), pick = val == null; // «Изменить»: ответ выбирается в окне
+  const keep = val === from;
+  const before = f2(calc(d, S.checklist, S.appeals).total);
+  form.innerHTML = `<header><h2 class="h2" id="dlgTitle">${pick ? 'Изменить ответ' : keep ? 'Оставить оценку модели' : 'Принять второе мнение'}</h2><p class="muted small">${esc(titleOf(d))}, ${esc(c.id)} ${esc(c.name)}</p></header>
+    ${pick ? `<label class="field"><span>Верный ответ</span><select name="to" class="fld">${allowed(c).filter(v => v !== from).map(v => `<option value="${esc(v)}">${esc(ansTxt(c, v))}</option>`).join('')}</select></label>`
+      : `<p class="box na">${keep ? `Оценка остаётся <b>${esc(ansTxt(c, val))}</b>.` : `Оценка меняется с <b>${esc(ansTxt(c, from))}</b> на <b>${esc(ansTxt(c, val))}</b>.`} Итог: ${before} → <b>${f2(calc(d, S.checklist, S.appeals, { cid: c.id, val }).total)}</b></p>`}
+    <label class="field"><span>Причина решения, обязательно</span><textarea name="reason" class="fld" required minlength="5" placeholder="Что в разговоре подтверждает этот ответ"></textarea></label>
+    <footer><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn pri" value="ok">Сохранить решение</button></footer>`;
+  dlg.returnValue = '';
+  dlg.onclose = async () => {
+    dlg.onclose = null;
+    if (dlg.returnValue !== 'ok') return;
+    const fd = new FormData(form);
+    const to = pick ? parseVal(fd.get('to')) : val;
+    try {
+      await api.postReview({ dlg: d.id, cid: c.id, from, to, reason: String(fd.get('reason')).trim(), reviewer: SIGN[S.role] });
+      await reload();
+      const now = S.dialogs.find(x => x.id === d.id) || d;
+      toast(`Решение сохранено. Итог ${titleOf(d)}: ${before} → ${f2(calc(now, S.checklist, S.appeals).total)}.`);
+    } catch (e) {
+      toast(`Решение не сохранено: ${e.message}`);
+    }
+  };
+  dlg.showModal();
 }
 
 function flashLine(n) {
@@ -241,6 +297,10 @@ export const actions = {
     if (l.s != null) player.seek(l.s, false);
   },
   pin: t => actions.goto(t),
+  review: t => {
+    const d = current(), c = S.checklist.criteria.find(x => x.id === t.dataset.cid);
+    openReview(d, c, t.dataset.val === undefined ? null : parseVal(t.dataset.val));
+  },
   seek: t => {
     const l = lineBy(current(), Number(t.dataset.n || t.closest('[data-n]').dataset.n)); // ▶ в реплике — без своего data-n
     if (!l || l.s == null) return;

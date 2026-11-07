@@ -1,11 +1,14 @@
+import json
 import re
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.e2e
+STATE = Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json"
 
 
 def test_call_card_shows_total_sections_losses_and_points(
@@ -70,4 +73,92 @@ def test_unknown_dialog_shows_message_and_link_back(page: Page, open_card: Calla
     errors = open_card("unknown-id")
     expect(page.locator('[data-view="d"]')).to_contain_text("не найден")
     expect(page.locator('[data-view="d"] a[href="#/queue"]')).to_be_visible()
+    assert errors == []
+
+
+def open_crit(page: Page, cid: str) -> None:
+    if page.locator(f'.crit[data-cid="{cid}"] .crit-body').count() == 0:
+        page.click(f'.crit[data-cid="{cid}"] [data-act="crit"]')
+
+
+def state_with(review: dict[str, Any]) -> str:
+    state = json.loads(STATE.read_text(encoding="utf-8"))
+    state["appeals"].append(review)
+    return json.dumps(state)
+
+
+def review_of(dlg: str, cid: str, frm: Any, to: Any, reason: str) -> dict[str, Any]:
+    return {
+        "id": "a9", "kind": "review", "dlg": dlg, "cid": cid, "from": frm, "to": to, "ev": [],
+        "by": "Специалист КК", "at": "07.11 16:00", "status": "changed" if to != frm else "confirmed",
+        "comment": None, "reviewer": "Специалист КК", "reason": reason, "decidedAt": "07.11 16:00",
+    }  # fmt: skip
+
+
+def test_accepting_second_opinion_posts_review_decision(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    errors = open_card("p1-en-008")
+    open_crit(page, "07")
+    block = page.locator('.crit[data-cid="07"] .box.info')
+    expect(block).to_contain_text("Второе мнение: Да")
+    reason = "Оператор ответил на второй вопрос и попрощался."
+    after = state_with(review_of("p1-en-008", "07", "no", "yes", reason))
+    page.route(
+        "**/api/decisions", lambda r: r.fulfill(status=200, content_type="application/json", body="{}")
+    )
+    block.get_by_role("button", name="Принять Да").click()
+    page.fill('#dlg textarea[name="reason"]', reason)
+    page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=after))
+    with page.expect_request("**/api/decisions") as request:
+        page.click('#dlg button[value="ok"]')
+    assert request.value.post_data_json == {
+        "dlg": "p1-en-008", "cid": "07", "from": "no", "to": "yes",
+        "reason": reason, "reviewer": "Специалист КК",
+    }  # fmt: skip
+    expect(block).to_have_count(0)
+    assert errors == []
+
+
+def test_failed_quote_asks_for_check(page: Page, open_card: Callable[..., list[str]]) -> None:
+    errors = open_card("p1-kz-003")
+    open_crit(page, "06")
+    body = page.locator('.crit[data-cid="06"] .crit-body')
+    expect(body.locator(".box.ev")).to_contain_text("Цитата не нашлась")
+    expect(body).to_contain_text("на проверку")
+    expect(body.locator('[data-act="review"]')).to_have_count(2)
+    assert errors == []
+
+
+def test_reduced_criterion_shows_better_phrase_and_review_history(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    def add_better(d: dict[str, Any]) -> None:
+        d["res"]["06"]["better"] = "Уточню у коллег, это займёт около трёх минут."
+
+    errors = open_card("call-024", add_better)
+    open_crit(page, "06")
+    expect(page.locator('.crit[data-cid="06"] .box.good')).to_contain_text("Как сказать лучше")
+    after = state_with(review_of("call-024", "04", 15, 10, "Срок ответа не назван."))
+    page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=after))
+    page.evaluate("() => import('./js/state.js').then(s => s.reload())")
+    open_crit(page, "04")
+    history = page.locator('.crit[data-cid="04"] .hist')
+    expect(history).to_contain_text("Решение")
+    expect(history).to_contain_text("Срок ответа не назван.")
+    expect(page.locator('.crit[data-cid="04"] .box.info')).to_have_count(0)
+    assert errors == []
+
+
+def test_cost_line_comes_from_dialog_cost(page: Page, open_card: Callable[..., list[str]]) -> None:
+    errors = open_card("p1-ru-003")
+    meta = page.locator(".meta")
+    for text in ("qwen3-6", "10 вызовов", "1 запрос второго мнения", "$0,01", "41 с"):
+        expect(meta).to_contain_text(text)
+    assert errors == []
+
+
+def test_cost_line_without_evaluation(page: Page, open_card: Callable[..., list[str]]) -> None:
+    errors = open_card("p1-en-006")
+    expect(page.locator(".meta")).to_contain_text("ещё не оценивался")
     assert errors == []
