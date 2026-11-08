@@ -10,10 +10,13 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import Any
 
-from cqa.domain.checklist_export import CSS as MEMO_CSS
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog, Product
 from cqa.domain.review import awaits_review, effective_answer
 from cqa.domain.scoring import frac, r2, total
+from cqa.domain.tables import CSS as TABLE_CSS
+from cqa.domain.tables import Doc, md_cell, page
+from cqa.domain.tables import Table as Rows
+from cqa.domain.tables import to_csv as doc_csv
 
 TOP = 10
 CHANNEL = {"chat": "Чат", "call": "Звонок"}
@@ -538,11 +541,7 @@ def _tiles(rep: dict[str, Any]) -> list[tuple[str, str, str]]:
     ]
 
 
-# --- Markdown ---
-
-
-def _md(s: str) -> str:
-    return s.replace("|", "\\|").replace("\n", " ")
+# --- Markdown и CSV ---
 
 
 def to_markdown(rep: dict[str, Any]) -> str:
@@ -553,15 +552,25 @@ def to_markdown(rep: dict[str, Any]) -> str:
     out += ["## Ключевые числа", "", *(f"- {k}: {v} — {note}" for k, v, note in _tiles(rep)), ""]
     for title, head, _, rows in _tables(rep):
         out += [f"## {title}", "", f"| {' | '.join(head)} |", "|" + " --- |" * len(head)]
-        out += [f"| {' | '.join(_md(c) for c in cells)} |" for cells, _ in rows]
+        out += [f"| {' | '.join(map(md_cell, cells))} |" for cells, _ in rows]
         out.append("")
     return "\n".join([*out, NOTE, ""])
+
+
+def to_csv(rep: dict[str, Any]) -> str:
+    """Те же таблицы, что в html и md, для Excel; ключевые числа и выводы — первыми блоками."""
+    tables = [
+        Rows("Главное", ["Вывод"], [[f] for f in rep["findings"]]),
+        Rows("Ключевые числа", ["Показатель", "Значение", "Пояснение"], [list(t) for t in _tiles(rep)]),
+        *(Rows(t, head, [cells for cells, _ in rows]) for t, head, _, rows in _tables(rep)),
+    ]
+    return doc_csv(Doc("Отчёт для руководства", "Качество обслуживания", _scope(rep), tables, NOTE))
 
 
 # --- Страница для печати ---
 
 CSS = (
-    MEMO_CSS
+    TABLE_CSS
     + """
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 6px}
 .tile{border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:8px;padding:8px 10px;
@@ -569,13 +578,7 @@ CSS = (
 .tile span{display:block;color:var(--muted);font-size:12px}
 .tile b{display:block;font-size:22px;line-height:1.2}
 .findings{margin:0;padding-left:20px}.findings li{margin:0 0 4px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
-th{color:var(--muted);font-weight:600;font-size:12px}
-.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-tr{break-inside:avoid}
-.empty{font-size:18px;color:var(--muted);text-align:center;padding:40px 0}
-@media (max-width:640px){main{padding:16px}.tiles{grid-template-columns:1fr 1fr}}
+@media (max-width:640px){.tiles{grid-template-columns:1fr 1fr}}
 """
 )
 
@@ -621,12 +624,6 @@ def to_html(rep: dict[str, Any]) -> str:
         )
     else:
         body = f'<p class="empty">{EMPTY}</p>'
-    return (
-        '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f"<title>Отчёт для руководства</title><style>{CSS}</style></head><body><main>"
-        '<header><div><p class="kicker">Отчёт для руководства</p><h1>Качество обслуживания</h1>'
-        f'<p class="meta">{escape(_scope(rep))}</p></div>'
-        '<button type="button" class="noprint" onclick="window.print()">Печать / PDF</button></header>'
-        f"{body}</main></body></html>"
+    return page(
+        "Отчёт для руководства", "Отчёт для руководства", "Качество обслуживания", _scope(rep), body, CSS
     )

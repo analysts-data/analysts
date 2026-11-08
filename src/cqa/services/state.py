@@ -14,6 +14,7 @@ from cqa.domain.report import (
     operator_card,
     operators,
     product_stats,
+    to_csv,
     to_html,
     to_markdown,
 )
@@ -61,7 +62,7 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
     return checklist, dialogs, appeals
 
 
-ReportFormat = Literal["html", "json", "md"]
+ReportFormat = Literal["html", "json", "md", "csv"]
 
 
 def report(
@@ -86,7 +87,7 @@ def report(
         operator=operator,
         products=store.products() or [],
     )
-    return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
+    return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 
 
 def product_stats_of(store: Store) -> list[dict[str, Any]]:
