@@ -93,6 +93,8 @@ const HINTS: Record<string, string[]> = {
   ],
 };
 
+const ROLE_AS: Record<string, string> = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
+
 function RoleHint({ role }: { role: string }) {
   const [, force] = useState(0);
   if (load(`cqa.hint.${role}`)) return null;
@@ -105,7 +107,7 @@ function RoleHint({ role }: { role: string }) {
     >
       <Info size={18} className="mt-0.5 flex-none text-info" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <b className="text-ink">Вы вошли как {ROLES[role as Role].toLowerCase()}.</b>
+        <b className="text-ink">Вы вошли как {ROLE_AS[role]}.</b>
         <ul className="mt-1 list-disc space-y-0.5 pl-4">
           {HINTS[role].map(t => (
             <li key={t}>{t}</li>
@@ -196,7 +198,7 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
-        <aside className="sticky top-0 z-10 flex items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
+        <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
             <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent not-italic text-on-accent">
               <Logo />
@@ -235,7 +237,7 @@ export function App() {
           </div>
         </aside>
         <div className="min-w-0">
-          <header className="no-print sticky top-0 z-20 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
+          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
             <div className="text-[13px] text-muted" id="crumb">
               {NAME} / <b className="font-semibold text-ink">{NAMES[r.page]}</b>
             </div>
@@ -246,7 +248,7 @@ export function App() {
                 className="hidden min-h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] text-muted hover:bg-hover sm:inline-flex"
                 aria-label="Команды и поиск (Ctrl+K)"
               >
-                <Search size={15} /> Поиск и команды <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
+                <Search size={15} /> Поиск <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
               {S.mode && (
                 <button
