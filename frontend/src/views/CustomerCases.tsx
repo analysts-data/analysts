@@ -5,7 +5,7 @@ import { Card, Chip, PageHead, Skeleton } from '../ui';
 type CaseRow = {
   client_ref: string; contact_count: number; repeated_topic: string | null;
   status: string; priority: number; priority_reasons: { code: string; label: string }[];
-  dialogs: { id: string; at: string; title: string | null; topic: string | null; status: string; risks: { label: string; basis: string }[] }[];
+  dialogs: { id: string; at: string; title: string | null; topic: string | null; status: string; risks: { label: string; basis: string }[]; evaluations: { criterion: string; a?: unknown; alt?: unknown }[]; reviewer_decisions: Record<string, unknown>[] }[];
 };
 
 export function CustomerCases() {
@@ -31,6 +31,8 @@ export function CustomerCases() {
           <div className="divide-y divide-line">{row.dialogs.map(d => <div key={d.id} className="py-3 text-sm">
             <div className="flex flex-wrap justify-between gap-2"><strong>{d.title || d.id}</strong><span className="text-ink2">{d.at} · {d.topic || 'Тема не определена'} · {d.status}</span></div>
             {d.risks.map((risk, n) => <p key={n} className="mt-1 text-risk">{risk.label}: {risk.basis}</p>)}
+            {d.evaluations.length > 0 && <p className="mt-1 text-ink2">Оценки по критериям: {d.evaluations.map(e => String(e.criterion) + ': ' + String(e.a ?? '—')).join(' · ')}</p>}
+            {d.reviewer_decisions.length > 0 && <p className="mt-1 text-ink2">Решения проверяющего: {d.reviewer_decisions.length}; откройте диалог для деталей.</p>}
           </div>)}</div>
         </Card>
       ))}
