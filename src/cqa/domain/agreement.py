@@ -338,6 +338,43 @@ def stability(
     return same / len(pairs)
 
 
+def compare_answers(
+    a: Mapping[tuple[str, str], Answer], b: Mapping[tuple[str, str], Answer], checklist: Checklist
+) -> dict[str, object]:
+    """Два запуска на парах «диалог, критерий», отвеченных в обоих: совпадение всего и по критериям,
+    у шкалы — средняя разница в ступенях (N/A не в счёт), список расходящихся пар. Порядок чек-листа."""
+    by_id = {c.id: c for c in checklist.criteria}
+    order = {cid: i for i, cid in enumerate(by_id)}
+    both = sorted(a.keys() & b.keys(), key=lambda p: (order.get(p[1], len(order)), p[1], p[0]))
+    per: dict[str, _Counter] = {}
+    steps: dict[str, list[int]] = {}
+    diffs: list[dict[str, object]] = []
+    for dlg, cid in both:
+        x, y = a[(dlg, cid)], b[(dlg, cid)]
+        per.setdefault(cid, _Counter()).add(x == y)
+        if x != y:
+            diffs.append({"dialog": dlg, "cid": cid, "a": x, "b": y})
+        c = by_id.get(cid)
+        scale = list(c.steps or []) if c is not None and c.type == "scale" else []
+        if x in scale and y in scale:
+            steps.setdefault(cid, []).append(abs(scale.index(x) - scale.index(y)))
+    total = Agreement(n=len(both), ok=sum(ctr.ok for ctr in per.values()))
+    return {
+        "pairs": total.n,
+        "agree": total.frac,
+        "criteria": [
+            {
+                "cid": cid,
+                "pairs": ctr.n,
+                "agree": ctr.agreement().frac,
+                "mean_step_diff": sum(steps[cid]) / len(steps[cid]) if steps.get(cid) else None,
+            }
+            for cid, ctr in per.items()
+        ],
+        "diffs": diffs,
+    }
+
+
 class _Counter:
     def __init__(self) -> None:
         self.n = 0

@@ -1,7 +1,9 @@
 // Глоссарий интерфейса (openspec/reviews/ux-guidelines.md): одно понятие — одно слово и одна подсказка.
 import type { ReactNode } from 'react';
+import { t } from './lib/i18n.js';
 import { Tip } from './ui';
 
+// Значения — русские ключи перевода: Term переводит их при отрисовке, другим экранам нужен t(TERMS.x); scripts/i18n-extract.mjs собирает их вместе с t('...').
 export const TERMS = {
   na: 'Критерий не относится к этому диалогу. Его вес поровну распределён между остальными критериями.',
   second: 'Ответ второй, независимой модели. Если ответы разошлись, решение за специалистом КК.',
@@ -29,7 +31,7 @@ export type TermKey = keyof typeof TERMS;
  */
 export function Term({ k, children, className }: { k: TermKey; children: ReactNode; className?: string }) {
   return (
-    <Tip content={TERMS[k]}>
+    <Tip content={t(TERMS[k])}>
       <span tabIndex={0} className={`cursor-help underline decoration-line-strong decoration-dotted decoration-1 underline-offset-[3px] ${className ?? ''}`}>
         {children}
       </span>

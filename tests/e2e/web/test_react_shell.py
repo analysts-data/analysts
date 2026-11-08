@@ -69,9 +69,39 @@ def test_dark_theme_survives_reload(page: Page, web_url: str) -> None:
     page.goto(f"{web_url}/#/queue")
     expect(page.locator("html")).to_have_attribute("data-theme", "light")
     page.locator('[data-act="theme"]').click()
+    page.locator('[data-theme-mode="dark"]').click()
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     page.reload()
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+
+
+def test_system_theme_follows_the_os_setting(page: Page, web_url: str) -> None:
+    serve(page)
+    page.emulate_media(color_scheme="light")
+    page.goto(f"{web_url}/#/queue")
+    page.locator('[data-act="theme"]').click()
+    page.locator('[data-theme-mode="system"]').click()
+    page.emulate_media(color_scheme="dark")
+    expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+    page.emulate_media(color_scheme="light")
+    expect(page.locator("html")).to_have_attribute("data-theme", "light")
+
+
+def test_language_switch_translates_the_interface_and_survives_reload(page: Page, web_url: str) -> None:
+    errors = serve(page)
+    page.goto(f"{web_url}/#/queue")
+    expect(page.locator("#bQueue")).to_have_text("7")
+    page.locator('[data-act="lang"]').click()
+    page.locator('[data-lang="en"]').click()
+    expect(page.locator("html")).to_have_attribute("lang", "en")
+    expect(page.get_by_role("link", name=re.compile("^Dialogs"))).to_be_visible()
+    page.reload()
+    expect(page.get_by_role("link", name=re.compile("^Dialogs"))).to_be_visible()
+    page.locator('[data-act="lang"]').click()
+    page.locator('[data-lang="kk"]').click()
+    expect(page.locator("html")).to_have_attribute("lang", "kk")
+    expect(page.get_by_role("link", name=re.compile("^Диалогтар"))).to_be_visible()
+    assert errors == []
 
 
 def test_theme_defaults_to_the_system_setting(page: Page, web_url: str) -> None:

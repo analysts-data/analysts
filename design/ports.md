@@ -50,8 +50,13 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `build_evaluator` | `src/cqa/compose.py`, llm-evaluation | `build_evaluator(settings: Settings) -> LlmEvaluator`, не бросает; `ConfigError` — при `evaluate` |
 | `parse_payload`, `ingest_records` | `src/cqa/domain/ingest.py`, dialog-ingest | чистая пара для снимка: `ingest_records(records, *, group_id, now, shift_s, shift_paused_s) -> IngestResult` |
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
-| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
-| `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None, *, force: bool = False, confirm: bool = False, model: str \| None = None, apply: "replace" \| "compare" = "replace", override: Mapping \| None = None, evaluator: Evaluator \| None = None) -> int` — `evaluator` только на этот запуск (`run_settings` + `build_evaluator` в `http/api.py`), `override` и `compare` включают `force`; `NotFound`, `Conflict` при активном запуске, `Invalid` — `force` без списка больше `CONFIRM_OVER = 5` диалогов без `confirm` |
+| `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status, skipped, dialogs}`; `NotFound` |
+| `plan_run`, `plan_rerun` | там же | `plan_run(store, checklist, dialogs, criteria) -> Plan` — пары без текущего результата; `plan_rerun(...) -> tuple[Plan, dict[str, int]]` — все выбранные пары, кроме тех, что держит человек (ручной ответ, апелляция или решение текущего смысла), и диалог → число таких пар |
+| `list_runs`, `compare_runs` | там же | `GET /api/runs`, `GET /api/runs/compare`; чистое сравнение — `compare_answers(a, b, checklist)` в `src/cqa/domain/agreement.py` |
+| `history`, `restore`, `adopt` | `src/cqa/services/history.py`, review-workflow | `GET /api/dialogs/{id}/history`, `POST /api/results/{id}/restore`, `POST /api/runs/{id}/adopt`; `NotFound`, `Conflict` |
+| `run_settings` | `src/cqa/services/llm_config.py` | `run_settings(settings, override) -> Settings`: режим одного запуска поверх текущего, `Invalid` с именем поля; сохранённый режим не меняется |
+| `held_by_human` | `src/cqa/services/runs.py` | `(store, checklist, dialogs) -> (dialog, cid) -> bool`: ручной ответ, апелляция или решение текущего смысла — модель пару не перезаписывает (`plan_rerun`, `adopt`) |
 | `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
 | `set_answer` | `src/cqa/services/answers.py`, review-workflow | `set_answer(store, *, dlg, cid, a, reason, by) -> CriterionResult`, `model = MANUAL = "вручную"`; `NotFound`, `Invalid`, `Conflict` |
 | `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
@@ -60,7 +65,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Store.set_operator`, `Store.set_operators` | там же, eval-and-delivery | `set_operator(dialog_id, operator: str \| None)` — `KeyError` для неизвестного id; `set_operators(pairs: Sequence[tuple[str, str \| None]]) -> tuple[int, list[str]]` — `(обновлено, неизвестные id)` одной транзакцией |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
 
-`Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата.
+`Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата. Повторная проверка — `force: true` (`plan_rerun`). Каждый результат запуска пишется с `run_id`; статус диалога (`run_dialogs`) — `queued` при старте, `evaluating` перед `evaluate`, `done` или `error` после, `cancelled` при отмене и `cancel_stale_runs`.
 
 ## Правила, которые держат несколько треков
 
@@ -105,12 +110,14 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
 | `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
+| `batches` | `Batches` | eval-and-delivery (`src/cqa/services/batches.py`, таблицы в `src/cqa/adapters/batches.py`): `/api/batches`; lifespan запускает `Batches.work()`, `create_app` — `recover()` |
 
 | Строка в `create_app` | Трек |
 | --- | --- |
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.docs.router)` — документация `/docs/` из `docs/site/*.md` и справочник по `app.openapi()`; Swagger и ReDoc выключены, схема — `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
 
@@ -123,7 +130,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_LLM_PROFILE` | `llm_profile` | `str` | `plain` | llm-evaluation |
 | `CQA_LLM_REASONING` | `llm_reasoning` | `Literal["on", "off"]` | `on` | llm-evaluation |
 | `CQA_LLM_MAX_PARALLEL` | `llm_max_parallel` | `int` | `4` | llm-evaluation (семафор), review-workflow (`Runner.parallel`) |
-| `CQA_LLM_RPM` | `llm_rpm` | `int` | `120` (`0` — без лимита) | llm-evaluation |
+| `CQA_LLM_RPM` | `llm_rpm` | `int` | `120` (`0` — без лимита) | llm-evaluation, eval-and-delivery (`rate_limit` в `/api/batches`) |
 | `CQA_LLM_TIMEOUT_S` | `llm_timeout_s` | `float` | `180` | llm-evaluation |
 | `CQA_LLM_PRICE_IN`, `CQA_LLM_PRICE_OUT` | `llm_price_in`, `llm_price_out` | `float` | `0.0` (USD за 1 млн токенов) | llm-evaluation |
 | `CQA_VERIFIER` | `verifier` | `Literal["jev"] \| None` | `None` (пусто) | llm-evaluation, review-workflow (`mode`) |
@@ -140,6 +147,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
 | `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (события не отправляются) | eval-and-delivery (алерты, `alert.created`) |
 | `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (без подписи) | eval-and-delivery (`X-CQA-Signature`) |
+| `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
+| `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
@@ -149,14 +158,17 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
 | --- | --- | --- |
 | `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`, `operator`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается), `operator TEXT NULL` (сотрудник; старые базы получают колонку в `connect`) | dialog-ingest через `Store.audio_url` |
-| `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
-| `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
+| `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`, `run_id INTEGER NULL`, `shadow INTEGER` (1 — теневой ответ запуска `compare`, `Store.current_results` его не видит); только `INSERT` (триггеры) | — |
+| `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished`, `model TEXT NULL`, `checklist_version INTEGER NULL`, `force INTEGER`, `skipped INTEGER`, `apply TEXT` (`replace` \| `compare`), `override TEXT NULL` (JSON) | — |
+| `run_dialogs` | `run_id`, `dialog_id` (PK вместе), `status CHECK IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')`, `total`, `done`, `skipped`, `error`; статус меняется (`Runner`) | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
 | `markers` | `dialog_id`, `label`, `by`, `at`, PK (`dialog_id`, `label`) — ручные маркеры | eval-and-delivery (alerts) |
 | `lists` | `name TEXT PK` (`markers_catalog`, `alert_rules`), `body` JSON | eval-and-delivery (alerts) |
 | `alerts` | `id`, `rule_id`, `severity`, `title`, `target_type`, `target_id`, `basis` JSON, `created`, `status CHECK IN ('new', 'ack', 'resolved')`, `assignee`, `acked_by`, `acked_at`, `resolved_by`, `resolved_at`, `note`; `UNIQUE (rule_id, target_type, target_id)` | eval-and-delivery (alerts) |
 | `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
 | `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |
+
+Колонки, появившиеся после первых баз, перечислены в `COLUMNS` (`src/cqa/adapters/store.py`): `connect` досоздаёт их в старой базе через `ALTER TABLE ... ADD COLUMN`, прежние строки получают `NULL` или умолчание. Новая колонка — строка в `COLUMNS`, схему `CREATE TABLE` не трогать.
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 
@@ -258,6 +270,10 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | Таблица `prosody` | `data/cqa.db` | `dialog_id TEXT PK REFERENCES dialogs(id)`, `body TEXT` (JSON ответа) |
 | `ffmpeg` | системная зависимость сервера | в `PATH`; без него `/prosody` отвечает 502, остальное работает |
 | `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
+| `dialog_prosody(..., fresh=True)` | `src/cqa/services/prosody.py` | считать заново и перезаписать сохранённый разбор; `/talkstats` — для разбора без `talk` |
+| `Span`, `call_stats`, `chat_stats`, `norms`, `mark`, `CALL`, `CHAT`, `RULE` | `src/cqa/domain/talkstats.py` | статистика разговора, чистые функции: `call_stats(spans) -> dict` (поле `talk` разбора), `chat_stats(lines) -> dict \| None`, `norms(rows, metrics) -> Norms`, `mark(stats, norms) -> list` |
+| `dialog_talkstats`, `team_norms` | `src/cqa/services/talkstats.py` | `async dialog_talkstats(store, source, voice, dialog_id) -> dict`, `team_norms(store) -> dict`; `NotFound`, `Upstream` |
+| `Store.prosodies` | `src/cqa/adapters/store.py` | `prosodies() -> dict[str, dict]`: все сохранённые разборы по id звонка для норм |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
 

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>$title — документация CQA</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #ffffff; --surface: #f5f6f7; --text: #1f2326; --muted: #5f676e; --line: #dde1e4;
+  --accent: #0E6A55; --accent-soft: #e7f1ee; --code: #f1f3f4;
+  --get: #0E6A55; --post: #33597f; --put: #7d6324; --delete: #9b3a3a;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181a; --surface: #1c2023; --text: #e2e5e7; --muted: #99a1a8; --line: #2d3236;
+    --accent: #4fae95; --accent-soft: #1d2d28; --code: #22272a;
+    --get: #4fae95; --post: #7fa6cc; --put: #c9a75e; --delete: #d27f7f;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 var(--sans); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 16px;
+  padding: 10px 24px; background: var(--bg); border-bottom: 1px solid var(--line); }
+header .brand { font-weight: 600; color: var(--text); white-space: nowrap; }
+header .brand span { color: var(--muted); font-weight: 400; }
+header .app { margin-left: auto; white-space: nowrap; font-size: 14px; }
+.search { position: relative; width: min(360px, 40vw); }
+.search input { width: 100%; padding: 6px 10px; font: inherit; font-size: 14px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#hits { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; max-height: 70vh; overflow: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  font-size: 14px; padding: 4px 0; }
+#hits a, #hits p { display: block; padding: 6px 12px; margin: 0; color: var(--text); }
+#hits a:hover, #hits a:focus { background: var(--accent-soft); text-decoration: none; }
+#hits b { display: block; font-weight: 600; color: var(--accent); }
+#hits span { color: var(--muted); font-size: 13px; }
+.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr) 220px; gap: 32px;
+  max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+nav.pages, nav.toc { position: sticky; top: 56px; align-self: start; max-height: calc(100vh - 56px);
+  overflow: auto; padding: 24px 0; font-size: 14px; }
+nav.pages a { display: block; padding: 5px 10px; color: var(--text); border-left: 2px solid transparent; }
+nav.pages a:hover { background: var(--surface); text-decoration: none; }
+nav.pages a[aria-current] { border-left-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+nav.toc p { margin: 0 0 6px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+nav.toc a { display: block; padding: 3px 0; color: var(--muted); overflow-wrap: anywhere; }
+nav.toc a.l3 { padding-left: 12px; font-size: 13px; }
+nav.toc a:hover { color: var(--accent); }
+main { padding: 24px 0 64px; min-width: 0; max-width: 820px; }
+h1 { font-size: 28px; line-height: 1.25; margin: 8px 0 20px; font-weight: 650; }
+h2 { font-size: 21px; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); font-weight: 600; }
+h3 { font-size: 17px; margin: 28px 0 8px; font-weight: 600; }
+h4 { font-size: 14px; margin: 18px 0 6px; color: var(--muted); font-weight: 600; }
+h2, h3 { scroll-margin-top: 64px; }
+p, ul, ol { margin: 0 0 12px; }
+li { margin: 3px 0; }
+code { font: 13px/1.5 var(--mono); background: var(--code); padding: 1px 5px; border-radius: 3px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px;
+  overflow: auto; margin: 0 0 14px; }
+pre code { padding: 0; background: none; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 14px; display: block; overflow-x: auto; }
+th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+th { background: var(--surface); font-weight: 600; }
+blockquote { margin: 0 0 14px; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--accent-soft); }
+blockquote p:last-child { margin: 0; }
+.method { display: inline-block; min-width: 58px; padding: 1px 6px; margin-right: 6px; border-radius: 3px;
+  font: 600 12px/1.6 var(--mono); text-align: center; color: var(--bg); background: var(--get); }
+.method.post { background: var(--post); } .method.put { background: var(--put); } .method.delete { background: var(--delete); }
+h3 .method + code { background: none; padding: 0; font-size: 15px; }
+pre.curl { background: var(--surface); }
+.pager { display: flex; justify-content: space-between; gap: 16px; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); }
+.pager a { display: block; padding: 10px 14px; border: 1px solid var(--line); border-radius: 4px; max-width: 48%; }
+.pager a:hover { border-color: var(--accent); text-decoration: none; }
+.pager .next { margin-left: auto; text-align: right; }
+.pager small { display: block; color: var(--muted); font-size: 12px; }
+@media (max-width: 1100px) { .layout { grid-template-columns: 220px minmax(0, 1fr); } nav.toc { display: none; } }
+@media (max-width: 760px) {
+  header { flex-wrap: wrap; padding: 10px 16px; gap: 8px 12px; }
+  .search { order: 3; width: 100%; }
+  .layout { display: block; padding: 0 16px; }
+  nav.pages { position: static; max-height: none; padding: 12px 0 0; display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+  nav.pages a { border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; font-size: 13px; }
+}
+@media print {
+  header, nav.pages, nav.toc, .pager, pre.curl { display: none; }
+  .layout { display: block; padding: 0; max-width: none; }
+  main { max-width: none; padding: 0; }
+  body { font-size: 11pt; color: #000; background: #fff; }
+  a { color: #000; }
+  h2 { break-after: avoid; } pre, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="./">CQA <span>· документация</span></a>
+  <div class="search" role="search">
+    <input id="q" type="search" placeholder="Поиск по документации" aria-label="Поиск по документации" autocomplete="off">
+    <div id="hits" hidden></div>
+  </div>
+  <a class="app" href="../">Открыть приложение</a>
+</header>
+<div class="layout">
+  <nav class="pages" aria-label="Разделы">$nav</nav>
+  <main>
+$body
+    <nav class="pager" aria-label="Соседние страницы">$pager</nav>
+  </main>
+  <nav class="toc" aria-label="На странице"><p>На странице</p>$toc</nav>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('q'), out = document.getElementById('hits'), index = null;
+  function load() {
+    return index ? Promise.resolve(index) : fetch('search.json').then(function (r) { return r.json(); })
+      .then(function (d) { index = d; return d; });
+  }
+  function find() {
+    var q = box.value.trim().toLowerCase();
+    if (!q) { out.hidden = true; return; }
+    load().then(function (d) {
+      var words = q.split(/\s+/);
+      var hits = d.filter(function (e) {
+        var t = (e.title + ' ' + e.text).toLowerCase();
+        return words.every(function (w) { return t.indexOf(w) >= 0; });
+      }).slice(0, 12);
+      out.textContent = '';
+      hits.forEach(function (e) {
+        var a = document.createElement('a'), b = document.createElement('b'), s = document.createElement('span');
+        var at = Math.max(0, e.text.toLowerCase().indexOf(words[0]) - 40);
+        a.href = e.url; b.textContent = e.title;
+        s.textContent = (at ? '… ' : '') + e.text.slice(at, at + 140);
+        a.appendChild(b); a.appendChild(s); out.appendChild(a);
+      });
+      if (!hits.length) { var p = document.createElement('p'); p.textContent = 'Ничего не найдено'; out.appendChild(p); }
+      out.hidden = false;
+    });
+  }
+  box.addEventListener('input', find);
+  box.addEventListener('keydown', function (e) {
+    var first = out.querySelector('a');
+    if (e.key === 'Enter' && first) { location.href = first.href; }
+    if (e.key === 'Escape') { box.value = ''; out.hidden = true; }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement !== box) { e.preventDefault(); box.focus(); }
+  });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.search')) { out.hidden = true; } });
+})();
+</script>
+</body>
+</html>

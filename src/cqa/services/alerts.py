@@ -74,7 +74,8 @@ def refresh(store: Store, now: datetime) -> list[dict[str, Any]]:
     """Проверить правила на текущих данных и записать новые алерты; повтор (правило, цель) пропускается."""
     checklist, dialogs, appeals = current_state(store)
     views = dialog_views(store, checklist, dialogs, appeals)
-    hits = check_alerts(alert_rules(store), views, appeals, store.list_runs(), now)
+    runs = [(r.id, r.status, r.errors) for r in store.list_runs()]  # последние 50 запусков
+    hits = check_alerts(alert_rules(store), views, appeals, runs, now)
     return store.add_alerts(hits, now.isoformat(timespec="seconds"))
 
 
