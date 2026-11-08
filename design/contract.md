@@ -236,6 +236,29 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 - Чат, звонок без записи, 404/502, нет ffmpeg или любая ошибка разбора — блока нет, запрос байт в байт прежний; системный промпт не меняется. Запрет реальных звонков (`CQA_ALLOW_REAL_DATA`) проверяется до разбора; в блоке только роли и номера реплик, без текста и имён.
 - Отпечаток (`fingerprint`) звук не учитывает: появление интонации готовые ответы не пересчитывает, она входит в следующие оценки звонка. `make eval` идёт без интонации.
 
+## Метрики использования (eval-and-delivery, telemetry)
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `POST /api/telemetry?role=<role>` | `[{event, at, page, props}]`, JSON при любом `Content-Type` (sendBeacon шлёт `text/plain`) | 204; ошибка пакета — 422, пакет не сохраняется; больше 30 пакетов подряд с одного адреса (затем 1 в 2 с) — 429; `CQA_TELEMETRY=off` — 204 без записи |
+| `GET /api/usage?since=YYYY-MM-DD&role=<role>&format=json\|csv` | — | сводка ниже; `csv` — `attachment; filename="usage.csv"`; неизвестный формат — 422 |
+
+- Пакет до 200 событий. `event` из списка: `page_view`, `action` (`props.act` — имя `data-act`), `search`, `filter`, `dialog_open`, `appeal_open`, `appeal_submit`, `decision_submit`, `checklist_save`, `run_start`, `export`, `report_open`, `help_open`, `error_shown`, `time_on_page` (`props.ms`). `at` — ISO со смещением (без него — время приёма), `page` — токен экрана (`^\w[\w.:/#-]{0,63}$`, без пробелов), `props` — объект до 2 КБ.
+- Сотрудник — `actor_from(request)` (`src/cqa/http/actor.py`): активный сотрудник из `X-CQA-User` — его `id` и роль; иначе без входа — `role` из запроса, без неё «без входа».
+- Текст не хранится: из `props` остаются только ключи `act`, `id`, `cid`, `ms`, `len`, `has_result`, `name`, `value`, `kind`, `format`, `code`, `n` со значением-числом, bool или токеном; `q` (поисковый запрос) превращается в `len`; остальное отбрасывается молча.
+- Воронки связывают события одного сотрудника по `props.id`: `dialog_open` → `appeal_submit` (id диалога), `appeal_open` → `decision_submit` (id апелляции). Время — от последнего открытия до первого действия.
+
+```json
+{"filters": {"since": "2026-11-01", "role": null}, "events": 120,
+ "active_users": [{"day": "2026-11-08", "users": 3}],
+ "screens": [{"page": "queue", "events": 70, "views": 12, "median_ms": 41000}],
+ "actions": [{"act": "open", "n": 30}],
+ "funnels": [{"name": "Открыл диалог → подал апелляцию", "started": 10, "converted": 2, "rate": 0.2, "median_s": 95.0}],
+ "errors": [{"page": "card", "code": "run_failed", "n": 1}],
+ "exports": [{"kind": "checklist-csv", "n": 2}], "reports": [{"kind": "html", "n": 1}]}
+```
+
+День активных — по времени Астаны. `actions`, `errors`, `exports`, `reports` — топ-10. CSV: `Раздел;Ключ;Показатель;Значение`, строка на число, UTF-8 с BOM.
 ## Статистика разговора (dialog-ingest, talkstats)
 
 | Метод и путь | Тело | Ответ |
