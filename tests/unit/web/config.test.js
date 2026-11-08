@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configBody, modeText, presetOf, risks } from '../../../web/js/config.js';
+import { configBody, modeText, presetOf, risks } from '../../../frontend/src/lib/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
 const FIELDS = { llm_base_url: ' https://kz.test/v1 ', llm_model: ' qwen ', llm_profile: 'plain', llm_api_key: '', jev: false, jev_api_key: '', allow_real_data: false };

@@ -39,3 +39,5 @@ playwright-report/
 
 # os
 .DS_Store
+
+frontend/node_modules/

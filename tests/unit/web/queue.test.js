@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../../../web/js/queue.js';
+import { groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../../../frontend/src/lib/queue.js';
 
 const CL = {
   sections: ['Раздел'],
