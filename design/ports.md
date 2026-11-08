@@ -252,3 +252,12 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
+
+## Правила обработки (llm-evaluation, routing)
+
+| Что | Где | Сигнатура и смысл |
+| --- | --- | --- |
+| `CQA_ROUTING` → `routing` | `Settings`, `list[dict] \| None`, `None` | JSON `[Rule]` без `default`; `None` — демонстрационные правила (выключены); список из базы (`overrides["routing"]`) заменяет этот |
+| `Rule`, `Match`, `Use`, `Facts`, `first_match`, `conditions` | `src/cqa/domain/routing.py` | чистый выбор правила и объяснение условий |
+| `build_routed` | `src/cqa/compose.py` | `build_routed(settings, prosody, store) -> Evaluator`: без включённых правил — `build_evaluator(settings, prosody)` как есть, иначе `RoutedEvaluator`; сервер (`create_app`, `PUT /api/config`, `/api/providers`, `/api/routing`) и `make results` собирают оценщик им, `make eval` — по-прежнему `build_evaluator` |
+| `RoutedEvaluator` | `src/cqa/services/routing.py` | `Evaluator`: оценщик первого подходящего правила, ответы с `rule_id`/`rule_name`; `default` — общий оценщик без пометок |

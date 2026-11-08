@@ -12,6 +12,8 @@ HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
 EXEMPT = {"/health", "/login"}
+# UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
+EXEMPT |= {"/routing", "/routing/explain"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

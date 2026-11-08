@@ -4,11 +4,11 @@ connection, used only from the event loop thread (review-workflow design, decisi
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
-from cqa.compose import build_evaluator, check_provider
+from cqa.compose import build_routed, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
@@ -27,6 +27,8 @@ from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
+from cqa.services.routing import explain, put_routing
+from cqa.services.routing import view as routing_view
 from cqa.services.runs import Runner
 from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
 from cqa.services.sync import Syncer
@@ -80,6 +82,10 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ExplainIn(BaseModel):
+    dialog_id: str
 
 
 class RunIn(BaseModel):
@@ -257,7 +263,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings, state.prosody))
+        _runner(request).use(build_routed(settings, state.prosody, state.store))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -289,6 +295,23 @@ async def delete_provider_route(provider_id: str, request: Request) -> dict[str,
 @router.post("/providers/{provider_id}/check")
 async def check_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
     return await check_provider(provider(request.app.state.settings, provider_id))
+
+
+@router.get("/routing")
+async def get_routing(request: Request) -> list[dict[str, Any]]:
+    return routing_view(request.app.state.settings)
+
+
+@router.put("/routing")
+async def put_routing_route(request: Request, body: Annotated[Any, Body()]) -> list[dict[str, Any]]:
+    """Правила обработки целиком, по порядку; тело проверяет сервис, ошибки — 422 по-русски с полем."""
+    state = request.app.state
+    return routing_view(put_routing(state.store, state.settings, body, _apply(request)))
+
+
+@router.post("/routing/explain")
+async def post_routing_explain(body: ExplainIn, request: Request) -> dict[str, Any]:
+    return explain(request.app.state.store, request.app.state.settings, body.dialog_id)
 
 
 @router.post("/datasets")
