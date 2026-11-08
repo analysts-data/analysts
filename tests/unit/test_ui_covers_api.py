@@ -27,6 +27,8 @@ EXEMPT = {
     "/employees/{employee_id}",
     "/me",
     "/overview",
+    # UI в работе: правила при недостаточности данных (docs/insufficient-data.md)
+    "/sufficiency",
     # UI в работе: экран «Пакеты» (пакетная обработка), спецификация — в PR «пакетная обработка»
     "/batches",
     "/batches/{job_id}",
@@ -39,6 +41,18 @@ EXEMPT = {
 }
 # UI в работе: оценки по сотрудникам (PR #80)
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# UI в работе (сессия React): страница «Источники», мастер добавления, фильтр по источнику
+EXEMPT |= {
+    "/sources",
+    "/sources/stats",
+    "/sources/test",
+    "/sources/{source_id}",
+    "/sources/{source_id}/test",
+    "/sources/{source_id}/sync",
+    "/sources/{source_id}/syncs",
+}
+# вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
+EXEMPT |= {"/sources/{source_id}/ingest"}
 # UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
 EXEMPT |= {"/telemetry", "/usage"}
 # UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
@@ -52,6 +66,8 @@ EXEMPT |= {
 }  # fmt: skip
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
+# UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
+EXEMPT |= {"/routing", "/routing/explain"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

@@ -48,7 +48,7 @@ def test_report_json_follows_current_results_and_filters(
     assert (summary["dialogs"], summary["scored"], summary["avg_total"]) == (2, 1, 82.94)
     assert (chats["summary"]["scored"], chats["filters"]) == (
         0,
-        {"lang": None, "ch": "chat", "operator": None},
+        {"lang": None, "ch": "chat", "operator": None, "source": None},
     )
 
 

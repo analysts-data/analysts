@@ -5,10 +5,14 @@ class NotFound(Exception):  # 404
     pass
 
 
-class Invalid(Exception):  # 422
+class Invalid(Exception):  # 422; fields — ошибки по полям формы: {"config.url": "…"}
     def __init__(self, message: str, fields: dict[str, str] | None = None) -> None:
         super().__init__(message)
-        self.fields = fields or {}  # путь поля ("criteria.4.na") -> текст; в ответе — "fields"
+        self.fields = fields or {}
+
+
+class Unauthorized(Exception):  # 401: неверный токен источника (webhook)
+    pass
 
 
 class Conflict(Exception):  # 409

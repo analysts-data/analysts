@@ -101,15 +101,22 @@ def effective_answers(d: Dialog, appeals: Sequence[Appeal]) -> dict[str, ResultA
 
 
 def needs_review(c: Criterion, r: CriterionResult) -> bool:
-    return c.type in ("bool", "scale") and (r.evFail or (r.alt is not None and r.alt != r.a))
+    """Расхождение моделей, проваленное основание или ответ без основания при неполных данных."""
+    return c.type in ("bool", "scale") and (
+        r.evFail or (r.alt is not None and r.alt != r.a) or r.reviewWhy is not None
+    )
 
 
 def awaits_review(criteria: Sequence[Criterion], d: Dialog, decided: set[tuple[str, str]]) -> bool:
-    """Диалог не отмечен проверенным, и есть расхождение или проваленное основание без решения.
+    """Диалог не отмечен проверенным, и он с пометкой «Мало данных» или есть ответ на проверку без решения.
     `decided` — пары (диалог, критерий) с решением confirmed или changed."""
-    return not d.reviewed and any(
-        (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
-        for c in criteria
+    low_data = d.sufficiency is not None and d.sufficiency.status == "flag"
+    return not d.reviewed and (
+        low_data
+        or any(
+            (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
+            for c in criteria
+        )
     )
 
 

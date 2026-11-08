@@ -108,6 +108,9 @@ def simulate_draft(store: Store, draft: Checklist) -> dict[str, Any]:
     cur = checklist_version(store, None)
     before, appeals0 = state_for(store, cur)
     after, appeals1 = state_for(store, draft)
+    # «Недостаточно данных» — вне итогов, как в отчёте для руководства
+    blocked = {d.id for d in before if d.sufficiency and d.sufficiency.status == "block"}
+    before = [d for d in before if d.id not in blocked]
     sim = simulate(
         cur,
         draft,
@@ -116,7 +119,7 @@ def simulate_draft(store: Store, draft: Checklist) -> dict[str, Any]:
         {d.id: effective_answers(d, appeals1) for d in after},
         current_bands(store),
     )
-    return {**sim, "save_errors": draft_errors(draft)}
+    return {**sim, "insufficient": len(blocked), "save_errors": draft_errors(draft)}
 
 
 TRIAL_MAX = 20  # диалогов в песочнице: проба на выборке, а не новая оценка набора

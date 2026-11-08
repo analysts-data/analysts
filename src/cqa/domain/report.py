@@ -51,9 +51,15 @@ def _groups(rows: Sequence[tuple[str, float]], label: Mapping[str, str]) -> list
 Row = tuple[Dialog, dict[str, Answer], float]  # оценённый диалог: ответы с учётом решений, итог
 
 
+def _status(d: Dialog) -> str:
+    return d.sufficiency.status if d.sufficiency else "ok"
+
+
 def _scored(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]) -> list[Row]:
     rows: list[Row] = []
     for d in dialogs:
+        if _status(d) == "block":  # «Недостаточно данных»: вне средних даже с прежними ответами, виден счёт
+            continue
         answers = effective_answers(d, appeals)
         if (t := total(checklist, answers)) is not None:
             rows.append((d, answers, t))
@@ -120,6 +126,8 @@ def _summary(
             },
             "no_next_step": {"dialogs": no_next, "share": _share(no_next, n)},
             "needs_review": review,
+            "insufficient": sum(_status(d) == "block" for d in picked),
+            "low_data": sum(_status(d) == "flag" for d, _, _ in rows),
             "open_appeals": sum(a.status == "pending" for a in appeals),
             "cost": {
                 "dialogs": len(costs),
@@ -148,23 +156,31 @@ def build_report(
     ch: str | None = None,
     operator: str | None = None,
     bands: Sequence[Band] = (),
+    source: str | None = None,
+    source_names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны.
-    `bands` — шкала оценок: сколько оценённых диалогов в каждой оценке (`summary.bands`)."""
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны;
+    `source_names` — названия источников для раздела «По источникам»; `bands` — шкала оценок: сколько
+    оценённых диалогов в каждой оценке (`summary.bands`)."""
     lang = lang.upper() if lang else None
     picked = [
         d
         for d in dialogs
-        if lang in (None, d.lang.upper()) and ch in (None, d.ch) and operator in (None, d.operator or UNKNOWN)
+        if lang in (None, d.lang.upper())
+        and ch in (None, d.ch)
+        and operator in (None, d.operator or UNKNOWN)
+        and source in (None, d.source_id)
     ]
     ids = {d.id for d in picked}
     appeals = [a for a in appeals if a.dlg in ids]
     rows = _scored(checklist, picked, appeals)
+    labels = {"—": UNKNOWN, **(source_names or {})}
     rep: dict[str, Any] = {
         "at": at,
-        "filters": {"lang": lang, "ch": ch, "operator": operator},
+        "filters": {"lang": lang, "ch": ch, "operator": operator, "source": source},
         **_summary(checklist, picked, rows, appeals, owners),
         "operators": _section(checklist, picked, appeals),
+        "sources": _groups([(d.source_id or "—", t) for d, _, t in rows], labels),
     }
     in_band = [b.label for _, _, t in rows if (b := band_of(bands, t))]
     rep["summary"]["bands"] = [
@@ -434,6 +450,7 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
         ("По сотрудникам: сильные стороны", OPERATOR_HEAD, NUM, people(rep["operators"]["strengths"])),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
+        ("По источникам", ["Источник", "Диалогов", "Средний итог"], {1, 2}, groups(rep.get("sources", []))),
     ]  # fmt: skip
     return [t for t in tables if t[3]]
 
@@ -449,11 +466,22 @@ def _scope(rep: dict[str, Any]) -> str:
     return f"Сформирован {rep['at']}" + (f" · {scope}" if scope else "")
 
 
+def _short(s: dict[str, Any]) -> str:
+    """Видимый счёт диалогов при неполных данных (docs/insufficient-data.md); нет таких — пусто."""
+    parts = [f"недостаточно данных — {s['insufficient']}"] if s["insufficient"] else []
+    parts += [f"мало данных — {s['low_data']}"] if s["low_data"] else []
+    return "; " + ", ".join(parts) if parts else ""
+
+
 def _tiles(rep: dict[str, Any]) -> list[tuple[str, str, str]]:
     s = rep["summary"]
     cost = s["cost"]
     return [
-        ("Средний итог", _d(s["avg_total"]), f"из 100; оценено {s['scored']} из {_of(s['dialogs'])}"),
+        (
+            "Средний итог",
+            _d(s["avg_total"]),
+            f"из 100; оценено {s['scored']} из {_of(s['dialogs'])}{_short(s)}",
+        ),
         ("Грубые нарушения", _pct(s["risk"]["share"]), _dialogs(s["risk"]["dialogs"])),
         ("Без следующего шага", _pct(s["no_next_step"]["share"]), _dialogs(s["no_next_step"]["dialogs"])),
         ("Нужна проверка", str(s["needs_review"]), "диалогов с расхождением моделей или без основания"),

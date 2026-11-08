@@ -67,6 +67,7 @@
 - `s`: секунда начала реплики в аудиофайле (только звонок): метка стоит в конце реплики, паузы записи вычтены, сдвиг файла учтён.
 - `seg`: `pre` (до оператора), `conv` (оценивается), `internal` (разговор с коллегой, удержание), `after` (после конца разговора). Свёрнутые участки описывает объект `fold`.
 - `who`: `client`, `operator`, `bot`, `system` (из поля `speaker` организаторов; имя поля как в прототипе).
+- `sufficiency`: `{"status": "ok" | "flag" | "block", "reasons": [{"id": "too_short", "text": "Слишком короткий диалог", "basis": "реплик клиента и оператора — 2, нужно не меньше 3", "outcome": "flag"}]}` — достаточность данных по правилам `docs/insufficient-data.md`. Считается сервером при каждом чтении и не хранится. `block` («Недостаточно данных») — диалог модели не отправляется, в отчёте вне средних, в `results.json` `status: error` с причиной. `flag` («Мало данных») — оценивается, но стоит в «Нужна проверка», пока его не отметят проверенным. `info` — только сведение, статус `ok`. `lines: null` — правила не применяются.
 
 ## CriterionResult
 
@@ -85,6 +86,8 @@
 - `ev`: номера реплик-оснований, можно системное сообщение. Для пропущенного действия пусто, а `seg` называет участок.
 - `tag`: короткая причина снижения для группировки в аналитике. `better`: пример лучшей реплики для обучения.
 - `evFail`: основание не прошло проверку после повтора, ответ помечен «на проверку».
+- `rule_id`, `rule_name`: правило обработки, выбравшее оценщик (раздел «Правила обработки»), и его название на момент оценки; нет полей — общий режим. Карточка пишет «Обработано правилом „<rule_name>“».
+- `reviewWhy`: причина проверки, которую сервер считает при чтении (в базе её нет). Сейчас бывает одна: «ответ без основания при неполных данных». Её получает ответ не N/A без `ev` и `seg` на диалоге `sufficiency.status: "flag"`; флаг и ручной ответ её не получают. Ответ не меняется. Решение проверяющего — `POST /api/decisions`, как при `evFail`.
 
 ## Appeal
 
@@ -118,7 +121,7 @@
 | `POST /api/runs/{id}/adopt` | `{"dialogs": [..] или null, "criteria": [..] или null}` или без тела | `{adopted, skipped}`: теневые ответы запуска `compare` становятся текущими (там же) |
 | `GET /api/runs` | — | последние 50 запусков, новые первыми (раздел «История оценок и повторная проверка») |
 | `GET /api/runs/compare?a=<id>&b=<id>` | — | сравнение двух запусков (там же); неизвестный запуск — 404 |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, dialogs: [RunDialog]}` |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog]}`; `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 | `GET /api/dialogs/{id}/history` | — | история оценок диалога (раздел «История оценок и повторная проверка»); неизвестный диалог — 404 |
 | `POST /api/results/{id}/restore` | — | CriterionResult: прежняя оценка снова текущая; 404, 409 (там же) |
@@ -152,10 +155,12 @@
 | `POST /api/dialogs/{id}/reviewed` | `{"reviewed": true \| false}` | `{ok}`; снятие отметки возвращает диалог в верхние группы очереди |
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
+| `GET /api/sufficiency` | — | `{rules: [{id, text, why, default, outcome}]}`: правила достаточности данных в порядке проверки; `why` — обоснование исхода по умолчанию (`docs/insufficient-data.md`) |
+| `PUT /api/sufficiency` | `{"<id правила>": "block" \| "flag" \| "info"}` | то же, что `GET`: исходы сохранены в базе; неизвестное правило или исход — 422, ничего не меняется |
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
 | `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
-| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
+| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`, `sufficiency`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
 | `GET /api/employees` | — | `[{id, name, role, team, active}]` по имени; раздел «Сотрудники и журнал действий» |
 | `PUT /api/employees/{id}` | `{name, role: "operator" \| "qa" \| "reviewer" \| "manager" \| "admin", team, active}` | сотрудник после записи: создан или изменён; пустое имя или другая роль — 422 |
@@ -287,7 +292,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 ## Отчёт для руководства (eval-and-delivery)
 
-JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], strengths: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, insufficient, low_data, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], strengths: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением, `evFail` или `reviewWhy` без решения или со `sufficiency.status: "flag"`. Диалоги `block` в средние и доли не входят, их число — `insufficient`; `low_data` — оценённые диалоги `flag`. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
 
 ## По сотрудникам (eval-and-delivery)
 
@@ -321,6 +326,7 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 - `why` диалога — только критерии, входящие в его итог до или после: «вес «…» 15 → 30», ««…» ждёт новой оценки (изменено: текст), до неё не входит в итог», ««…» удалён: ответ «Нет» больше не входит в итог», ««…»: ответ «Да» → «Нет»», при смене правил — «изменены общие правила: все критерии ждут новой оценки». Вес N/A-критерия итог этого диалога не меняет и в `why` не попадает. `text` — «Итог: 41,00 → 35,65, потому что вес «…» 15 → 30» или «Итог не меняется: 100,00».
 - `moves[].text` — «12 диалогов перейдут из „Хорошо“ в „Требует внимания“»; `to: null` — итога не будет до новой оценки. `findings` — средний итог до и после с числом оценённых диалогов, сколько итогов изменится, переходы между оценками, что ждёт оценки, удалённое.
 - `pending[].dialogs` — у скольких диалогов не будет ответа по критерию; `why` — «новый критерий», «изменено: текст, ступени» или «изменены общие правила».
+- `insufficient` — сколько диалогов «Недостаточно данных» (`sufficiency.status: "block"`) не вошло: как в отчёте для руководства, они вне итогов.
 - `save_errors` — что не даст сохранить черновик (те же тексты, что 422 у `PUT /api/checklist`); «что если» считается и с ними.
 - Операторов и продуктов в данных нет: группы — канал и язык.
 
@@ -377,6 +383,40 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 ## Доступ по токену (eval-and-delivery)
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
+
+## Источники диалогов (dialog-ingest, sources)
+
+Диалоги приходят из нескольких сервисов; у каждого диалога есть происхождение. `Dialog` получает поля `source_id` (id источника) и `external_id` (id записи в источнике); поле записи `operator` становится `Dialog.operator`, `product` (или `product_default` источника) виден в предпросмотре — тему диалога определяет раздел «Темы обращений»; дубли — по `(source_id, external_id)`. Диалоги организаторов и файла сохраняют `id` = `conversation_id`, у `http_json` и `webhook` `id` = `<source_id>-<external_id>`, название — «Чат <external_id>» / «Звонок <external_id>». `GET /api/state` получает `sources: [{id, name, kind, service}]` (без архивных) для фильтра и плашки источника.
+
+Source: `{"id": "src1", "name": "Чат-платформа", "kind": "org_api" | "http_json" | "webhook" | "file" | "paste" | "api", "service": "ChatDesk", "channel_default": "chat" | "call" | null, "product_default": "Карты" | null, "config": {…}, "has_secret": true, "enabled": true, "schedule_min": 5, "created": "<ISO>", "archived": false, "ingest_path": "/api/sources/src1/ingest" | null}`. Встроенные: `org` (API организаторов, по умолчанию выключен, расписание 5 мин; прежняя ссылка `PUT /api/source` переносится в него), `file` (`POST /api/datasets/upload`), `paste` (`POST /api/dialogs/text`), `api` (интеграционный API). Встроенные не удаляются; у `file`, `paste`, `api` меняются только `name`, `service`, `channel_default`, `product_default`.
+
+`config` (не секрет) по виду:
+- `org_api`: `{"group_id": "DEV"}`; секрет — подписанная ссылка `https://…`. Включить без ссылки — 422.
+- `http_json`: `{"url": "https://…", "method": "GET" | "POST", "auth_header": "Authorization" | "", "records_path": "data.items", "mapping": Mapping}`; секрет — значение заголовка. Логин, пароль или параметр вроде `token`, `key`, `signature` в адресе — 422 (адрес виден в интерфейсе).
+- `webhook`: `{"auth": "bearer" | "hmac", "records_path": "", "mapping": Mapping}`; секрет — токен, его выдаёт сервер.
+
+Mapping: пути (`agent.name`, `data.items.0`) к полям записи: обязательные `conversation_id`, `transcript` (список реплик), `speaker`, `text` (внутри реплики); необязательные `channel`, `language`, `timestamp` (внутри реплики), `audio_url`, `operator`, `product`, а также `speakers: {"<значение>": "client" | "operator" | "bot" | "system"}`. Роли и каналы понимаются по синонимам (`agent`, `customer`, `user`, `chat`, `call`, `voice`…); нет канала — `channel_default`; нет языка — по тексту; нет времени — `MM:SS` по номеру реплики.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/sources` | — | `[Source]`, архивные с `archived: true` |
+| `POST /api/sources` | `{name, kind, service, channel_default, product_default, config, secret, enabled, schedule_min}` | Source; у `webhook` ещё `token` — показывается один раз |
+| `PUT /api/sources/{id}` | то же и `rotate_token` | Source; пустой `secret` оставляет сохранённый; `rotate_token: true` у webhook — новый `token` один раз; смена `kind` — 422 |
+| `DELETE /api/sources/{id}?archive=true` | — | `{deleted}` без диалогов; есть диалоги — 409, с `archive=true` — `{archived}` (выключен, учёт и диалоги остаются); встроенный — 409 |
+| `POST /api/sources/test` | поля `POST /api/sources` и `sample` | предпросмотр черновика, ничего не сохраняет |
+| `POST /api/sources/{id}/test` | `{sample}` (для webhook) или пусто | предпросмотр сохранённого источника |
+| `POST /api/sources/{id}/sync` | — | SourceSync: забрать сейчас (`org_api`, `http_json`); ошибка источника — `status: "error"`, не код HTTP; идёт синхронизация — 409; другой вид — 422 |
+| `GET /api/sources/{id}/syncs?limit=50` | — | `[SourceSync]`, новые первыми |
+| `GET /api/sources/stats` | — | `[SourceStats]` по всем источникам |
+| `POST /api/sources/{id}/ingest` | JSON: список записей, одна запись или объект со списком по `records_path` | `{added, skipped, errors: [до 20]}`; `Authorization: Bearer <token>` или `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела>` по `config.auth`; неверный — 401, выключен — 409, не webhook — 404, больше 10 МБ или не JSON — 422. Открыт и при `CQA_ACCESS_TOKEN` |
+
+Предпросмотр: `{ok, error: null | "<текст>", ms, records, preview: [{id, external_id, title, ch, lang, lines, operator, product, sample: [{who, text}] × 3}] × 3, errors: ["<id>: <причина>"], paths: ["id", "agent.name", …]}`. Сбой связи — `ok: false` и текст без адреса (200). Ошибки настроек в любом вызове — 422 `{"detail": "Проверьте поля источника", "fields": {"config.url": "…", "config.mapping.text": "…", "secret": "…"}}`. Секреты не уходят ни в один ответ и журнал, есть `has_secret`.
+
+SourceSync: `{id, source_id, started, finished, status: "running" | "ok" | "partial" | "error", added, skipped, errors: [..], duration_ms}`. Каждое поступление — строка журнала: синхронизация, webhook, файл, вставка, `POST /api/datasets`. `partial` — часть записей не разобрана, `error` — сбой целиком; прерванные перезапуском — `error` «прервана перезапуском сервера». Автосинхронизация: включённые `org_api` и `http_json` с `schedule_min > 0`, проверка раз в 30 с.
+
+SourceStats: `{id, name, kind, enabled, archived, dialogs, scored, avg_total, gross_share, running: SourceSync | null, last_sync: SourceSync | null, syncs, error_rate, newest_at, freshness_s, health: "ok" | "warning" | "error", basis}`. Итог и грубые ошибки — с учётом решений, как в отчёте; `error_rate` — доля `error` среди последних 10; `freshness_s` — возраст самого нового диалога. `health` — первое сработавшее правило, `basis` — его текст: выключен — warning «источник выключен»; последняя синхронизация `error` — error «последняя синхронизация с ошибкой: <первая ошибка>»; `error_rate > 0,2` — warning «N% синхронизаций с ошибкой (последние 10)»; `partial` — warning «последняя синхронизация с пропусками: N записей не разобраны»; `file`, `paste`, `api` — ok «загрузка вручную» / «ошибок нет»; pull без синхронизаций — warning «ещё не синхронизировался»; нет данных — warning «данные ещё не поступали»; новый диалог старше 24 ч — warning «нет новых данных 24 ч»; иначе ok.
+
+`http_json` ходит только в публичный интернет: адрес, который резолвится в частную сеть, loopback, link-local (169.254.169.254) и другие служебные диапазоны, — `ok: false` / `error` «адрес … во внутренней сети», перенаправления не выполняются. `CQA_ALLOW_PRIVATE_SOURCES=1` снимает запрет (источник в своей сети, `make demo`). Отчёт для руководства: `sources: [{key, label, n, avg}]` («По источникам»), фильтр `source=<id>`, `filters.source`.
 
 ## Сотрудники и журнал действий (eval-and-delivery)
 
@@ -442,3 +482,20 @@ Job: `{id, status: "queued" | "running" | "paused" | "done" | "cancelled" | "fai
 **Запуски.** `GET /api/runs` → `[{"id": 4, "created": "<ISO>", "status": "done", "model": "qwen3-6" | null, "checklist_version": 3 | null, "total": 16, "done": 16, "cost": 0.016, "errors_count": 0, "force": true, "skipped": 1, "apply": "replace" | "compare", "override": null | {…}}]`, последние 50, новые первыми. `model` — `mode.model` в момент запуска (с `override`); `null` — запуск до появления колонки.
 
 **Сравнение запусков.** `GET /api/runs/compare?a=3&b=4` → `{"a": 3, "b": 4, "pairs": 16, "agree": 0.875, "criteria": [{"cid": "04", "pairs": 2, "agree": 0.5, "mean_step_diff": 1.0}], "diffs": [{"dialog": "call-024", "cid": "04", "a": 15, "b": 10}]}`. Учитываются пары «диалог, критерий», отвеченные в обоих запусках, у пары — последняя строка запуска; ответ сравнивается как есть (флаг — объект целиком), без решений проверяющего. `agree` — доля совпавших, `null` без общих пар. `mean_step_diff` — у шкалы средняя разница в ступенях (`steps` текущего чек-листа), пары с `na` не в счёт; у остальных `null`. `criteria` — в порядке чек-листа. Теневые ответы входят. «Сравнить модели»: запуск `{"force": true}` или прежний и запуск `{"apply": "compare", "override": {"llm_provider": "<другой>"}}` того же набора.
+
+## Правила обработки (llm-evaluation, routing)
+
+Разные модели и настройки по типу взаимодействия. Диалог берёт первое включённое правило, все условия которого выполнены; последнее правило `default` — общий «Режим оценки» (`GET /api/config`), оно подходит любому диалогу. Без включённых правил оценка и запросы к модели те же, что без раздела.
+
+Rule: `{"id": "calls-kz", "name": "Звонки KZ → qwen3-6 + Jev", "enabled": true, "why": "<зачем>" | null, "match": {...}, "use": {...}}`. `id` — строчная латиница, цифры и дефис, до 32 знаков.
+
+- `match` (все заданные условия сразу; null или пустой список — условия нет; неизвестное поле — 422): `ch`: `"chat"` | `"call"`; `lang`: `["KZ", ...]` без учёта регистра; `source_id`, `product`: списки значений полей диалога (пока у диалога поля нет — не подходит); `min_lines`, `max_lines`: число реплик клиента, оператора и бота включительно; `has_audio`: есть ли запись разговора.
+- `use` (поле не задано — как в общем режиме): `evaluator`: `"llm"` | `"jev"`; `llm_provider`: код провайдера основной модели; `verifier`: `"jev"` | код провайдера | `null` (явный `null` — без второго мнения); `anonymize`: только строже — `true` включает обезличивание, `false` при включённом в общем режиме — 422 (иначе имена и номера ушли бы модели без маскировки); `prosody`: `false` — модель не получает разбор интонации звонка; `max_parallel`: одновременные запросы к модели правила.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/routing` | — | `[Rule]` по порядку, `default` последним; пока правила не сохраняли — демонстрационные, выключенные |
+| `PUT /api/routing` | `[Rule]` — весь список по порядку; `default` можно передать как есть, он не хранится | то же, что `GET`, после применения |
+| `POST /api/routing/explain` | `{"dialog_id": "call-024"}` | `{dialog_id, facts: {ch, lang, source_id, product, lines, has_audio}, rule: {id, name}, use: {where, anonymized, model, verifier, evaluator, prosody, max_parallel}, rules: [{id, name, enabled, matched, chosen, conditions: [{field, ok, text}]}]}` |
+
+Ошибки `PUT /api/routing` — 422, `detail` — строки «правило 2 «Звонки» → use.llm_provider: нет провайдера «x»» через перевод строки: неизвестное поле или значение, повтор `id`, `min_lines` больше `max_lines`, у `default` условия или действия, неизвестный провайдер, нет ключа (Jev без ключа вне `replay` и т. п.). Ключи и провайдеры проверяются только у включённых правил: выключенное можно сохранить недоделанным. Во время запуска — 409, как у `PUT /api/config`. `explain` неизвестного диалога — 404. Правило, провайдера которого удалили после сохранения, не мешает остальным: его диалоги падают с ошибкой в `errors` запуска.

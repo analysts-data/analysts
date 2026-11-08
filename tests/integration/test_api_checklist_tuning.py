@@ -98,7 +98,7 @@ def test_simulate_returns_new_totals_without_saving(
     assert call["before"] == 82.94 and call["after"] > call["before"]
     assert call["why"] == ["вес «Эмпатия и клиентоориентированность» 15 → 30"]
     assert sim["summary"]["avg_before"] == 82.94
-    assert sim["save_errors"] == {}
+    assert sim["save_errors"] == {} and sim["insufficient"] == 0
     assert current(client)["version"] == 3
 
 

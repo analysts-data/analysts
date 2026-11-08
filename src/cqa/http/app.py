@@ -15,16 +15,17 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.batches import BatchStore
+from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_evaluator, build_source
+from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
-from cqa.http import api, batches, docs
+from cqa.http import api, batches, docs, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.batches import Batches
 from cqa.services.checklists import SEED_CHECKLIST
-from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
+from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.prosody import dialog_prosody
@@ -39,6 +40,7 @@ WEB_DIR = ROOT / "web"
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
+    Unauthorized: 401,
     Conflict: 409,
     Upstream: 502,
     Unavailable: 503,
@@ -47,6 +49,7 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Автосинхронизация источников по их расписанию, пока работает сервер."""
     """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
     syncer: Syncer | None = app.state.syncer
     tasks = [asyncio.create_task(app.state.batches.work())]
@@ -60,9 +63,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 async def _detail(request: Request, exc: Exception) -> JSONResponse:
-    body: dict[str, object] = {"detail": str(exc)}
-    if fields := getattr(exc, "fields", None):  # Invalid с ошибками по полям
-        body["fields"] = fields
+    body: dict[str, Any] = {"detail": str(exc)}
+    if isinstance(exc, Invalid) and exc.fields:
+        body["fields"] = exc.fields  # ошибки по полям формы источника
     return JSONResponse(body, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t)))
 
 
@@ -112,7 +115,9 @@ def create_app(
     seed_checklist(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
-    app.state.syncer = Syncer(store, app.state.source)
+    store.fail_stale_syncs()
+    http_source = HttpSource(httpx.AsyncClient(), allow_private=settings.allow_private_sources)
+    app.state.syncer = Syncer(store, app.state.source, http_source, settings)
     app.state.voice = PraatVoice(httpx.AsyncClient())  # интонация: запись скачивается и разбирается локально
 
     async def prosody(dialog_id: str) -> dict[str, Any]:
@@ -120,7 +125,9 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
+    evaluator = (
+        evaluator if evaluator is not None else build_routed(settings, prosody, store)
+    )  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
@@ -128,6 +135,7 @@ def create_app(
     app.state.telemetry_limit = TokenBucket(capacity=30, rate=0.5)  # ~1 пакет в 2 с на клиента
 
     app.include_router(api.router)
+    app.include_router(sources.router)
     app.include_router(batches.router)
     app.include_router(audio_router)
     app.include_router(docs.router)
