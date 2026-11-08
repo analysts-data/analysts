@@ -1583,5 +1583,15 @@
   "Подключённые модели: выберите основную": "Connected models: choose the primary one",
   "Сумма весов {sum} из 100": "Weights total {sum} of 100",
   "ключ задан администратором": "key set by the administrator",
-  "ключ сохранён": "key saved"
+  "ключ сохранён": "key saved",
+  "Достаточность данных": "Data sufficiency",
+  "Что делать с диалогом, в котором мало данных для честной оценки": "What to do with a dialog that has too little data for a fair evaluation",
+  "Недостаточно данных: модели не отправлять": "Insufficient data: do not send to the model",
+  "Мало данных: оценить и отправить на проверку": "Low data: evaluate and send for review",
+  "Только сведение": "Information only",
+  "Правила достаточности данных сохранены. Статусы диалогов пересчитаны.": "Data sufficiency rules saved. Dialog statuses recalculated.",
+  "Сохраняю…": "Saving…",
+  "Исход для правила «{text}»": "Outcome for the rule “{text}”",
+  "Исход по умолчанию": "Default outcome",
+  "Изменено: по умолчанию «{d}»": "Changed: default is “{d}”"
 }

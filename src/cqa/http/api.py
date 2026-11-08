@@ -1,20 +1,32 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
+import json
 import time
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
-from cqa.compose import build_evaluator, check_provider
+from cqa.compose import build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
+from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
 from cqa.services import reports
 from cqa.services.analytics import analytics
@@ -32,7 +44,7 @@ from cqa.services.checklists import (
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
-from cqa.services.errors import Unavailable
+from cqa.services.errors import Invalid, Unavailable
 from cqa.services.history import adopt, history, restore
 from cqa.services.llm_config import (
     Apply,
@@ -44,6 +56,8 @@ from cqa.services.llm_config import (
     view,
 )
 from cqa.services.ports import DialogSource
+from cqa.services.routing import explain, put_routing
+from cqa.services.routing import view as routing_view
 from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
 from cqa.services.state import (
     Audience,
@@ -56,7 +70,10 @@ from cqa.services.state import (
     report,
     scores_csv,
 )
+from cqa.services.sufficiency import configure as configure_sufficiency
+from cqa.services.sufficiency import view as sufficiency_view
 from cqa.services.sync import Syncer
+from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
@@ -111,6 +128,10 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ExplainIn(BaseModel):
+    dialog_id: str
 
 
 class OverrideIn(BaseModel):
@@ -357,6 +378,19 @@ async def post_checklist_diff(
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
+@router.get("/sufficiency")
+async def get_sufficiency(request: Request) -> dict[str, Any]:
+    """Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий."""
+    return sufficiency_view(request.app.state.store)
+
+
+@router.put("/sufficiency")
+async def put_sufficiency(body: dict[str, str], request: Request) -> dict[str, Any]:
+    saved = configure_sufficiency(request.app.state.store, body)
+    _log(request, "sufficiency.save", "sufficiency", "", dict(body))
+    return saved
+
+
 @router.put("/owners", summary="Назначить ответственных за причины снижения")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     owners = save_owners(request.app.state.store, body)
@@ -445,7 +479,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings, state.prosody))
+        _runner(request).use(build_routed(settings, state.prosody, state.store))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -464,6 +498,7 @@ FEATURES = {
     "batches": "/api/batches",
     "routing": "/api/routing",
     "automation": "/api/automation",
+    "sufficiency": "/api/sufficiency",
 }
 
 
@@ -517,6 +552,23 @@ async def check_provider_route(provider_id: str, request: Request) -> dict[str, 
     return await check_provider(provider(request.app.state.settings, provider_id))
 
 
+@router.get("/routing")
+async def get_routing(request: Request) -> list[dict[str, Any]]:
+    return routing_view(request.app.state.settings)
+
+
+@router.put("/routing")
+async def put_routing_route(request: Request, body: Annotated[Any, Body()]) -> list[dict[str, Any]]:
+    """Правила обработки целиком, по порядку; тело проверяет сервис, ошибки — 422 по-русски с полем."""
+    state = request.app.state
+    return routing_view(put_routing(state.store, state.settings, body, _apply(request)))
+
+
+@router.post("/routing/explain")
+async def post_routing_explain(body: ExplainIn, request: Request) -> dict[str, Any]:
+    return explain(request.app.state.store, request.app.state.settings, body.dialog_id)
+
+
 @router.post("/datasets", summary="Загрузить набор по group_id")
 async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
     result = await load_group(request.app.state.store, _source(request), body.group_id)
@@ -538,6 +590,66 @@ async def post_upload(request: Request) -> dict[str, int]:
     result = load_upload(request.app.state.store, _source(request), await request.body())
     _log(request, "dataset.upload", "dataset", "", result)
     return result
+
+
+MAX_PROPS = 2048
+
+
+class TelemetryIn(BaseModel):
+    event: Event
+    at: AwareDatetime | None = None  # без at — время приёма
+    page: Annotated[str, StringConstraints(pattern=TOKEN)]
+    props: dict[str, Any] = {}
+
+    @field_validator("props")
+    @classmethod
+    def _small(cls, props: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(props, ensure_ascii=False).encode()) > MAX_PROPS:
+            raise ValueError(f"props больше {MAX_PROPS} байт")
+        return props
+
+
+TELEMETRY = TypeAdapter(Annotated[list[TelemetryIn], Field(max_length=200)])
+
+
+@router.post("/telemetry", status_code=204, summary="Метрики использования: пакет событий интерфейса")
+async def post_telemetry(
+    request: Request,
+    role: Annotated[str | None, Query(pattern=TOKEN)] = None,
+) -> Response:
+    """Пакет событий интерфейса. Тело читается как JSON при любом Content-Type: sendBeacon шлёт text/plain.
+
+    Сотрудник — `actor_from` (активный по `X-CQA-User`, его id и роль), без входа — роль из запроса."""
+    state = request.app.state
+    if state.settings.telemetry == "off":
+        return Response(status_code=204)
+    if not state.telemetry_limit.take(request.client.host if request.client else "-"):
+        return Response(status_code=429)
+    try:
+        batch = TELEMETRY.validate_json(await request.body())
+    except ValidationError as exc:
+        raise Invalid(f"Пакет метрик не принят: {exc}") from exc
+    now = datetime.now(UTC)
+    who = actor_from(request, role or "")
+    events = [(e.at or now, e.event, e.page, e.props) for e in batch]
+    store_events(state.store, events, who.id or who.name, who.role or role)
+    return Response(status_code=204)
+
+
+@router.get("/usage", summary="Сводка использования системы: json или csv")
+async def get_usage(
+    request: Request,
+    since: date | None = None,
+    role: Annotated[str | None, Query(max_length=64)] = None,
+    fmt: Annotated[UsageFormat, Query(alias="format")] = "json",
+) -> Response:
+    """Как сотрудники пользуются системой: json — числа, csv — длинная таблица для Excel."""
+    body = usage(request.app.state.store, fmt, since=since, role=role)
+    if isinstance(body, dict):
+        return JSONResponse(body)
+    return Response(
+        body, media_type=MEDIA["csv"], headers={"Content-Disposition": 'attachment; filename="usage.csv"'}
+    )
 
 
 @router.post("/runs", summary="Запустить оценку")

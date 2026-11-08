@@ -145,6 +145,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_TELEMETRY` | `telemetry` | `Literal["on", "off"]` | `on` | eval-and-delivery (`POST /api/telemetry`) |
+| `CQA_TELEMETRY_RETENTION_DAYS` | `telemetry_retention_days` | `int` | `30` | eval-and-delivery (очистка при старте) |
 | `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
 | `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
@@ -160,6 +162,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished`, `model TEXT NULL`, `checklist_version INTEGER NULL`, `force INTEGER`, `skipped INTEGER`, `apply TEXT` (`replace` \| `compare`), `override TEXT NULL` (JSON) | — |
 | `run_dialogs` | `run_id`, `dialog_id` (PK вместе), `status CHECK IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')`, `total`, `done`, `skipped`, `error`; статус меняется (`Runner`) | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `telemetry` | `id`, `at` (ISO UTC, мс), `actor`, `role`, `event`, `page`, `props` (JSON после `clean_props`); `UPDATE` запрещён триггером, `DELETE` — только очистка старше `telemetry_retention_days` в `create_app` | eval-and-delivery (`src/cqa/services/telemetry.py`) |
 | `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
 | `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |
 
@@ -282,3 +285,12 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `record(store, actor, action, target_type, target_id, details=None) -> None` | `src/cqa/services/audit.py` | строка журнала; ключи с key/token/secret/password в `details` отбрасываются |
 
 Каждый новый изменяющий путь и выгрузка вызывает `record` после удачного действия; `action` — `<объект>.<глагол>`, выгрузка — `export`. Имена действий и `details` — таблица в разделе контракта «Сотрудники и журнал действий».
+
+## Правила обработки (llm-evaluation, routing)
+
+| Что | Где | Сигнатура и смысл |
+| --- | --- | --- |
+| `CQA_ROUTING` → `routing` | `Settings`, `list[dict] \| None`, `None` | JSON `[Rule]` без `default`; `None` — демонстрационные правила (выключены); список из базы (`overrides["routing"]`) заменяет этот |
+| `Rule`, `Match`, `Use`, `Facts`, `first_match`, `conditions` | `src/cqa/domain/routing.py` | чистый выбор правила и объяснение условий |
+| `build_routed` | `src/cqa/compose.py` | `build_routed(settings, prosody, store) -> Evaluator`: без включённых правил — `build_evaluator(settings, prosody)` как есть, иначе `RoutedEvaluator`; сервер (`create_app`, `PUT /api/config`, `/api/providers`, `/api/routing`) и `make results` собирают оценщик им, `make eval` — по-прежнему `build_evaluator` |
+| `RoutedEvaluator` | `src/cqa/services/routing.py` | `Evaluator`: оценщик первого подходящего правила, ответы с `rule_id`/`rule_name`; `default` — общий оценщик без пометок |

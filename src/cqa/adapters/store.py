@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -44,6 +44,14 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sufficiency (
+  id TEXT PRIMARY KEY, outcome TEXT NOT NULL CHECK (outcome IN ('block', 'flag', 'info')));
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, role TEXT,
+  event TEXT NOT NULL, page TEXT NOT NULL, props TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS telemetry_at ON telemetry(at);
+CREATE TRIGGER IF NOT EXISTS telemetry_no_update BEFORE UPDATE ON telemetry
+  BEGIN SELECT RAISE(ABORT, 'метрики только дописываются'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -161,7 +169,9 @@ class Store:
                         (dialog.operator, dialog.id),
                     )
                     continue
-                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost", "operator"})
+                body = dialog.model_dump(
+                    mode="json", exclude={"res", "reviewed", "cost", "operator", "sufficiency"}
+                )
                 self._conn.execute(
                     "INSERT INTO dialogs (id, body, audio_url, operator) VALUES (?, ?, ?, ?)",
                     (dialog.id, _dump(body), audio.get(dialog.id), dialog.operator),
@@ -192,6 +202,10 @@ class Store:
     def audio_url(self, dialog_id: str) -> str | None:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
         return row["audio_url"] if row is not None else None
+
+    def audio_ids(self) -> set[str]:
+        """Диалоги со ссылкой на запись: правило no_audio без запроса на каждый диалог."""
+        return {r["id"] for r in self._conn.execute("SELECT id FROM dialogs WHERE audio_url IS NOT NULL")}
 
     def prosody(self, dialog_id: str) -> dict[str, Any] | None:
         """Интонация звонка, посчитанная раньше (`GET /api/dialogs/{id}/prosody`)."""
@@ -567,6 +581,18 @@ class Store:
                 [(k, _dump(v)) for k, v in values.items()],
             )
 
+    def sufficiency_outcomes(self) -> dict[str, Outcome]:
+        """Исходы правил достаточности, изменённые из интерфейса: id правила → block, flag или info."""
+        return {r["id"]: r["outcome"] for r in self._conn.execute("SELECT id, outcome FROM sufficiency")}
+
+    def set_sufficiency_outcomes(self, outcomes: Mapping[str, Outcome]) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO sufficiency (id, outcome) VALUES (?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET outcome = excluded.outcome",
+                list(outcomes.items()),
+            )
+
     def org_source(self) -> tuple[str, str] | None:
         """Ссылка API организаторов и group_id автосинхронизации, сохранённые из интерфейса."""
         row = self._conn.execute("SELECT url, group_id FROM org_source").fetchone()
@@ -579,6 +605,29 @@ class Store:
                 "ON CONFLICT(id) DO UPDATE SET url = excluded.url, group_id = excluded.group_id",
                 (url, group_id),
             )
+
+    # --- метрики использования (только дописываются, старше срока хранения удаляются при старте) ---
+
+    def add_telemetry(self, rows: Sequence[tuple[str, str, str | None, str, str, str]]) -> None:
+        """rows — (at ISO UTC, actor, role, event, page, props JSON)."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO telemetry (at, actor, role, event, page, props) VALUES (?, ?, ?, ?, ?, ?)", rows
+            )
+
+    def telemetry(
+        self, after: str | None, role: str | None
+    ) -> list[tuple[str, str, str | None, str, str, str]]:
+        rows = self._conn.execute(
+            "SELECT at, actor, role, event, page, props FROM telemetry "
+            "WHERE (? IS NULL OR at >= ?) AND (? IS NULL OR role = ?) ORDER BY id",
+            (after, after, role, role),
+        ).fetchall()
+        return [(r["at"], r["actor"], r["role"], r["event"], r["page"], r["props"]) for r in rows]
+
+    def purge_telemetry(self, before: str) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM telemetry WHERE at < ?", (before,))
 
     def set_owners(self, owners: Mapping[str, str]) -> None:
         with self._conn:
