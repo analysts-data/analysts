@@ -1,4 +1,6 @@
-.PHONY: check e2e eval eval-holdout record run fmt backup demo results
+.PHONY: check e2e eval eval-holdout record run share fmt backup demo results
+
+PORT ?= 8000
 
 PORT ?= 8000
 
@@ -28,6 +30,13 @@ record:
 
 run:
 	uv run uvicorn cqa.http.app:create_app --factory --reload --port $(PORT)
+
+share:
+	# показ жюри по сети: 0.0.0.0, вход по ссылке с токеном (README, «Доступ для жюри по сети»)
+	@token=$${CQA_ACCESS_TOKEN:-$$(uv run python -c 'import secrets;print(secrets.token_urlsafe(16))')}; \
+	ip=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || hostname -I 2>/dev/null | awk '{print $$1}'); \
+	echo "Ссылка для жюри: http://$${ip:-<IP ноутбука>}:$(PORT)/login?token=$$token"; \
+	CQA_ACCESS_TOKEN=$$token uv run uvicorn cqa.http.app:create_app --factory --host 0.0.0.0 --port $(PORT)
 
 demo:
 	# без ключа: replay, база data/demo.db, набор tests/e2e/fixtures/defence_set.json
