@@ -14,7 +14,7 @@ const keys = new Set();
 for (const f of readdirSync(SRC, { recursive: true })) {
   if (!/\.(tsx?|jsx?|mjs)$/.test(f)) continue;
   const code = readFileSync(join(SRC, f), 'utf8');
-  for (const m of code.matchAll(new RegExp(`\\bt\\(\\s*${LIT}`, 'g'))) keys.add(unescape(m[1]));
+  for (const m of code.matchAll(new RegExp(`\\b(?:t|msg)\\(\\s*${LIT}`, 'g'))) keys.add(unescape(m[1]));
   const terms = f === 'terms.tsx' && code.match(/export const TERMS = \{([\s\S]*?)\} as const/);
   if (terms) for (const m of terms[1].matchAll(new RegExp(`:\\s*${LIT}`, 'g'))) keys.add(unescape(m[1]));
 }

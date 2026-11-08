@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { S as RAW } from './lib/state.js';
 import { parseHash } from './lib/router.js';
+import { msg } from './lib/i18n.js';
 
 // ponytail: данные не типизированы (strict: false), форма — design/contract.md; типы, если появится время.
 export const S: any = RAW;
@@ -59,7 +60,7 @@ export const save = (k: string, v: string) => {
   }
 };
 
-export const ROLES = { qa: 'Специалист КК', operator: 'Оператор', reviewer: 'Проверяющий' } as const;
+export const ROLES = { qa: msg('Специалист КК'), operator: msg('Оператор'), reviewer: msg('Проверяющий') } as const;
 export type Role = keyof typeof ROLES;
 
 const stored = load('cqa.role');

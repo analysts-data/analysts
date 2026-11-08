@@ -13,3 +13,6 @@ export function t(ru, vars) {
   if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
   return s;
 }
+
+// Ключ словаря в объявлении (меню, подсказки, списки): строка остаётся русской, переводит t() при отрисовке.
+export const msg = s => s;

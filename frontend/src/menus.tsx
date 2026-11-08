@@ -3,6 +3,7 @@ import * as M from '@radix-ui/react-dropdown-menu';
 import { Check, Languages, Monitor, Moon, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { LANG_SHORT, LANGS, setLang, t, type Lang } from './i18n';
+import { msg } from './lib/i18n.js';
 import { S, setThemeMode, themeMode, type ThemeMode } from './store';
 import { Tip } from './ui';
 
@@ -30,9 +31,9 @@ function Menu({ label, icon, value, children, act }: { label: string; icon: Reac
 }
 
 const THEMES: [ThemeMode, string, ReactNode][] = [
-  ['light', 'Светлая', <Sun size={16} key="l" />],
-  ['dark', 'Тёмная', <Moon size={16} key="d" />],
-  ['system', 'Как в системе', <Monitor size={16} key="s" />],
+  ['light', msg('Светлая'), <Sun size={16} key="l" />],
+  ['dark', msg('Тёмная'), <Moon size={16} key="d" />],
+  ['system', msg('Как в системе'), <Monitor size={16} key="s" />],
 ];
 
 export function ThemeMenu() {

@@ -3,17 +3,18 @@ import { Command } from 'cmdk';
 import { useEffect } from 'react';
 import { titleOf } from './lib/format.js';
 import { api, startRun } from './lib/state.js';
+import { msg } from './lib/i18n.js';
 import { go, ROLES, setRole, setThemeMode, useS, type Role } from './store';
 import { LANGS, setLang, t, type Lang } from './i18n';
 import { Modal } from './ui';
 import { openPaste } from './views/PasteDialog';
 
 const SCREENS: [string, string][] = [
-  ['#/queue', 'Диалоги'],
-  ['#/appeals', 'Апелляции'],
-  ['#/coaching', 'Обучение'],
-  ['#/analytics', 'Аналитика'],
-  ['#/checklist', 'Чек-лист'],
+  ['#/queue', msg('Диалоги')],
+  ['#/appeals', msg('Апелляции')],
+  ['#/coaching', msg('Обучение')],
+  ['#/analytics', msg('Аналитика')],
+  ['#/checklist', msg('Чек-лист')],
 ];
 
 const item = 'flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm aria-selected:bg-accent-soft aria-selected:text-accent-ink';
@@ -84,9 +85,9 @@ export function Palette({ open, onOpenChange }: { open: boolean; onOpenChange: (
             </Command.Item>
             {(
               [
-                ['light', 'Светлая тема'],
-                ['dark', 'Тёмная тема'],
-                ['system', 'Тема как в системе'],
+                ['light', msg('Светлая тема')],
+                ['dark', msg('Тёмная тема')],
+                ['system', msg('Тема как в системе')],
               ] as const
             ).map(([m, name]) => (
               <Command.Item key={m} value={`theme ${name} ${t(name)}`} onSelect={() => run(() => setThemeMode(m))} className={item}>
