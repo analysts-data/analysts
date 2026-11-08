@@ -35,6 +35,18 @@ def live_config(page: Page) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def quiet_prosody(page: Page) -> None:
+    """GET /api/dialogs/{id}/prosody для карточки звонка: пустой разбор вместо 404 статического сервера."""
+    page.route(
+        "**/api/dialogs/*/prosody",
+        lambda r: r.fulfill(status=200, content_type="application/json", body=EMPTY_PROSODY),
+    )
+
+
+EMPTY_PROSODY = '{"lines": [], "speakers": {"client": null, "operator": null}, "summary": []}'
+
+
 @pytest.fixture
 def open_card(page: Page, web_url: str) -> Callable[..., list[str]]:
     """Open `#/d/{id}` on the prototype state; `edit(dialog)` may change that dialog first.

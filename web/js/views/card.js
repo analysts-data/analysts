@@ -49,9 +49,38 @@ function defaultOpen(d, sum) {
   return flagsOf(d, S.checklist, S.appeals).length && fc ? fc.id : scored(S.checklist)[0]?.id;
 }
 
+// Интонация звонка по звуку (GET /api/dialogs/{id}/prosody): один запрос на звонок при открытии карточки.
+// id → 'loading' | ответ сервера | {off: true} (запись не получена) | null (записи нет: панели нет)
+const prosody = {};
+const BADGE = { raised: '↑ тон', monotone: 'монотонно', fast: 'быстро', overlap: 'перебивание' };
+
+function loadProsody(d) {
+  if (d.id in prosody) return;
+  prosody[d.id] = 'loading';
+  api.getProsody(d.id)
+    .then(p => { prosody[d.id] = p; }, e => { prosody[d.id] = e.status === 404 ? null : { off: true }; })
+    .then(() => { if (current()?.id === d.id) render(); });
+}
+
+function prosodyHTML(d) {
+  const p = prosody[d.id];
+  if (!p) return '';
+  if (p === 'loading') return '<p class="muted xs" data-prosody="loading">Интонация: разбираем запись…</p>';
+  if (p.off) return '<p class="muted xs" data-prosody="off">Интонация недоступна: запись не загрузилась.</p>';
+  return `<section class="card pad stack" data-prosody="on" aria-label="Интонация" style="gap:6px">
+    <h2 class="label">Интонация</h2>
+    ${p.summary.length ? `<ul class="small" style="margin:0;padding-left:18px">${p.summary.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : '<p class="small">Тон, громкость и темп в обычной манере говорящих, долгих пауз перед ответом нет.</p>'}
+    <p class="muted xs">По звуку записи: реплика сравнивается с обычной манерой того же говорящего. Пороги эвристические, на итог не влияют.</p></section>`;
+}
+
+function badges(d, n) {
+  const p = prosody[d.id], l = p && p.lines ? p.lines.find(x => x.n === n) : null;
+  return l ? l.flags.map(f => `<span class="chip c-info pros">${f === 'long_pause' ? `пауза ${Math.round(l.pause)} с` : BADGE[f]}</span>`).join('') : '';
+}
+
 export function view(S, id) {
   const d = S.dialogs.find(x => x.id === id);
-  if (d && d.ch === 'call' && d.lines) player.mount(d);
+  if (d && d.ch === 'call' && d.lines) { player.mount(d); loadProsody(d); }
   else player.unmount();
   if (!d) return `<div class="head"><div><h1 class="h1">Диалог не найден</h1>
     <p class="sub">Диалога «${esc(id)}» нет в загруженном наборе. <a href="#/queue">Вернуться к списку</a></p></div></div>`;
@@ -117,7 +146,7 @@ export function view(S, id) {
     </div>
   </section>
 
-  ${call && d.lines ? player.html(d, sum.losses) : ''}
+  ${call && d.lines ? player.html(d, sum.losses) + prosodyHTML(d) : ''}
 
   <div class="cols">
     <section class="card" aria-label="Расшифровка">
@@ -180,7 +209,7 @@ function trHTML(d, open) {
       continue;
     }
     out.push(`<div class="msg ${l.who}${cls}" id="L${l.n}" data-n="${l.n}">
-      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${call ? listen(d, l, true) : ''}${tg}</header>${esc(l.text)}</div>`);
+      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${call ? listen(d, l, true) + badges(d, l.n) : ''}${tg}</header>${esc(l.text)}</div>`);
   }
   return out.join('');
 }

@@ -75,6 +75,11 @@ def defence(defence_api: httpx.Client, page: Page) -> Defence:
     page.on("pageerror", page_error)
     longest = max((x["dur"] or 0 for x in d.state()["dialogs"] if x["ch"] == "call"), default=0)
     page.route("**/api/dialogs/*/audio", _serve(silence_wav(longest + 5)))
+    # интонация: синтетическая запись не скачивается, сервер ответил бы 502 с ошибкой в консоли
+    page.route(
+        "**/api/dialogs/*/prosody",
+        lambda r: r.fulfill(status=200, content_type="application/json", body='{"lines": [], "summary": []}'),
+    )
     d.go("#/queue")
     return d
 

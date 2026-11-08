@@ -13,7 +13,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     if (!res.ok) {
       let detail = text;
       try { detail = JSON.parse(text).detail ?? text; } catch { /* тело не JSON */ }
-      throw new Error(`${res.status}: ${detail}`);
+      throw Object.assign(new Error(`${res.status}: ${detail}`), { status: res.status });
     }
     return text ? JSON.parse(text) : null;
   };
@@ -36,6 +36,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     putAnswer: (did, cid, payload) => call('PUT', `/dialogs/${id(did)}/answers/${id(cid)}`, payload),
     getConfig: () => call('GET', '/config'),
     putConfig: cfg => call('PUT', '/config', cfg),
+    getProsody: did => call('GET', `/dialogs/${id(did)}/prosody`),
     audioUrl: did => `${base}/dialogs/${id(did)}/audio`,
     playerUrl: did => `${base}/dialogs/${id(did)}/player`,
   };
