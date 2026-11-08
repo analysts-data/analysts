@@ -37,11 +37,13 @@ from cqa.services.llm_config import Apply, configure, delete_provider, provider,
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import (
+    Audience,
     ReportFormat,
     build_state,
     mode_from_settings,
     operator_page,
     operator_rows,
+    recommendations,
     report,
     scores_csv,
 )
@@ -160,6 +162,16 @@ async def get_report(
     body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
     _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return _file(body, fmt, "report")
+
+
+@router.get("/recommendations")
+async def get_recommendations(
+    request: Request,
+    audience: Annotated[Audience, Query(alias="for")],
+    operator: Annotated[str | None, Query(alias="id")] = None,
+) -> dict[str, Any]:
+    """Рекомендации оператору (id — имя), проверяющему, руководителю и автору чек-листа; без модели."""
+    return recommendations(request.app.state.store, audience, operator)
 
 
 AnalyticsName = Literal["trend", "heatmap", "drivers", "distribution", "crosstab", "appeals", "model"]

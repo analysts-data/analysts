@@ -5,11 +5,9 @@
 """
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Answer, Criterion, CriterionResult
+from cqa.domain.models import MANUAL, Answer, Criterion, CriterionResult
 from cqa.domain.review import allowed_answers, fingerprint
 from cqa.services.errors import Conflict, Invalid, NotFound
-
-MANUAL = "вручную"  # CriterionResult.model ручного ответа
 
 
 def _check(c: Criterion, a: Answer) -> None:
