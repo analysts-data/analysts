@@ -8,7 +8,7 @@ import { calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
 import { setRole, useS } from '../store';
 import { Term } from '../terms';
-import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, type Tone } from '../ui';
+import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip, type Tone } from '../ui';
 import { humanError } from './AppealDialog';
 
 const MIN_REASON = 5;
@@ -53,7 +53,9 @@ export function Appeals({ id }: { id: string | null }) {
         className={cn('flex flex-col gap-0.5 rounded-lg px-3 py-2.5 text-ink no-underline transition-colors hover:text-ink', on ? 'bg-accent-soft' : 'hover:bg-hover')}
       >
         <span className="flex items-baseline justify-between gap-2">
-          <b className="truncate font-semibold">{d ? titleOf(d) : x.dlg}</b>
+          <Tip content={d ? titleOf(d) : x.dlg}>
+            <b className="truncate font-semibold">{d ? titleOf(d) : x.dlg}</b>
+          </Tip>
           <span className="flex-none text-xs text-muted">{x.at}</span>
         </span>
         <span className="text-[13px]">
@@ -97,7 +99,11 @@ export function Appeals({ id }: { id: string | null }) {
                   return (
                     <li key={x.id} className="py-2.5 first:pt-0 last:pb-0">
                       <b className="font-semibold">
-                        {d ? titleOf(d) : x.dlg}, {x.cid}: {x.status === 'changed' ? `${txt(c, x.from)} → ${txt(c, x.to)}` : 'оценка подтверждена'}
+                        {d ? titleOf(d) : x.dlg},{' '}
+                        <Tip content={c?.name}>
+                          <span tabIndex={0}>{x.cid}</span>
+                        </Tip>
+                        : {x.status === 'changed' ? `${txt(c, x.from)} → ${txt(c, x.to)}` : 'оценка подтверждена'}
                       </b>
                       <p className="text-[13px] text-muted">
                         {x.reviewer}, {x.decidedAt}. {x.reason}
@@ -137,9 +143,13 @@ function Fragment({ d, r, a }: { d: any; r: any; a: any }) {
               <p>{l.text}</p>
             </div>
             {d.ch === 'call' && l.s != null && (
-              <LinkButton size="sm" href={href('d', d.id)} title="Открыть карточку и прослушать запись">
-                <Play size={13} aria-hidden="true" /> {mmss(l.s)}
-              </LinkButton>
+              <Tip content="Открыть карточку и прослушать запись с этой реплики">
+                <span className="flex-none">
+                  <LinkButton size="sm" href={href('d', d.id)} aria-label={`Прослушать с ${mmss(l.s)} в карточке`}>
+                    <Play size={14} aria-hidden="true" /> {mmss(l.s)}
+                  </LinkButton>
+                </span>
+              </Tip>
             )}
           </div>
         );
@@ -189,9 +199,7 @@ function Detail({ a, d, c }: { a: any; d: any; c: any }) {
         </div>
       </div>
       <div className="flex flex-col gap-1.5 p-5">
-        <span className="text-xs font-semibold text-muted" title="Янтарная линия: реплики, на которые опиралась модель. Серая: реплика из апелляции">
-          Фрагмент диалога
-        </span>
+        <span className="text-xs font-semibold text-muted">Фрагмент диалога</span>
         <Fragment d={d} r={r} a={a} />
       </div>
       <div className="p-5">
@@ -332,7 +340,7 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
           <span>Итог не меняется: {f2(before)}. Грубые ошибки в итог не входят.</span>
         ) : (
           <span>
-            Итог диалога: <s className="text-muted">{f2(before)}</s> → <b className="text-xl">{f2(after)}</b>
+            <Term k="total">Итог</Term> диалога: <s className="text-muted">{f2(before)}</s> → <b className="text-xl">{f2(after)}</b>
           </span>
         )}
         <span className="flex flex-wrap items-center justify-end gap-3">
