@@ -1,5 +1,6 @@
 // Видимые строки очереди (фильтры хеша и поиск S.q) и клавиатура: j/k/Enter/«/» в очереди, j/k в карточке.
 import { titleOf } from '../../lib/format.js';
+import { t } from '../../lib/i18n.js';
 import { groupOf, queueOrder } from '../../lib/queue.js';
 import { href, parseHash } from '../../lib/router.js';
 import { ans, calc, frac } from '../../lib/scoring.js';
@@ -13,12 +14,20 @@ export const plural = (n: number, [one, few, many]: string[]) => {
     b = n % 100;
   return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
 };
-export const DIALOGS = ['диалог', 'диалога', 'диалогов'];
+/** Формы слова для plural; функция — перевод t() при отрисовке. */
+export const DIALOGS = () => [t('диалог'), t('диалога'), t('диалогов')];
+
+// Сотрудник, продукт и маркеры приходят в /api/state по контракту; у старого сервера их нет — фильтры не показываются.
+/** Диалоги без сотрудника — «Не указан», как у GET /api/report?operator=. */
+export const NO_OPERATOR = 'Не указан';
+export const operatorOf = (d: any): string => d.operator || NO_OPERATOR;
+export const productOf = (d: any): { id: string; name: string } | null => (d.product?.id ? d.product : null);
+export const markersOf = (d: any): { k: string; label: string; auto?: boolean; basis?: any }[] => (Array.isArray(d.markers) ? d.markers : []);
 
 /** Все диалоги с расчётом и группой, без фильтров. */
 export const rowsOf = (): Row[] => S.dialogs.map((d: any) => ({ d, c: calc(d, S.checklist, S.appeals), g: groupOf(d, S.checklist, S.appeals) }));
 
-/** Строки очереди в порядке queueOrder после фильтров grp, lang, ch, lost и поиска S.q. */
+/** Строки очереди в порядке queueOrder после фильтров grp, lang, ch, lost, op, prod, mk и поиска S.q. */
 export function visibleRows(p: Record<string, string>): Row[] {
   const cl = S.checklist,
     ap = S.appeals;
@@ -30,6 +39,9 @@ export function visibleRows(p: Record<string, string>): Row[] {
     if (p.grp && p.grp !== g) continue;
     if (p.lang && d.lang !== p.lang) continue;
     if (p.ch && d.ch !== p.ch) continue;
+    if (p.op && operatorOf(d) !== p.op) continue;
+    if (p.prod && productOf(d)?.id !== p.prod) continue;
+    if (p.mk && !markersOf(d).some(m => m.k === p.mk)) continue;
     if (lost) {
       const f = frac(lost, ans(d, lost.id, ap));
       if (f == null || f >= 1) continue;
@@ -46,7 +58,7 @@ export function visibleRows(p: Record<string, string>): Row[] {
   return rows.sort((a, b) => (rank[a.g] ?? 2) - (rank[b.g] ?? 2));
 }
 
-export const hasFilters = (p: Record<string, string>) => !!(p.grp || p.lang || p.ch || p.lost || S.q);
+export const hasFilters = (p: Record<string, string>) => !!(p.grp || p.lang || p.ch || p.lost || p.op || p.prod || p.mk || S.q);
 
 const typing = (t: EventTarget | null) => (t as Element | null)?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]');
 

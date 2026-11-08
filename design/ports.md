@@ -116,6 +116,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.docs.router)` — документация `/docs/` из `docs/site/*.md` и справочник по `app.openapi()`; Swagger и ReDoc выключены, схема — `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
 
@@ -143,6 +144,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
+| `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
@@ -261,6 +264,10 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | Таблица `prosody` | `data/cqa.db` | `dialog_id TEXT PK REFERENCES dialogs(id)`, `body TEXT` (JSON ответа) |
 | `ffmpeg` | системная зависимость сервера | в `PATH`; без него `/prosody` отвечает 502, остальное работает |
 | `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
+| `dialog_prosody(..., fresh=True)` | `src/cqa/services/prosody.py` | считать заново и перезаписать сохранённый разбор; `/talkstats` — для разбора без `talk` |
+| `Span`, `call_stats`, `chat_stats`, `norms`, `mark`, `CALL`, `CHAT`, `RULE` | `src/cqa/domain/talkstats.py` | статистика разговора, чистые функции: `call_stats(spans) -> dict` (поле `talk` разбора), `chat_stats(lines) -> dict \| None`, `norms(rows, metrics) -> Norms`, `mark(stats, norms) -> list` |
+| `dialog_talkstats`, `team_norms` | `src/cqa/services/talkstats.py` | `async dialog_talkstats(store, source, voice, dialog_id) -> dict`, `team_norms(store) -> dict`; `NotFound`, `Upstream` |
+| `Store.prosodies` | `src/cqa/adapters/store.py` | `prosodies() -> dict[str, dict]`: все сохранённые разборы по id звонка для норм |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
 

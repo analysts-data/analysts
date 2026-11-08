@@ -14,6 +14,12 @@ FRONT = ROOT / "frontend" / "src"
 EXEMPT = {
     "/health",
     "/login",
+    # UI в работе: страница «Отчёты» (reports-hub, PR #82)
+    "/reports",
+    "/quality",
+    "/quality/{report_id}",
+    "/runs/{run_id}/report",
+    "/results/{which}",
     # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
     "/audit",
     "/employees",
@@ -29,6 +35,12 @@ EXEMPT = {
 }
 # UI в работе: оценки по сотрудникам (PR #80)
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
+EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
+# UI в работе: рекомендации (PR #89)
+EXEMPT |= {"/recommendations"}
+# страницы документации, не API интерфейса (src/cqa/http/docs.py)
+EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

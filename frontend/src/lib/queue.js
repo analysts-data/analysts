@@ -1,6 +1,7 @@
 // Группы очереди прототипа: грубые ошибки → нужна проверка → без следующего шага → остальные. Без DOM.
 import { ans, calc, flagsOf, frac, lastDec } from './scoring.js';
-import { ansTxt } from './format.js';
+import { ansTxt, loc } from './format.js';
+import { t } from './i18n.js';
 
 const scored = checklist => checklist.criteria.filter(c => c.type !== 'flag');
 const open = (d, appeals, pick) => c => { const r = d.res[c.id]; return r && pick(r) && !lastDec(d, c.id, appeals); };
@@ -37,19 +38,19 @@ export function reasonOf(d, checklist, appeals) {
   if (g === 'risk') return { cls: 'c-risk', text: flagsOf(d, checklist, appeals).join(', ') };
   if (g === 'review') {
     const dc = disagree(d, checklist, appeals)[0];
-    if (dc) { const r = d.res[dc.id]; return { cls: 'c-info', text: `Модели разошлись: ${dc.id}, ${ansTxt(dc, r.a)} и ${ansTxt(dc, r.alt)}` }; }
+    if (dc) { const r = d.res[dc.id]; return { cls: 'c-info', text: t('Модели разошлись: {id}, {a} и {alt}', { id: dc.id, a: ansTxt(dc, r.a), alt: ansTxt(dc, r.alt) }) }; }
     const ef = evFail(d, checklist, appeals)[0];
-    return { cls: 'c-ev', text: byJev(d.res[ef.id]) ? `Jev не уверен в ответе: ${ef.id}` : `Цитата для ${ef.id} не найдена в реплике` };
+    return { cls: 'c-ev', text: byJev(d.res[ef.id]) ? t('Jev не уверен в ответе: {id}', { id: ef.id }) : t('Цитата для {id} не найдена в реплике', { id: ef.id }) };
   }
   if (g === 'next') { const c = resolution(checklist); return { cls: 'c-ev', text: `${c.name}: ${ansTxt(c, ans(d, c.id, appeals))}` }; }
-  return flagsOf(d, checklist, appeals).length ? { cls: 'c-na', text: 'Грубая ошибка проверена' } : { cls: '', text: '' };
+  return flagsOf(d, checklist, appeals).length ? { cls: 'c-na', text: t('Грубая ошибка проверена') } : { cls: '', text: '' };
 }
 
 // Строка автосинхронизации из state.source; ссылку сервер не отдаёт.
 export function syncNote(s) {
   if (!s) return '';
-  const head = `Автосинхронизация ${s.group_id} раз в 5 минут`;
+  const head = t('Автосинхронизация {group} раз в 5 минут', { group: s.group_id });
   if (!s.synced_at) return head;
-  const time = new Date(s.synced_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${head}, последняя в ${time}: ${s.error ? `ошибка — ${s.error}` : `добавлено ${s.added}`}`;
+  const time = new Date(s.synced_at).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+  return t('{head}, последняя в {time}: {result}', { head, time, result: s.error ? t('ошибка — {error}', { error: s.error }) : t('добавлено {n}', { n: s.added }) });
 }
