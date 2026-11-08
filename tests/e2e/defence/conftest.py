@@ -22,7 +22,8 @@ from .steps import FIXTURES, Defence, wait_run
 
 ROOT = Path(__file__).resolve().parents[3]
 CASSETTES = ROOT / "tests" / "cassettes" / "llm"
-SESSION_LIMIT_S = 120
+# лимит сценария защиты; под нагрузкой (много параллельных агентов) слияние задаёт CQA_E2E_SESSION_LIMIT_S=300
+SESSION_LIMIT_S = int(os.environ.get("CQA_E2E_SESSION_LIMIT_S", "120"))
 START_TIMEOUT_S = 20
 
 
