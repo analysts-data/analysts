@@ -29,11 +29,15 @@ import sys
 import time
 from collections.abc import Iterable
 from contextlib import closing
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store, connect
+from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.ingest import PayloadError, parse_payload
 from cqa.domain.models import Dialog
@@ -43,6 +47,7 @@ from cqa.services.datasets import load_group, load_upload
 from cqa.services.errors import Invalid, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
+from cqa.services.prosody import dialog_prosody
 from cqa.services.runs import Runner, plan_run
 from cqa.services.state import current_state
 from cqa.settings import Settings
@@ -154,7 +159,9 @@ def export(
             return 2
     ids = list(dict.fromkeys(ids))  # повтор id в источнике — одна запись, как при загрузке
     if args.evaluate:
-        asyncio.run(evaluate(store, build_evaluator(settings), ids, settings.llm_max_parallel))
+        # интонация звонков, как у сервера; свои клиенты: соединения прошлого asyncio.run закрыты
+        prosody = partial(dialog_prosody, store, build_source(settings), PraatVoice(httpx.AsyncClient()))
+        asyncio.run(evaluate(store, build_evaluator(settings, prosody), ids, settings.llm_max_parallel))
 
     checklist, listed, appeals = current_state(store)
     dialogs = {d.id: d for d in listed}

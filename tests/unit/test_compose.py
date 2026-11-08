@@ -145,3 +145,12 @@ async def test_jev_only_without_key_in_live_fails_at_evaluate() -> None:
     with respx.mock(assert_all_called=False) as net, pytest.raises(ConfigError, match="CQA_JEV_API_KEY"):
         await evaluator.evaluate(CHAT, CHECKLIST, [FIRST])
     assert net.calls.call_count == 0
+
+
+@pytest.mark.parametrize("mode", ["llm", "jev"])
+def test_evaluator_gets_the_sound_analysis_port(mode: str) -> None:
+    async def prosody(dialog_id: str) -> dict[str, Any]:
+        return {"summary": []}
+
+    assert build_evaluator(settings(evaluator=mode), prosody).prosody is prosody
+    assert build_evaluator(settings(evaluator=mode)).prosody is None

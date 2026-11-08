@@ -231,7 +231,7 @@ async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings))
+        _runner(request).use(build_evaluator(settings, state.prosody))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return view(configure(state.store, state.settings, body.model_dump(), apply))

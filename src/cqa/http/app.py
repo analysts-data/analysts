@@ -5,6 +5,7 @@ import contextlib
 import sqlite3
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
@@ -21,6 +22,7 @@ from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
+from cqa.services.prosody import dialog_prosody
 from cqa.services.runs import Runner
 from cqa.services.state import mode_from_settings
 from cqa.services.sync import Syncer
@@ -93,7 +95,13 @@ def create_app(
     app.state.source = source if source is not None else build_source(settings)
     app.state.syncer = Syncer(store, app.state.source)
     app.state.voice = PraatVoice(httpx.AsyncClient())  # интонация: запись скачивается и разбирается локально
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings)  # llm-evaluation, ports.md
+
+    async def prosody(dialog_id: str) -> dict[str, Any]:
+        """Порт `Prosody` оценщика: source и voice читаются из app.state при вызове, как у `/prosody`."""
+        return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
+
+    app.state.prosody = prosody
+    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)
 
