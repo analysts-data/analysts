@@ -289,6 +289,7 @@ FEATURES = {
     "batches": "/api/batches",
     "routing": "/api/routing",
     "automation": "/api/automation",
+    "sufficiency": "/api/sufficiency",
 }
 
 
