@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { coachingStats, goodExamples } from '../../../web/js/analytics.js';
+import { coachingStats, goodExamples } from '../../../frontend/src/lib/analytics.js';
 
 const S = JSON.parse(readFileSync(new URL('../../fixtures/analytics_state.json', import.meta.url), 'utf8'));
 
