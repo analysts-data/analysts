@@ -1,3 +1,4 @@
+@import '@fontsource-variable/onest';
 :root{
   --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
   --bg:#F0F2F5;--surface:#fff;--hover:#F5F7FA;
@@ -12,12 +13,14 @@
 }
 /* Палитра группы Freedom (ffin.kz: brand-primary #00B323, brand-accent #FFA700, #323335, #F0F2F5).
    Фирменный зелёный — знак продукта и полосы прогресса; для кнопок и текста он темнее, иначе контраст ниже AA. */
-html{--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B323}
+/* шрифт интерфейса: Onest (открытый неогротеск, кириллица и казахские буквы), встроен в сборку */
+html:root{--font:'Onest Variable',"Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+html{--on-risk:#fff;--field:#8C95A1;--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B323}
 [data-theme=dark]{
   --bg:#101214;--surface:#171A1D;--hover:#1F2327;--sunken:#14171A;--top:rgba(23,26,29,.9);
   --line:#272B30;--line2:#202428;--line-strong:#383E45;
   --ink:#ECEEF1;--ink2:#C9CED6;--muted:#9AA5B3;
-  --accent:#2BC45A;--accent-ink:#7FE0A0;--accent-soft:#13301E;--on-accent:#06150B;--brand:#2BC45A;
+  --accent:#2BC45A;--accent-ink:#7FE0A0;--accent-soft:#13301E;--on-accent:#06150B;--brand:#2BC45A;--on-risk:#2A0A05;--field:#646D78;
   --ev:#FFB733;--ev-line:#FFA700;--ev-soft:#33260C;
   --risk:#FF8A7A;--risk-soft:#3A1C18;
   --info:#7FB0F5;--info-line:#3586EA;--info-soft:#16243A;
@@ -30,19 +33,33 @@ html{--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B3
 @tailwind utilities;
 
 @layer base{
+  /* место под полосу прокрутки всегда занято: длинный экран не сдвигает макет вбок */
+  html{scrollbar-gutter:stable}
   cqa-app{display:block}
-  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
+  h1,h2,h3{letter-spacing:-.012em}
   a{color:var(--accent)}
   a:hover{color:var(--accent-ink)}
   :focus-visible{outline:3px solid var(--info-line);outline-offset:2px}
   [hidden]{display:none!important}
+  /* выпадающие списки: свой шеврон и те же размеры и цвета, что у полей; элемент остаётся нативным (select_option в тестах) */
+  select{appearance:none;-webkit-appearance:none;min-height:36px;border:1px solid var(--field);border-radius:8px;background-color:var(--surface);color:var(--ink);font:inherit;font-size:13px;font-weight:500;line-height:1.2;padding:0 32px 0 10px;cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238A94A3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 9px center;background-size:16px}
+  select:hover{border-color:var(--muted)}
+  select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px var(--accent)}
+  input[type=text],input[type=search],input[type=number],input[type=email],input[type=password],input[type=url],input:not([type]),textarea{border-color:var(--field)}
+  select:disabled{opacity:.5;cursor:not-allowed}
+  option{background:var(--surface);color:var(--ink)}
 }
 @layer components{
-  .fld{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background:var(--surface);color:var(--ink)}
+  .fld{min-height:40px;border:1px solid var(--field);border-radius:8px;padding:0 10px;background-color:var(--surface);color:var(--ink)}
+  select.fld{padding-right:32px}
   textarea.fld{padding:8px 10px;min-height:88px;width:100%;resize:vertical;line-height:1.5}
-  select.fld{padding-right:28px}
-  .fld:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
-  .num{text-align:right;white-space:nowrap}
+
+  .fld:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px var(--accent)}
+  .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  [data-total],.tabular{font-variant-numeric:tabular-nums}
   .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .tbl{width:100%;border-collapse:collapse}
   .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}

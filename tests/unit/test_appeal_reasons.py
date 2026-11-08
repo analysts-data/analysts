@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.appeal_stats import MANUAL, appeal_stats
-from cqa.domain.models import Appeal, CriterionResult, ReasonCode
+from cqa.domain.appeal_stats import appeal_stats
+from cqa.domain.models import MANUAL, Appeal, CriterionResult, ReasonCode
 from cqa.domain.review import fingerprint
 from cqa.services.appeals import REASONS, decide, file_appeal, reasons, record_review, save_reasons
 from cqa.services.errors import Invalid

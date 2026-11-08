@@ -8,11 +8,10 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Any
 
-from cqa.domain.models import Appeal, Checklist, Dialog, ReasonCode
+from cqa.domain.models import MANUAL, Appeal, Checklist, Dialog, ReasonCode
 from cqa.domain.report import _share
 from cqa.domain.review import effective_answer
 
-MANUAL = "вручную"  # CriterionResult.model ручного ответа
 NO_CODE = "Без кода"
 
 
