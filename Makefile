@@ -1,4 +1,4 @@
-.PHONY: web check e2e eval eval-holdout record run share fmt backup demo showcase results docker-build docker-run
+.PHONY: openapi web check e2e eval eval-holdout record run share fmt backup demo showcase results docker-build docker-run
 
 PORT ?= 8000
 
@@ -67,3 +67,7 @@ backup:
 results:
 	# файл организаторов results/$(SET)/results.json; SET=dev|prod, для prod GROUP=<group_id>, несколько — GROUP="A B"; ARGS=--evaluate — сначала загрузить и оценить набор (scripts/results.py --help)
 	uv run python scripts/results.py $(SET) $(foreach g,$(GROUP),--group $(g)) $(ARGS)
+
+openapi:
+	# снимок схемы /api/openapi.json; тест test_committed_snapshot_is_up_to_date сверяет его с кодом
+	uv run python -m cqa.http.openapi docs/openapi.json

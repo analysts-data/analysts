@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,9 +24,11 @@ from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_classifier, build_routed, build_source
 from cqa.domain.models import Checklist, Product
 from cqa.domain.review import ASTANA
-from cqa.http import api, batches, docs, sources
+from cqa.http import api, batches, docs, integration, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
+from cqa.http.openapi import document
+from cqa.http.validation import validation_error
 from cqa.services.alerts import refresh
 from cqa.services.automation import Automation, wire
 from cqa.services.batches import Batches
@@ -71,7 +74,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 async def _detail(request: Request, exc: Exception) -> JSONResponse:
-    body: dict[str, Any] = {"detail": str(exc)}
+    body: dict[str, Any] = {"detail": str(exc), **getattr(exc, "extra", {})}  # extra — активный запуск у 409
     if isinstance(exc, Invalid) and exc.fields:
         body["fields"] = exc.fields  # ошибки по полям формы источника
     return JSONResponse(body, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t)))
@@ -104,13 +107,15 @@ def create_app(
     app = FastAPI(
         title="CQA", lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url="/api/openapi.json"
     )
+    document(app)
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"https://[a-z0-9-]+(\.[a-z0-9-]+)*\.dynamics\.com",
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT"],
-        allow_headers=["Content-Type", "X-CQA-User"],  # X-CQA-User — текущий сотрудник
+        # X-CQA-User — текущий сотрудник; Authorization и Idempotency-Key — интеграционный API
+        allow_headers=["Content-Type", "X-CQA-User", "Authorization", "Idempotency-Key"],
     )
     settings = settings or Settings()
     app.state.settings = settings
@@ -118,6 +123,8 @@ def create_app(
         protect(app, settings.access_token.get_secret_value())
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
+    app.add_exception_handler(RequestValidationError, validation_error)
+    app.state.idempotency, app.state.idempotency_pending = {}, set()  # Idempotency-Key интеграции
 
     @app.get("/api/health", summary="Проверка, что сервер работает")
     def health() -> dict[str, bool]:
@@ -159,8 +166,19 @@ def create_app(
     if evaluator is None:  # llm-evaluation; подставленный оценщик (тесты) — без своего классификатора тем
         evaluator = build_routed(settings, prosody, store)
         classifier = classifier if classifier is not None else build_classifier(settings)
+
+    async def finished(run: dict[str, Any]) -> None:
+        """Конец запуска: алерты (`alert.created`) и событие `run.finished` на вебхук, если он задан."""
+        try:
+            await alerts()
+        finally:
+            s = app.state.settings
+            if s.webhook_url:
+                secret = s.webhook_secret.get_secret_value() if s.webhook_secret else None
+                await webhook.send(hooks, s.webhook_url, secret, "run.finished", [run])
+
     app.state.runner = Runner(
-        store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts, classifier=classifier
+        store, evaluator, parallel=settings.llm_max_parallel, on_finish=finished, classifier=classifier
     )
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
@@ -174,6 +192,7 @@ def create_app(
     app.include_router(api.router)
     app.include_router(sources.router)
     app.include_router(batches.router)
+    app.include_router(integration.router)
     app.include_router(audio_router)
     app.include_router(docs.router)
 
