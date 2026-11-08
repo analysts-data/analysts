@@ -269,7 +269,7 @@ export function App() {
       <button
         type="button"
         onClick={() => main.current?.focus()}
-        className="sr focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[80] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[80] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop"
       >
         {t('Перейти к содержимому')}
       </button>
@@ -313,11 +313,11 @@ export function App() {
           </div>
         </aside>
         <div className="min-w-0">
-          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
-            <div className="text-[13px] text-muted" id="crumb">
+          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap md:flex-nowrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
+            <div className="min-w-0 flex-1 truncate text-[13px] text-muted" id="crumb">
               {NAME} / <b className="font-semibold text-ink">{t(NAMES[r.page])}</b>
             </div>
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2.5 md:flex-none md:flex-nowrap">
               <button
                 type="button"
                 onClick={() => setPalette(true)}
@@ -326,29 +326,31 @@ export function App() {
               >
                 <Search size={15} /> <span className="hidden 2xl:inline">{t('Поиск')}</span> <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
-              {S.mode &&
+              {!S.mode ? (
+                <span className="h-[22px] w-64 max-w-full animate-pulse rounded-full bg-hover" aria-hidden="true" />
+              ) :
                 (S.role === 'qa' ? (
-                  <Tip content={`${t(TERMS.mode)} ${t('Нажмите, чтобы сменить.')}`}>
+                  <Tip content={`${modeText(S.mode, S.llmMode)}. ${t(TERMS.mode)} ${t('Нажмите, чтобы сменить.')}`}>
                   <button
                     type="button"
                     id="mode"
                     data-act="cfg"
                     onClick={() => setModeOpen(true)}
                     aria-label={`${t('Сменить режим оценки.')} ${modeText(S.mode, S.llmMode)}`}
-                    className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
+                    className={cn('inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold transition-[filter] hover:brightness-95 md:max-w-[clamp(180px,calc(100vw-1100px),460px)]', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
                   >
-                    {modeText(S.mode, S.llmMode)}
-                    <Settings2 size={14} aria-hidden="true" />
+                    <span className="truncate">{modeText(S.mode, S.llmMode)}</span>
+                    <Settings2 size={14} className="flex-none" aria-hidden="true" />
                   </button>
                   </Tip>
                 ) : (
-                  <Tip content={t(TERMS.mode)}>
-                  <span id="mode" tabIndex={0} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
+                  <Tip content={`${modeText(S.mode, S.llmMode)}. ${t(TERMS.mode)}`}>
+                  <span id="mode" tabIndex={0} className={cn('min-w-0 max-w-full truncate rounded-full px-2.5 py-0.5 text-xs font-semibold md:max-w-[clamp(180px,calc(100vw-1100px),460px)]', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
                     {modeText(S.mode, S.llmMode)}
                   </span>
                   </Tip>
                 ))}
-              <span className="sr 2xl:not-sr-only 2xl:text-[13px] 2xl:text-muted" id="roleLbl">
+              <span className="sr-only 2xl:not-sr-only 2xl:whitespace-nowrap 2xl:text-[13px] 2xl:text-muted" id="roleLbl">
                 {t('Смотреть как:')}
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
@@ -392,7 +394,7 @@ export function App() {
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
             {!S.loading && !S.error && hintKey(S.role, r.page) && <RoleHint key={hintKey(S.role, r.page)} k={hintKey(S.role, r.page)} />}
-            <motion.div key={r.page + (r.id ?? '') + S.lang} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
+            <motion.div key={r.page + (r.id ?? '') + S.lang} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }} className="flex flex-col gap-4">
               <ScreenBoundary key={r.page + (r.id ?? '')}>
                 <View page={r.page} id={r.id} />
               </ScreenBoundary>
