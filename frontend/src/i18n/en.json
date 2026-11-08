@@ -1572,5 +1572,16 @@
   "Сильная сторона: {name}": "Strength: {name}",
   "Правила не сработали: по этим данным рекомендаций нет.": "No rule fired: there are no recommendations for this data.",
   "Рекомендации по чек-листу": "Checklist recommendations",
-  "Рекомендации руководителю": "Recommendations for managers"
+  "Рекомендации руководителю": "Recommendations for managers",
+  "Апелляций нет. Они появятся, когда оператор оспорит оценку.": "No appeals. They appear when an agent disputes a score.",
+  "Всё оценено": "Everything is evaluated",
+  "Здесь оценки, которые оспорили операторы. Первая ожидающая открывается сама.": "These are scores disputed by agents. The first pending one opens automatically.",
+  "Итог без критериев {ids}: они ждут оценки": "Score without criteria {ids}: they are awaiting evaluation",
+  "Итог без критерия {ids}: он ждёт оценки": "Score without criterion {ids}: it is awaiting evaluation",
+  "Итог предварительный": "Preliminary score",
+  "Модель по умолчанию (задана на сервере)": "Default model (set on the server)",
+  "Подключённые модели: выберите основную": "Connected models: choose the primary one",
+  "Сумма весов {sum} из 100": "Weights total {sum} of 100",
+  "ключ задан администратором": "key set by the administrator",
+  "ключ сохранён": "key saved"
 }

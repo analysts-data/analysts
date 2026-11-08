@@ -10,6 +10,7 @@ import { calc } from '../lib/scoring.js';
 import { api, cancelRun, failedDialogs, reload, runNote, startRun, toast } from '../lib/state.js';
 import { rerender, useS } from '../store';
 import { Button, Card, Chip, cn, PageHead, Tip } from '../ui';
+import { Recommendations } from './Recommendations';
 import { Dlg } from './checklist/Dlg';
 import { Term } from '../terms';
 import { Editor, RulesEditor, setDraft, signalChip } from './checklist/Editor';
@@ -403,6 +404,7 @@ export function Checklist() {
           <pre className="diff max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg bg-sunken p-3 text-[13px]">{diff.md}</pre>
         </Dlg>
       )}
+      {S.role === 'qa' && <Recommendations kind="checklist" title={t('Рекомендации по чек-листу')} />}
     </>
   );
 }
