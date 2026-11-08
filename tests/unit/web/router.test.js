@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, href } from '../../../web/js/router.js';
+import { parseHash, href } from '../../../frontend/src/lib/router.js';
 
 test('parseHash splits page, id and query params', () => {
   assert.deepEqual(parseHash(''), { page: 'queue', id: null, params: {} });
