@@ -32,6 +32,8 @@ def test_showcase_set_spreads_over_operators_languages_channels_and_days() -> No
 
 def test_every_showcase_dialog_is_evaluated_on_every_criterion(tmp_path: Path) -> None:
     settings = Settings(db_path=str(tmp_path / "showcase.db"))  # CQA_LLM_MODE: replay, record — запись
+    if settings.llm_mode == "replay":  # 400 вызовов: окно CQA_LLM_RPM держало бы тест минуты, сети нет
+        settings = settings.model_copy(update={"llm_rpm": 0})
     with TestClient(create_app(settings)) as api:
         json_body = {"Content-Type": "application/json"}
         added = api.post("/api/datasets/upload", content=SHOWCASE.read_bytes(), headers=json_body)

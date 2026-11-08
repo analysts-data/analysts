@@ -292,7 +292,8 @@ def showcase(port: int = 8000) -> int:
     for p in (db, db.with_name("showcase.db-wal"), db.with_name("showcase.db-shm")):
         p.unlink(missing_ok=True)
     operators = preload_showcase(db)
-    env = {**os.environ, "CQA_LLM_MODE": "replay", "CQA_DB_PATH": str(db)}
+    # replay не ходит в сеть: лимит запросов в минуту только растянул бы оценку 480 вызовов
+    env = {**os.environ, "CQA_LLM_MODE": "replay", "CQA_DB_PATH": str(db), "CQA_LLM_RPM": "0"}
     cmd = [sys.executable, "-m", "uvicorn", "cqa.http.app:create_app", "--factory"]
     cmd += ["--app-dir", str(ROOT / "src"), "--host", "127.0.0.1", "--port", str(port)]
     proc = subprocess.Popen(cmd, cwd=ROOT, env=env)
