@@ -32,7 +32,7 @@ class DialogEvaluation:
 
 # src/cqa/services/ports.py — bootstrap-harness
 class DialogSource(Protocol):     # реализует OrgDialogSource (dialog-ingest)
-    async def fetch(self, group_id: str) -> IngestResult: ...      # Invalid | Upstream
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult: ...  # Invalid | Upstream; url важнее CQA_ORG_API_URL
     def upload(self, raw: bytes) -> IngestResult: ...              # Invalid
     async def audio_link(self, audio_url: str) -> str | None: ...  # свежий MP3 из плеера; None — не вышло
 
@@ -52,6 +52,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
 | `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
 | `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
+| `set_answer` | `src/cqa/services/answers.py`, review-workflow | `set_answer(store, *, dlg, cid, a, reason, by) -> CriterionResult`, `model = MANUAL = "вручную"`; `NotFound`, `Invalid`, `Conflict` |
+| `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
 | `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
@@ -69,7 +72,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | Флаг: `a[k] = основная[k] or второе_мнение[k]`, `alt` — ответ второго мнения как есть. Флаг возвращается всегда: упавший подвопрос (429 после повторов, не разобран, нет ответа Jev) считается «не найдено», найденное сохраняется, у флага `evFail: true`. `violation_found: true` требует `turn_ids` с `quote`; `seg` флага — из `checked_range` первого найденного или пусто | llm-evaluation | review-workflow (`needs_review` для флага всегда `False`), cqa-web-ui |
 | `CriterionResult`: `calls` — вызовы основной модели с повторами, `cost` — только их цена, `ms` — сумма длительностей HTTP | llm-evaluation | review-workflow |
 | `Dialog.cost` пишет `Runner` после каждого `evaluate` диалога: `calls = Σ result.calls`, `verifier_calls`, `usd = Σ result.cost + verifier_usd`, `ms` — время вызова `evaluate` по часам `Runner`. Та же цена идёт в `cost` запуска | review-workflow | cqa-web-ui, eval-and-delivery (README, `demo.py`) |
-| Повтор ответа — по отпечатку `fingerprint(checklist, criterion)` = sha256[:16] от `rules` и полей `text, type, steps, stepText, na, naCond, questions, channel`; модели и версии промпта в нём нет; смена сценария набор не пересчитывает. Ключа кэша в результатах нет | review-workflow | llm-evaluation, eval-and-delivery |
+| Повтор ответа — по отпечатку `fingerprint(checklist, criterion, ch)` = sha256[:16] от `rules` и полей `text, type, steps, stepText, na, naCond, questions, channel`, а для звонка (`ch == "call"`) ещё `call`, если он задан; `fingerprints(checklist)` — канал → id → отпечаток; модели и версии промпта в нём нет; смена сценария набор не пересчитывает. Ключа кэша в результатах нет | review-workflow | llm-evaluation, eval-and-delivery |
 | `make eval` вызывает `build_evaluator(settings).evaluate` напрямую, мимо `results` и кассет | eval-and-delivery | — |
 
 ## Ошибки и коды HTTP
@@ -100,6 +103,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
 
 | Строка в `create_app` | Трек |
 | --- | --- |

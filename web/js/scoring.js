@@ -44,12 +44,38 @@ export function calc(dialog, checklist, appeals, override = null) {
   return { total: W ? r2((100 * G) / W) : null, W, G, pending, rows, secs, losses };
 }
 
-export function flagsOf(dialog, checklist) {
+// Подписи найденных нарушений с учётом последнего решения по флагу.
+export function flagsOf(dialog, checklist, appeals) {
   const out = [];
   for (const fc of checklist.criteria) {
     if (fc.type !== 'flag') continue;
-    const r = dialog.res[fc.id];
-    if (r && r.a) for (const q of fc.questions || []) if (r.a[q.k]) out.push(q.label);
+    const a = ans(dialog, fc.id, appeals);
+    if (a) for (const q of fc.questions || []) if (a[q.k]) out.push(q.label);
   }
   return out;
+}
+
+// Обоснование флага по вопросам. Оценщик пишет «<подпись>: <причина> (реплики 6, 7)» через «; »,
+// второе мнение дописывает «Нарушение «<подпись>» нашло только второе мнение…». Текст без подписи — общий.
+// Нет реплик в тексте и нарушение одно — его реплики берутся из r.ev; иначе r.ev остаются общими (ev).
+const EV = /\s*\(реплики ([\d, ]+)\)$/;
+export function flagWhy(c, r) {
+  const qs = (c.questions || []).map(q => ({ q, why: '', ev: [] })), rest = [];
+  let cur = null;
+  for (let part of String(r.why || '').split('; ')) {
+    const own = qs.find(x => part.startsWith(`${x.q.label}: `));
+    const note = qs.find(x => part.startsWith(`Нарушение «${x.q.label}»`));
+    if (own) { cur = own; part = part.slice(own.q.label.length + 2); } else if (note) cur = note;
+    const m = part.match(EV);
+    if (m) { part = part.replace(EV, ''); if (cur) cur.ev.push(...m[1].split(',').map(Number)); }
+    if (cur) cur.why = cur.why ? `${cur.why}; ${part}` : part;
+    else rest.push(part);
+  }
+  let ev = [];
+  if (!qs.some(x => x.ev.length)) {
+    const found = qs.filter(x => r.a && r.a[x.q.k]);
+    if (found.length === 1) found[0].ev = [...(r.ev || [])];
+    else ev = [...(r.ev || [])];
+  }
+  return { qs, rest: rest.join('; ').trim(), ev };
 }

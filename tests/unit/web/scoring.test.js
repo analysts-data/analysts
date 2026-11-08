@@ -93,6 +93,6 @@ test('flags change flagsOf but never the total', () => {
   const base = byId('call-024');
   const on = { ...base, res: { ...base.res, '08': { a: { insult: false, paid: true, leak: false } } } };
   assert.equal(calc(on, CL, []).total, calc(base, CL, []).total);
-  assert.deepEqual(flagsOf(on, CL), [crit('08').questions.find(q => q.k === 'paid').label]);
-  assert.deepEqual(flagsOf(base, CL), []);
+  assert.deepEqual(flagsOf(on, CL, []), [crit('08').questions.find(q => q.k === 'paid').label]);
+  assert.deepEqual(flagsOf(base, CL, []), []);
 });

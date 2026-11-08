@@ -176,3 +176,13 @@ async def test_fetch_group_without_url_makes_no_requests() -> None:
             await api.fetch_group("DEV")
 
     assert len(respx.calls) == 0
+
+
+@respx.mock
+async def test_fetch_group_url_argument_overrides_configured_template() -> None:
+    route = respx.get("https://other.test/api").mock(return_value=httpx.Response(200, content=b"body"))
+    async with httpx.AsyncClient() as client:
+        body = await OrgApi(None, client).fetch_group("DEV", "https://other.test/api?group_id=X&token=u")
+
+    assert body == b"body"
+    assert str(route.calls.last.request.url) == "https://other.test/api?group_id=DEV&token=u"

@@ -93,13 +93,16 @@ function detail(a) {
         <label class="opt"><input type="radio" name="dm" value="confirm" data-act="dmode" data-id="${a.id}" ${st.mode === 'confirm' ? 'checked' : ''}>Подтвердить оценку модели</label>
         <label class="opt"><input type="radio" name="dm" value="change" data-act="dmode" data-id="${a.id}" ${st.mode === 'change' ? 'checked' : ''}>Изменить оценку</label>
       </div>
-      ${st.mode === 'change' ? `<div class="stack" style="gap:6px"><span class="field"><span>Новый ответ</span></span><div class="ladder" role="group" aria-label="Новый ответ">
+      ${st.mode === 'change' && c.type === 'flag' ? `<div class="stack" style="gap:6px"><span class="field"><span>Нарушения после решения</span></span><div class="ladder" role="group" aria-label="Нарушения после решения">
+        ${(c.questions || []).map(q => `<button type="button" class="step" data-act="dflag" data-id="${a.id}" data-k="${esc(q.k)}" aria-pressed="${!!st.val[q.k]}">${esc(q.label)}</button>`).join('')}</div>
+        <span class="muted xs">Нажатая кнопка — нарушение есть. Флаг в итог не входит.</span></div>`
+      : st.mode === 'change' ? `<div class="stack" style="gap:6px"><span class="field"><span>Новый ответ</span></span><div class="ladder" role="group" aria-label="Новый ответ">
         ${allowed(c).map(v => `<button type="button" class="step" data-act="dval" data-id="${a.id}" data-v="${v}" aria-pressed="${v === st.val}">${step(v)}</button>`).join('')}</div>
         ${c.type === 'scale' && c.stepText && c.stepText[st.val] ? `<span class="muted xs">${st.val}: ${esc(c.stepText[st.val])}</span>` : ''}
         <span class="muted xs">Доступны только ${c.type === 'scale' ? 'ступени шкалы' : 'ответы «Да» и «Нет»'}${c.na ? ' и N/A, он разрешён у этого критерия' : ''}.</span></div>` : ''}
       <label class="field"><span>Причина решения, обязательно</span><textarea id="decReason" class="fld" data-act="dreason" data-input data-id="${a.id}" placeholder="Например: регламент не позволяет называть срок, следующий шаг дан полностью">${esc(st.reason)}</textarea></label>
       <div class="row" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:12px">
-        <span>Итог разговора: <s class="muted">${f2(before)}</s> → <b style="font-size:20px">${f2(after)}</b></span>
+        ${c.type === 'flag' ? `<span>Итог не меняется: ${f2(before)}, флаг в сумму не входит</span>` : `<span>Итог разговора: <s class="muted">${f2(before)}</s> → <b style="font-size:20px">${f2(after)}</b></span>`}
         <button type="button" class="btn pri" data-act="decide" data-id="${a.id}" ${st.reason.trim().length < MIN_REASON ? 'disabled' : ''}>Сохранить решение</button>
       </div>
     </fieldset>`;
@@ -110,6 +113,7 @@ function detail(a) {
 export const actions = {
   dmode: t => { DEC[t.dataset.id].mode = t.value; render(); },
   dval: t => { DEC[t.dataset.id].val = answerOf(t.dataset.v); render(); },
+  dflag: t => { const st = DEC[t.dataset.id]; st.val = { ...st.val, [t.dataset.k]: !st.val[t.dataset.k] }; render(); },
   dreason: t => {
     DEC[t.dataset.id].reason = t.value;
     S.app.querySelector('[data-act="decide"]').disabled = t.value.trim().length < MIN_REASON;

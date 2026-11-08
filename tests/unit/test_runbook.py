@@ -23,6 +23,8 @@ REQUIRED = [
     "Итог не рассчитывается",
     "за 15 минут",
     "только блокирующие",
+    "make results SET=prod GROUP=",
+    "git add results/prod",
 ]
 
 

@@ -22,10 +22,10 @@ class OrgDialogSource:
         self._api = api
         self._now = now
 
-    async def fetch(self, group_id: str) -> IngestResult:
+    async def fetch(self, group_id: str, url: str | None = None) -> IngestResult:
         """Один GET, разбор конверта, атомарный снимок `<raw_dir>/<group_id>.json`, журнал."""
         try:
-            body = await self._api.fetch_group(group_id)
+            body = await self._api.fetch_group(group_id, url)
         except ValueError as exc:  # group_url: недопустимый group_id, запроса не было
             raise Invalid(str(exc)) from None
         except OrgApiError as exc:

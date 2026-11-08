@@ -23,9 +23,10 @@ def add_result(store: Store, dlg: str, cid: str, **result: Any) -> None:
     checklist = store.current_checklist()
     assert checklist is not None
     criterion = next(c for c in checklist.criteria if c.id == cid)
-    store.add_result(
-        dlg, cid, checklist.version, fingerprint(checklist, criterion), CriterionResult.model_validate(result)
-    )
+    dialog = store.get_dialog(dlg)
+    assert dialog is not None
+    fp = fingerprint(checklist, criterion, dialog.ch)
+    store.add_result(dlg, cid, checklist.version, fp, CriterionResult.model_validate(result))
 
 
 def test_file_appeal_takes_current_answer(store: Store) -> None:
@@ -69,7 +70,6 @@ def appeal(store: Store, **over: Any):
     [
         ({"dlg": "nope"}, NotFound, "Диалог nope не найден"),
         ({"cid": "99"}, NotFound, "Критерия 99 нет в чек-листе v3"),
-        ({"cid": "08"}, Invalid, "Флаг нарушения не оспаривается: у критерия 08 нет баллов"),
         ({"cid": "06"}, Invalid, "Критерий 06 ждёт оценки, оспаривать пока нечего"),
         ({"ask": 12}, Invalid, "Ответ 12 недопустим для критерия 04: допустимы 20, 15, 10, 5, 0, na"),
         ({"ask": 5}, Invalid, "Просимый ответ совпадает с текущим"),
@@ -175,6 +175,50 @@ def test_na_is_refused_where_criterion_forbids_it(store: Store) -> None:
     assert str(exc.value) == "Ответ na недопустим для критерия 01: допустимы yes, no"
 
 
+FLAG = {"insult": False, "paid": True, "leak": False}
+CLEAR = {"insult": False, "paid": False, "leak": False}
+
+
+@pytest.mark.parametrize(("to", "status"), [(CLEAR, "changed"), (FLAG, "confirmed")])
+def test_flag_appeal_asks_for_every_question_and_decision_sets_flag(
+    store: Store, to: dict[str, bool], status: str
+) -> None:
+    add_result(store, "p1-ru-003", "08", a=FLAG)
+
+    filed = appeal(store, cid="08", ask=CLEAR)
+    decided = decide(store, "a1", to=to, reason=REASON, reviewer="Проверяющий", now=NOW)
+
+    assert (filed.from_, filed.ask, filed.status) == (FLAG, CLEAR, "pending")
+    assert (decided.to, decided.status) == (to, status)
+
+
+FLAG_KEYS = "Ответ по флагу 08 — объект с ключами insult, paid, leak и значениями true или false"
+
+
+@pytest.mark.parametrize(
+    "ask",
+    [{"insult": True}, CLEAR | {"other": True}, CLEAR | {"paid": 1}, "no", 0],
+    ids=["missing-key", "extra-key", "not-bool", "string", "number"],
+)
+def test_flag_appeal_refuses_answer_without_exactly_flag_questions(store: Store, ask: Any) -> None:
+    add_result(store, "p1-ru-003", "08", a=FLAG)
+
+    with pytest.raises(Invalid) as exc:
+        appeal(store, cid="08", ask=ask)
+
+    assert str(exc.value) == FLAG_KEYS
+    assert store.list_appeals() == []
+
+
+def test_flag_object_is_refused_for_scored_criterion(store: Store) -> None:
+    add_result(store, "p1-ru-003", "04", a=5)
+
+    with pytest.raises(Invalid) as exc:
+        appeal(store, ask=CLEAR)
+
+    assert str(exc.value).startswith("Ответ {'insult': False, 'paid': False, 'leak': False} недопустим")
+
+
 def test_decided_appeal_cannot_be_decided_again(store: Store) -> None:
     add_result(store, "p1-ru-003", "04", a=5)
     appeal(store)
@@ -208,6 +252,15 @@ def review(store: Store, **over: Any):
         "now": NOW,
     }
     return record_review(store, **(args | over))
+
+
+def test_call_result_is_reviewed_under_the_call_fingerprint(store: Store) -> None:
+    checklist = store.current_checklist()
+    assert checklist is not None
+    criteria = [c.model_copy(update={"call": "Уточнение"}) if c.id == "04" else c for c in checklist.criteria]
+    store.add_checklist(checklist.model_copy(update={"version": 4, "criteria": criteria}), "уточнение")
+    add_result(store, "call-024", "04", a=15, alt=10)
+    assert review(store, to=10).status == "changed"
 
 
 @pytest.mark.parametrize(("to", "status"), [(10, "changed"), (15, "confirmed")])
@@ -247,7 +300,6 @@ def test_review_settles_failed_evidence(store: Store) -> None:
     [
         ({"dlg": "nope"}, NotFound, "Диалог nope не найден"),
         ({"cid": "99"}, NotFound, "Критерия 99 нет в чек-листе v3"),
-        ({"cid": "08"}, Invalid, "Флаг нарушения не оспаривается: у критерия 08 нет баллов"),
         ({"cid": "06"}, Invalid, "Критерий 06 ждёт оценки, оспаривать пока нечего"),
         (
             {"cid": "01", "frm": "yes"},

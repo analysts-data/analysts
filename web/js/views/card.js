@@ -1,6 +1,6 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
-import { S, api, reload, render, toast } from '../state.js';
-import { ans, calc, flagsOf, frac, lastDec } from '../scoring.js';
+import { S, api, reload, render, startRun, toast } from '../state.js';
+import { ans, calc, flagsOf, flagWhy, frac, lastDec } from '../scoring.js';
 import { groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
 import { href } from '../router.js';
@@ -16,6 +16,7 @@ const STATUS = {
 };
 const SIGN = { qa: 'Специалист КК', operator: 'Оператор', reviewer: 'Проверяющий' }; // by и reviewer в API
 const unfolded = new Set(); // ключи `${dialog}/${from}` раскрытых участков fold
+const ALL = '*'; // S.open[dialog]: раскрыты все критерии
 
 const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
 const lineBy = (d, n) => (d.lines || []).find(l => !l.fold && l.n === n);
@@ -32,6 +33,8 @@ function tone(c, a) {
   return frac(c, a) === 1 ? 'c-ok' : c.type === 'bool' ? 'c-risk' : 'c-ev';
 }
 const parseVal = v => (/^\d+$/.test(v) ? Number(v) : v);
+const MANUAL = 'вручную'; // CriterionResult.model ручного ответа (src/cqa/services/answers.py)
+const running = () => Boolean(S.run && S.run.status === 'running');
 const plural = (n, one, few, many) => {
   const m10 = n % 10, m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
@@ -43,7 +46,7 @@ function defaultOpen(d, sum) {
   if (dc) return dc.id;
   if (sum.losses[0]) return sum.losses[0].c.id;
   const fc = S.checklist.criteria.find(c => c.type === 'flag');
-  return flagsOf(d, S.checklist).length && fc ? fc.id : scored(S.checklist)[0]?.id;
+  return flagsOf(d, S.checklist, S.appeals).length && fc ? fc.id : scored(S.checklist)[0]?.id;
 }
 
 export function view(S, id) {
@@ -60,11 +63,12 @@ export function view(S, id) {
   const prev = ord[i - 1], next = ord[i + 1];
   const C = 2 * Math.PI * 52, dash = sum.total == null ? 0 : (C * sum.total) / 100;
   const naRows = scored(cl).filter(c => ans(d, c.id, S.appeals) === 'na');
-  const flags = flagsOf(d, cl);
+  const flags = flagsOf(d, cl, S.appeals);
   // как в прототипе и аналитике: ответ без второго мнения считается совпавшим; строка видна, если второе мнение было
   const withRes = scored(cl).filter(c => d.res[c.id]);
   const answered = withRes.some(c => d.res[c.id].alt != null) ? withRes.length : 0;
-  const fr = cl.criteria.find(c => c.type === 'flag'), frr = fr && d.res[fr.id];
+  const fr = cl.criteria.find(c => c.type === 'flag'), frr = fr && d.res[fr.id], fa = frr && ans(d, fr.id, S.appeals);
+  const todo = cl.criteria.filter(c => !d.res[c.id]).length;
   return `
   <nav class="row" aria-label="Навигация по очереди" style="justify-content:space-between">
     <a href="#/queue">Все диалоги</a>
@@ -76,6 +80,7 @@ export function view(S, id) {
     <div><h1 class="h1">${esc(titleOf(d))}</h1>
       <p class="sub">${call ? `Звонок, ${mmss(d.dur || 0)}` : 'Чат'}, ${esc(LANG[d.lang] || d.lang)}, ${esc(d.at)}, чек-лист v${cl.version}</p></div>
     <div class="row">${STATUS[groupOf(d, cl, S.appeals)]}${d.reviewed ? '<span class="chip c-ok">Проверен</span>' : ''}
+      ${todo ? `<button type="button" class="btn pri only-qa" data-act="evalone"${running() ? ' disabled' : ''} title="Ждут оценки: ${todo}. Ответы, поставленные вручную, модель не меняет">${running() ? 'Идёт оценка…' : 'Оценить моделью'}</button>` : ''}
       <button type="button" class="btn only-qa" data-act="reviewed">${d.reviewed ? 'Снять отметку' : 'Отметить проверенным'}</button></div>
   </div>
 
@@ -105,9 +110,9 @@ export function view(S, id) {
     </div>
     <div class="card pad stack">
       <div class="row" style="justify-content:space-between"><h2 class="label">Грубые ошибки</h2>${flags.length ? `<span class="chip c-risk">Найдены: ${flags.length}</span>` : frr ? '<span class="chip c-ok">Не найдены</span>' : '<span class="chip c-ev">Ждут оценки</span>'}</div>
-      ${fr ? (fr.questions || []).map(q => `<div class="kv"><span>${esc(q.label)}</span>${frr && frr.a[q.k] ? '<b style="color:var(--risk)">да</b>' : '<span class="muted">нет</span>'}</div>`).join('') : ''}
+      ${fr ? (fr.questions || []).map(q => `<div class="kv"><span>${esc(q.label)}</span>${fa && fa[q.k] ? '<b style="color:var(--risk)">да</b>' : '<span class="muted">нет</span>'}</div>`).join('') : ''}
       ${flags.length && frr.ev && frr.ev.length ? `<button type="button" class="btn sm" data-act="goto" data-cid="${esc(fr.id)}">Показать реплику ${frr.ev.join(', ')}</button>` : ''}
-      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла хотя бы одна из двух моделей. Итог он не обнуляет.</p>
+      <p class="muted xs">Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла ${S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог он не обнуляет.</p>
       ${answered ? `<p class="small" style="margin-top:auto;border-top:1px solid var(--line2);padding-top:10px">Второе мнение совпало по ${answered - disagree(d).length} из ${answered} критериев</p>` : ''}
     </div>
   </section>
@@ -124,7 +129,8 @@ export function view(S, id) {
     </section>
     <section class="card" aria-label="Оценка по критериям">
       <div class="row" style="justify-content:space-between;padding:12px 14px">
-        <h2 class="h2">Оценка по критериям</h2><span class="muted xs">Наведите на критерий, чтобы подсветить реплики</span></div>
+        <h2 class="h2">Оценка по критериям</h2><span class="row"><span class="muted xs">Наведите на критерий, чтобы подсветить реплики</span>
+          <button type="button" class="btn sm" data-act="critall" aria-expanded="${open === ALL}">${open === ALL ? 'Свернуть' : 'Развернуть все обоснования'}</button></span></div>
       ${cl.sections.map((s, si) => {
         const cs = cl.criteria.filter(x => x.sec === si);
         if (!cs.length) return '';
@@ -150,7 +156,8 @@ function trHTML(d, open) {
   for (const c of S.checklist.criteria) {
     const r = d.res[c.id];
     if (!r || !r.ev) continue;
-    const t = c.type === 'flag' ? (Object.values(r.a || {}).some(Boolean) ? 'c-risk' : 'c-ok') : tone(c, ans(d, c.id, S.appeals));
+    const a = ans(d, c.id, S.appeals);
+    const t = c.type === 'flag' ? (Object.values(a || {}).some(Boolean) ? 'c-risk' : 'c-ok') : tone(c, a);
     r.ev.forEach(n => (tags[n] = tags[n] || []).push({ id: c.id, t }));
   }
   const sel = new Set((d.res[open] && d.res[open].ev) || []);
@@ -179,10 +186,10 @@ function trHTML(d, open) {
 }
 
 function critHTML(d, c, open) {
-  const r = d.res[c.id], a = ans(d, c.id, S.appeals), isOpen = open === c.id;
+  const r = d.res[c.id], a = ans(d, c.id, S.appeals), isOpen = open === c.id || open === ALL;
   let chip, pts;
   if (c.type === 'flag') {
-    const on = r && r.a && Object.values(r.a).some(Boolean);
+    const on = a && Object.values(a).some(Boolean);
     chip = !r ? '<span class="chip c-ev">ждёт оценки</span>' : on ? '<span class="chip c-risk">Да</span>' : '<span class="chip c-ok">Нет</span>';
     pts = 'без баллов';
   } else {
@@ -214,12 +221,32 @@ function evidence(d, r) {
 }
 
 function critBody(d, c, r, a) {
-  if (!r || a == null) return '<div class="box ev">Критерий ждёт оценки моделью. Пока итог считается без него.</div>';
-  const evs = evidence(d, r);
-  if (c.type === 'flag') {
-    return `<div class="stack small">${(c.questions || []).map(q => `<div class="row" style="justify-content:space-between"><span>${esc(q.label)}</span>${r.a[q.k] ? '<b style="color:var(--risk)">найдено</b>' : '<span class="muted">нет</span>'}</div>`).join('')}</div>
-      <p>${esc(r.why)}</p>${evs ? `<div class="stack"><span class="label">Основание</span>${evs}</div>` : ''}`;
-  }
+  if (!r || a == null) return `<div class="box ev stack" style="gap:8px"><span>Критерий ждёт оценки. Пока итог считается без него.</span>
+    <span class="row only-qa"><button type="button" class="btn sm" data-act="manual" data-cid="${esc(c.id)}">Оценить вручную</button></span></div>`;
+  let out = c.type === 'flag' ? flagBody(d, c, r, a) : scoredBody(d, c, r, a);
+  const hist = S.appeals.filter(x => x.dlg === d.id && x.cid === c.id && (x.status === 'confirmed' || x.status === 'changed'));
+  if (hist.length) out += `<div class="stack" style="gap:6px"><span class="label">История оценки</span><div class="hist">
+    <span class="muted">Исходная</span><span>Модель, ${esc(d.at)}</span><span class="chip c-na">${esc(ansTxt(c, r.a))}</span>
+    ${hist.map(h => `<span class="muted">${h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span><span>${esc(h.reviewer)}, ${esc(h.decidedAt)}: «${esc(h.reason)}»</span><span class="chip ${h.status === 'changed' ? 'c-info' : 'c-ok'}">${h.status === 'changed' ? esc(ansTxt(c, h.to)) : 'подтверждено'}</span>`).join('')}
+    ${c.type === 'flag' ? '' : `<span class="muted">Итог</span><span>Пересчитан по формуле чек-листа</span><b>${f2(calc(d, S.checklist, S.appeals).total)}</b>`}</div></div>`;
+  out += manualRow(d, c, r);
+  const pa = S.appeals.find(x => x.dlg === d.id && x.cid === c.id && x.status === 'pending');
+  out += pa ? `<p><span class="chip c-info">Апелляция на рассмотрении</span> <a href="${href('appeals', pa.id)}" class="small">Открыть</a></p>`
+    : `<div class="no-rv"><button type="button" class="btn" data-act="appeal" data-cid="${esc(c.id)}">Оспорить оценку</button></div>`;
+  return out;
+}
+
+// Флаг: по каждому вопросу ответ с учётом решения, причина модели и реплики-основания этого нарушения.
+function flagBody(d, c, r, a) {
+  const fw = flagWhy(c, r);
+  return `<div class="stack">${fw.qs.map(x => `<div class="stack" style="gap:6px;border-top:1px solid var(--line2);padding-top:8px" data-k="${esc(x.q.k)}">
+      <div class="row" style="justify-content:space-between"><b>${esc(x.q.label)}</b>${a[x.q.k] ? '<span class="chip c-risk">найдено</span>' : '<span class="muted small">нет</span>'}</div>
+      ${x.why ? `<p class="small">${esc(x.why)}</p>` : ''}${evidence(d, x)}</div>`).join('')}</div>
+    ${fw.rest ? `<p>${esc(fw.rest)}</p>` : ''}${fw.ev.length ? `<div class="stack"><span class="label">Основание</span>${evidence(d, fw)}</div>` : ''}`;
+}
+
+function scoredBody(d, c, r, a) {
+  const evs = evidence(d, r), f = frac(c, a);
   const vals = allowed(c).filter(v => v !== 'na' || a === 'na' || r.alt === 'na');
   const altDiff = r.alt != null && r.alt !== a;
   let out = `<div class="stack" style="gap:6px"><div class="ladder" role="img" aria-label="Ответ ${esc(ansTxt(c, a))}${altDiff ? `, второе мнение ${esc(ansTxt(c, r.alt))}` : ''}">
@@ -227,7 +254,10 @@ function critBody(d, c, r, a) {
     ${c.type === 'scale' && c.stepText && c.stepText[a] ? `<span class="muted xs">${a}: ${esc(c.stepText[a])}</span>` : ''}</div>`;
   if (a === 'na') out += `<div class="box na"><b>Условие N/A выполнено.</b> ${esc(c.naCond)} ${esc(r.why)} Вес ${c.w} распределён между применимыми критериями.</div>`;
   else out += `<div><span class="label">Обоснование</span><p>${esc(r.why)}</p></div>`;
-  if (a === 'no' && (r.seg || !(r.ev || []).length)) out += `<p class="small">Проверен участок: <b>${esc(r.seg || 'весь диалог')}</b>. Ожидаемого действия там нет.</p>`;
+  // пропущенное действие: реплик-оснований нет, модель называет проверенный участок
+  if ((a === 'no' && (r.seg || !evs)) || (c.type === 'scale' && f != null && f < 1 && !evs)) {
+    out += `<p class="small">Проверен участок: <b>${esc(r.seg || 'весь диалог')}</b>. ${a === 'no' ? 'Ожидаемого действия там нет.' : 'Полностью действие там не выполнено.'}</p>`;
+  }
   if (evs) out += `<div class="stack" style="gap:6px"><span class="label">Основание</span>${evs}</div>`;
   const dec = lastDec(d, c.id, S.appeals), cid = esc(c.id);
   if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span><b>Цитата не нашлась в указанной реплике</b> и после повтора. Ответ <span class="chip c-ev">на проверку</span></span>
@@ -235,16 +265,46 @@ function critBody(d, c, r, a) {
   if (r.alt != null && r.alt !== r.a && !dec) out += `<div class="box info stack" style="gap:8px"><span><b>Второе мнение: ${esc(ansTxt(c, r.alt))}.</b> Модели разошлись, ответ ждёт решения специалиста.</span>
     <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.a)}">Оставить ${esc(ansTxt(c, r.a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.alt)}">Принять ${esc(ansTxt(c, r.alt))}</button></span></div>`;
   else if (r.alt != null && r.alt === r.a) out += `<p class="muted xs">Второе мнение совпало: ${esc(ansTxt(c, r.alt))}.</p>`;
-  if (r.better && frac(c, a) != null && frac(c, a) < 1) out += `<div class="box good"><b>Как сказать лучше:</b> «${esc(r.better)}»</div>`;
-  const hist = S.appeals.filter(x => x.dlg === d.id && x.cid === c.id && (x.status === 'confirmed' || x.status === 'changed'));
-  if (hist.length) out += `<div class="stack" style="gap:6px"><span class="label">История оценки</span><div class="hist">
-    <span class="muted">Исходная</span><span>Модель, ${esc(d.at)}</span><span class="chip c-na">${esc(ansTxt(c, r.a))}</span>
-    ${hist.map(h => `<span class="muted">${h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span><span>${esc(h.reviewer)}, ${esc(h.decidedAt)}: «${esc(h.reason)}»</span><span class="chip ${h.status === 'changed' ? 'c-info' : 'c-ok'}">${h.status === 'changed' ? esc(ansTxt(c, h.to)) : 'подтверждено'}</span>`).join('')}
-    <span class="muted">Итог</span><span>Пересчитан по формуле чек-листа</span><b>${f2(calc(d, S.checklist, S.appeals).total)}</b></div></div>`;
-  const pa = S.appeals.find(x => x.dlg === d.id && x.cid === c.id && x.status === 'pending');
-  out += pa ? `<p><span class="chip c-info">Апелляция на рассмотрении</span> <a href="${href('appeals', pa.id)}" class="small">Открыть</a></p>`
-    : `<div class="no-rv"><button type="button" class="btn" data-act="appeal" data-cid="${esc(c.id)}">Оспорить оценку</button></div>`;
+  if (r.better && f != null && f < 1) out += `<div class="box good"><b>Как сказать лучше:</b> «${esc(r.better)}»</div>`;
   return out;
+}
+
+// Пометка ручного ответа и кнопка «Изменить ответ»: пока по паре нет апелляции и решения (они важнее ответа).
+function manualRow(d, c, r) {
+  const mark = r.model === MANUAL ? '<span class="chip c-info">Поставлено вручную</span>' : '';
+  const blocked = S.appeals.some(x => x.dlg === d.id && x.cid === c.id && x.status !== 'closed');
+  const btn = blocked ? '' : `<button type="button" class="btn sm only-qa" data-act="manual" data-cid="${esc(c.id)}">Изменить ответ</button>`;
+  return mark || btn ? `<div class="row">${mark}${btn}</div>` : '';
+}
+
+// Ручной ответ специалиста КК: окно с ответом и необязательной причиной, затем PUT /api/dialogs/{id}/answers/{cid}.
+function openManual(d, c) {
+  const dlg = document.getElementById('dlg'), form = document.getElementById('dlgForm');
+  const r = d.res[c.id], cur = r ? r.a : null, before = f2(calc(d, S.checklist, S.appeals).total);
+  const input = c.type === 'flag'
+    ? `<fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Грубые ошибки</legend>${(c.questions || []).map(q => `<label class="row small"><input type="checkbox" name="q" value="${esc(q.k)}"${cur && cur[q.k] ? ' checked' : ''}> ${esc(q.label)}</label>`).join('')}</fieldset>`
+    : `<label class="field"><span>Ответ</span><select name="a" class="fld">${allowed(c).map(v => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(ansTxt(c, v))}${c.type === 'scale' && c.stepText && c.stepText[v] ? ` — ${esc(c.stepText[v])}` : ''}</option>`).join('')}</select></label>`;
+  form.innerHTML = `<header><h2 class="h2" id="dlgTitle">${r ? 'Изменить ответ' : 'Оценить вручную'}</h2><p class="muted small">${esc(titleOf(d))}, ${esc(c.id)} ${esc(c.name)}</p></header>
+    ${input}
+    <label class="field"><span>Обоснование, по желанию</span><textarea name="reason" class="fld" placeholder="Что в разговоре подтверждает ответ"></textarea></label>
+    <p class="muted xs">Ручной ответ заменяет ответ модели, повторная оценка моделью его не меняет. Прежний ответ остаётся в истории базы.</p>
+    <footer><button class="btn" value="cancel" formnovalidate>Отмена</button><button class="btn pri" value="ok">Сохранить ответ</button></footer>`;
+  dlg.returnValue = '';
+  dlg.onclose = async () => {
+    dlg.onclose = null;
+    if (dlg.returnValue !== 'ok') return;
+    const fd = new FormData(form), on = new Set(fd.getAll('q'));
+    const a = c.type === 'flag' ? Object.fromEntries((c.questions || []).map(q => [q.k, on.has(q.k)])) : parseVal(fd.get('a'));
+    try {
+      await api.putAnswer(d.id, c.id, { a, reason: String(fd.get('reason')).trim(), by: SIGN[S.role] });
+      await reload();
+      const now = S.dialogs.find(x => x.id === d.id) || d;
+      toast(`Ответ сохранён. Итог ${titleOf(d)}: ${before} → ${f2(calc(now, S.checklist, S.appeals).total)}.`);
+    } catch (e) {
+      toast(`Ответ не сохранён: ${e.message}`);
+    }
+  };
+  dlg.showModal();
 }
 
 // Решение по расхождению моделей или проваленному основанию: окно с причиной, затем POST /api/decisions.
@@ -288,6 +348,7 @@ function flashLine(n) {
 export const actions = {
   ...player.actions,
   crit: t => { const id = S.r.id; S.open[id] = S.open[id] === t.dataset.cid ? null : t.dataset.cid; render(); },
+  critall: () => { const id = S.r.id; S.open[id] = S.open[id] === ALL ? null : ALL; render(); },
   goto: t => {
     const d = current();
     S.open[d.id] = t.dataset.cid;
@@ -310,6 +371,8 @@ export const actions = {
     flashLine(l.n);
   },
   ev: t => flashLine(Number(t.dataset.n)),
+  manual: t => openManual(current(), S.checklist.criteria.find(x => x.id === t.dataset.cid)),
+  evalone: () => { const d = current(); if (d && !running()) { toast(`Оценка ${titleOf(d)} запущена.`); startRun({ dialogs: [d.id], criteria: null }); } },
   fold: t => { const k = t.dataset.key; unfolded.has(k) ? unfolded.delete(k) : unfolded.add(k); render(); },
 };
 

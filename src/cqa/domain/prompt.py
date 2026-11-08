@@ -5,7 +5,7 @@ from typing import Literal, TypedDict
 from cqa.domain.models import Criterion, Dialog, Fold, Question
 
 # Правка только вместе с make eval и make record
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 SYSTEM_PROMPT = """\
 Ты проверяешь работу оператора поддержки брокера по одному критерию чек-листа.
 1. Оценивай только реплики оператора (operator). Реплики клиента (client), бота (bot) и системные \
@@ -24,8 +24,11 @@ SYSTEM_PROMPT = """\
 9. В скобке реплики после времени указана пауза от предыдущей реплики (+М:СС). Учитывай время и паузы, \
 только если этого требуют текст критерия или общие правила. Время от передачи чата оператору \
 до его первой реплики — очередь, оператор за неё не отвечает.
-10. Если ответ зависит от звука (тон, интонация, дикция), а по расшифровке его не установить, напиши \
-об этом в reason_ru. Ставь na, только если он разрешён; иначе отвечай по тексту.
+10. Опирайся только на диалог, общие правила и критерий. Не ссылайся на регламенты, сроки и нормы, \
+которых там нет, и не приписывай участникам слов, которых нет в репликах. Если для уверенного вывода \
+данных не хватает (в том числе нужен звук: тон, интонация, дикция), ставь na, только если он разрешён \
+и его условие выполнено; иначе ставь ответ, который подтверждают реплики, и напиши в reason_ru, \
+чего не хватает.
 11. Ставь ответ только по требованиям текста критерия, его ступеней и общих правил. \
 Недостатки, о которых критерий не говорит, оценивают другие пункты чек-листа: этот ответ они не снижают.
 12. Условие na проверяй по фактам диалога (о чём спросил клиент, оборвался ли чат), а не по качеству \
@@ -86,10 +89,14 @@ def render_dialog(dialog: Dialog) -> str:
     return "\n".join(rows)
 
 
-def criterion_block(criterion: Criterion, question: Question | None = None) -> str:
-    """Смысловые поля критерия или подвопроса флага, без id, названия, веса и раздела."""
+def criterion_block(criterion: Criterion, question: Question | None = None, call: str | None = None) -> str:
+    """Смысловые поля критерия или подвопроса флага, без id, названия, веса и раздела.
+
+    call — уточнение для звонка, идёт сразу после проверяемого текста.
+    """
+    extra = f"\nДля звонка: {call}" if call else ""
     if question is not None:
-        return f"Нарушение для проверки:\n{question.text or question.label}\n\n{_FLAG_JSON}"
+        return f"Нарушение для проверки:\n{question.text or question.label}{extra}\n\n{_FLAG_JSON}"
     descriptions = criterion.jev_descriptions()
     cond = f", только если: {criterion.naCond}" if criterion.naCond else ""
     na = f'"na" — {descriptions.get("na", "неприменимо")}{cond}' if criterion.na else None
@@ -102,16 +109,20 @@ def criterion_block(criterion: Criterion, question: Question | None = None) -> s
     else:
         yes, no = descriptions.get("yes", "да"), descriptions.get("no", "нет")
         answer = f'Ответ answer: "yes" — {yes}, "no" — {no}' + (f", {na}" if na else "") + "."
-    return f"Критерий:\n{criterion.text}\n\n{answer}\n{_ANSWER_JSON}"
+    return f"Критерий:\n{criterion.text}{extra}\n\n{answer}\n{_ANSWER_JSON}"
 
 
-def build_messages(dialog_text: str, rules: str, criterion: Criterion) -> list[list[Message]]:
-    """По списку сообщений на вызов: один для bool и scale, по одному на подвопрос флага."""
+def build_messages(dialog_text: str, rules: str, criterion: Criterion, ch: str) -> list[list[Message]]:
+    """По списку сообщений на вызов: один для bool и scale, по одному на подвопрос флага.
+
+    ch — канал диалога: уточнение call получает только звонок, запрос по чату от него не зависит.
+    """
     system: Message = {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nОбщие правила чек-листа:\n{rules}"}
     head = f"<dialog>\n{dialog_text}\n</dialog>\n\n"
+    call = criterion.call if ch == "call" else None
     blocks = (
-        [criterion_block(criterion, q) for q in criterion.questions or []]
+        [criterion_block(criterion, q, call) for q in criterion.questions or []]
         if criterion.type == "flag"
-        else [criterion_block(criterion)]
+        else [criterion_block(criterion, call=call)]
     )
     return [[system, {"role": "user", "content": head + block}] for block in blocks]

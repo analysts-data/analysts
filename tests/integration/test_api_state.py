@@ -7,10 +7,10 @@ from cqa.http.app import create_app
 from cqa.settings import Settings
 
 
-def test_state_answers_with_six_keys(client: TestClient) -> None:
+def test_state_answers_with_seven_keys(client: TestClient) -> None:
     response = client.get("/api/state")
     assert response.status_code == 200
-    assert set(response.json()) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode"}
+    assert set(response.json()) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode", "source"}
 
 
 def test_empty_base_is_seeded_once(settings: Settings, conn: sqlite3.Connection) -> None:

@@ -11,7 +11,7 @@ from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.review import fingerprint
 from cqa.services.checklists import save_checklist
 from cqa.services.errors import Conflict, Invalid
-from cqa.services.state import build_state
+from cqa.services.state import build_state, current_results
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 SEED_NOTE = "начальная версия"
@@ -41,17 +41,17 @@ def make_store() -> Store:
     return store
 
 
-def fps(cl: Checklist) -> dict[str, str]:
-    return {c.id: fingerprint(cl, c) for c in cl.criteria}
+def fps(cl: Checklist, ch: str = "chat") -> dict[str, str]:
+    return {c.id: fingerprint(cl, c, ch) for c in cl.criteria}
 
 
 def add_results(store: Store, dialog_ids: list[str]) -> None:
     """Диалоги из прототипа с результатами всех восьми критериев по отпечаткам v3."""
     raw = {d["id"]: d for d in json.loads((FIXTURES / "dialogs_prototype.json").read_text())}
-    fp = fps(cl_fixture())
     for did in dialog_ids:
         data = raw[did]
         store.add_dialogs([Dialog.model_validate(data)], {})
+        fp = fps(cl_fixture(), data["ch"])
         for cid, body in data["res"].items():
             store.add_result(did, cid, 3, fp[cid], CriterionResult.model_validate(body))
 
@@ -63,7 +63,9 @@ def rows(store: Store) -> int:
 
 def res_of(store: Store, dialog_id: str) -> dict[str, CriterionResult]:
     """Текущие результаты пары — тот же отбор по отпечатку, что в build_state (решение 9)."""
-    return store.current_results(fps(store.current_checklist())).get(dialog_id, {})
+    checklist = store.current_checklist()
+    assert checklist is not None
+    return current_results(store, checklist, store.list_dialogs()).get(dialog_id, {})
 
 
 def state_res(store: Store, dialog_id: str) -> dict[str, Any]:

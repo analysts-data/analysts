@@ -1,6 +1,7 @@
 // Редактор чек-листа: черновик — копия применяемой версии, правки живут в браузере до сохранения.
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { esc, fn } from '../format.js';
+import { runErrors } from './queue.js';
 import { importQuestions, exportQuestions, syncJev } from '../checklist_json.js';
 
 const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
@@ -12,38 +13,40 @@ const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
 const wsum = cs => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
 const selected = () => S.draft.criteria.find(x => x.id === S.cSel);
-// pending приходит только из ответа PUT /api/checklist и держится, пока у диалогов нет записи критерия
-const waiting = () => (S.pending || []).filter(cid => S.dialogs.some(d => !d.res[cid]));
+// pending приходит только из ответа PUT /api/checklist и держится, пока критерий есть в версии и у диалогов нет его записи
+const waiting = () => (S.pending || []).filter(cid => S.checklist.criteria.some(c => c.id === cid) && S.dialogs.some(d => !d.res[cid]));
 
 export function view(S) {
   // новая версия с сервера сбрасывает черновик; если сохранение упало, правки остаются
   if (S.draft?.version !== S.checklist.version) S.draft = structuredClone(S.checklist);
   const cl = S.checklist, dr = S.draft, pend = waiting(), run = S.run?.status === 'running' ? S.run : null;
+  const errs = runErrors(S.run); // запуск с ошибками остаётся на баннере до следующего запуска
   const c = selected() || dr.criteria[0];
   S.cSel = c?.id;
   const sum = wsum(scored(dr));
   const dirty = JSON.stringify(dr) !== JSON.stringify(cl);
   const changed = id => {
     const o = cl.criteria.find(x => x.id === id), n = dr.criteria.find(x => x.id === id);
-    return !o || JSON.stringify(o) !== JSON.stringify(n);
+    // правила входят в смысл каждого критерия: сервер вернёт в pending весь чек-лист
+    return dr.rules !== cl.rules || !o || JSON.stringify(o) !== JSON.stringify(n);
   };
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
-    <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
-
-            <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
-      <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
-  ${S.role === 'qa' ? `<section class="card pad row" aria-label="Импорт и экспорт проверок">
-    <button type="button" class="btn" data-act="cimport" ${S.busy ? 'disabled' : ''}>Импорт JSON</button>
-    <button type="button" class="btn" data-act="cexport">Экспорт JSON</button>
-    <input type="file" id="checklist-json" data-act="cjson" accept=".json,application/json" hidden>
-    <span class="muted small">Формат Jev AI (questions). Импорт обновляет черновик по ID, веса настраиваются отдельно.</span>
+    <div class="row">${dirty ? '<span class="chip c-ev only-qa">Есть несохранённые изменения</span>' : ''}
+      <button type="button" class="btn" data-act="cexport">Скачать v${cl.version} (JSON)</button>
+      <label class="btn only-qa">Загрузить из файла<input type="file" accept=".json,application/json" data-act="cimport" class="sr" ${dirty ? 'disabled' : ''}></label>
+      <button type="button" class="btn only-qa" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn pri only-qa" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+  ${S.role === 'qa' ? `<section class="card pad row" aria-label="Формат Jev">
+    <label class="btn">Импорт из формата Jev<input type="file" accept=".json,application/json" data-act="cjevimport" class="sr" ${S.busy ? 'disabled' : ''}></label>
+    <button type="button" class="btn" data-act="cjevexport">Экспорт в формат Jev</button>
+    <span class="muted small">Вопросы Jev (questions). Импорт обновляет черновик по ID, веса настраиваются отдельно.</span>
   </section>` : ''}
-  ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
+  ${pend.length || run || errs ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
     <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
-      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
+      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span>${errs}</section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
     <section class="card" style="padding:10px" aria-label="Структура чек-листа">
       ${dr.sections.map((s, si) => `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${wsum(scored(dr).filter(x => x.sec === si)) || ''}</span></p><div class="clist">
@@ -54,7 +57,16 @@ export function view(S) {
       <div class="stack small" style="padding:12px 10px 4px;gap:4px"><span class="label">Версии</span>${S.versions.slice().reverse().map(v => `<span>v${esc(v.v)}: ${esc(v.note)}${v.v === cl.version ? ' <span class="chip c-ok">применяется</span>' : ''}</span>`).join('')}</div>
     </section>
     ${c ? editor(S, c) : '<section class="card empty">Критериев нет. Добавьте первый.</section>'}
-  </div>`;
+  </div>
+  ${rulesEditor(S)}`;
+}
+
+// Общие правила — часть черновика, сохраняются тем же PUT /api/checklist (см. actions.crules)
+function rulesEditor(S) {
+  return `<section class="card pad" aria-label="Общие правила"><fieldset ${S.role === 'qa' ? '' : 'disabled'}>
+    <label class="field"><span>Общие правила</span><textarea id="cl-rules" class="fld" data-act="crules" data-input style="min-height:150px">${esc(S.draft.rules)}</textarea>
+      <span class="muted xs">Модель получает правила вместе с каждым критерием. Смена правил меняет смысл всех критериев: после сохранения весь чек-лист ждёт новой оценки.</span></label>
+  </fieldset></section>`;
 }
 
 function editor(S, c) {
@@ -67,6 +79,7 @@ function editor(S, c) {
         <label class="field"><span>Секция</span><select ${field('sec', 'sec')}>${opts(S.draft.sections.map((s, i) => [i, s]), c.sec)}</select></label>
       </div>
       <label class="field"><span>Что проверяем</span><textarea ${field('text', 'text')}>${esc(c.text)}</textarea><span class="muted xs">Этот текст модель получает дословно. Названий критериев нет ни в коде, ни в промпте.</span></label>
+      ${callField(c, field)}
       <div class="grid2">
         <label class="field"><span>Тип ответа</span><select ${field('type', 'type')}>${opts(TYPES, c.type)}</select></label>
         ${c.type !== 'flag' ? `<label class="field"><span>Вес</span><input ${field('w', 'w')} type="number" min="0" max="100" value="${esc(c.w)}"></label>` : '<span></span>'}
@@ -81,9 +94,20 @@ function editor(S, c) {
           <span class="muted xs">Метка «Без следующего шага» и плитки аналитики строятся по сигналу, а не по номеру критерия, поэтому замена критерия их не ломает.</span></label>
       </div>
       <div class="row only-qa" style="justify-content:space-between;border-top:1px solid var(--line2);padding-top:14px">
-        <span class="muted small">Смена веса пересчитывает итоги сразу. Смена текста, типа, шкалы или N/A требует новой оценки этого критерия.</span>
+        <span class="muted small">Смена веса пересчитывает итоги сразу. Смена текста, типа, шкалы или N/A требует новой оценки этого критерия, смена уточнения для звонка — только на звонках.</span>
         <button type="button" class="btn" data-act="cdel">Удалить критерий</button></div>
     </fieldset></section>`;
+}
+
+// Уточнение для звонка — для любого типа; пустое поле убирает ключ, сервер читает это как call: null
+function callField(c, field) {
+  return `<label class="field"><span>Уточнение для звонка</span><textarea ${field('call', 'call')} style="min-height:64px">${esc(c.call || '')}</textarea>
+    <span class="muted xs">Необязательно. Модель получает его только на звонках, запрос по чатам не меняется.</span></label>`;
+}
+
+function setCall(c, value) {
+  if (value.trim()) c.call = value;
+  else delete c.call; // без ключа черновик совпадает с версией с сервера (там нет null-полей)
 }
 
 function setField(t) {
@@ -92,6 +116,7 @@ function setField(t) {
   else if (k === 'sec') c.sec = Number(t.value);
   else if (k === 'na') c.na = t.checked;
   else if (k === 'signal') { if (t.value) c.signal = t.value; else delete c.signal; }
+  else if (k === 'call') setCall(c, t.value);
   else if (k === 'channel') { c.channel = t.value; if (t.value !== 'all') c.na = true; } // контракт: канал без N/A — 422
   else if (k === 'type') {
     c.type = t.value;
@@ -110,7 +135,7 @@ function setField(t) {
   syncJev(c, k === 'channel' ? 'na' : k);
 }
 
-const TYPED = new Set(['name', 'text', 'naCond']);
+const TYPED = new Set(['name', 'text', 'naCond', 'call']);
 
 // Текстовые поля не перерисовывают экран ни на ввод, ни на change: перерисовка по change
 // (уход из поля) приходится на нажатие «Сохранить» и съедает клик. Кнопки — по черновику.
@@ -118,6 +143,7 @@ function syncSave() {
   const dirty = JSON.stringify(S.draft) !== JSON.stringify(S.checklist);
   S.app.querySelector('[data-act="creset"]').disabled = !dirty;
   S.app.querySelector('[data-act="csave"]').disabled = !dirty || S.busy;
+  S.app.querySelector('[data-act="cimport"]').disabled = dirty; // импорт не стирает несохранённые правки
 }
 
 // csave и crun неактивны, пока запрос в пути: двойной клик не создаёт две версии или два запуска
@@ -128,8 +154,8 @@ async function busy(request) {
 }
 
 export const actions = {
-  cimport: () => { if (S.role === 'qa' && !S.busy) S.app.querySelector('#checklist-json').click(); },
-  cjson: async t => {
+  // формат Jev: вопросы сливаются в черновик по ID, несохранённые правки остаются
+  cjevimport: async t => {
     const file = t.files[0];
     t.value = '';
     if (!file || S.role !== 'qa' || S.busy) return;
@@ -144,7 +170,7 @@ export const actions = {
     } catch (e) { toast(`Импорт не выполнен: ${e.message}`); }
     finally { S.busy = false; render(); }
   },
-  cexport: () => {
+  cjevexport: () => {
     if (S.role !== 'qa') return;
     try {
       const blob = new Blob([JSON.stringify(exportQuestions(S.draft), null, 2)], { type: 'application/json' });
@@ -169,6 +195,7 @@ export const actions = {
     try {
       const { version, pending } = await api.putChecklist(S.draft);
       S.pending = [...new Set([...(S.pending || []), ...pending])];
+      if (S.run?.status !== 'running') S.run = null; // итог прошлого запуска относится к прежней версии
       await reload();
       toast(pending.length ? `Сохранена версия v${version}. Критерии ${pending.join(', ')} ждут оценки.` : `Сохранена версия v${version}. Итоги пересчитаны без вызова модели.`);
     } catch (e) {
@@ -176,4 +203,26 @@ export const actions = {
     }
   }),
   crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
+  crules: t => { S.draft.rules = t.value; syncSave(); },
+  // в файл — применяемая версия, по которой оценены диалоги, а не черновик
+  cexport: () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(S.checklist, null, 2)], { type: 'application/json' }));
+    a.download = `checklist-v${S.checklist.version}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  },
+  // файл — в черновик с текущей версией (иначе view() сбросит черновик, а сервер ответит 409); остальное проверит сервер при сохранении
+  cimport: async t => {
+    const f = t.files[0];
+    t.value = '';
+    if (!f) return;
+    let cl = null;
+    try { cl = JSON.parse(await f.text()); } catch { /* не JSON */ }
+    if (!Array.isArray(cl?.sections) || !Array.isArray(cl?.criteria)) return toast('Файл не похож на чек-лист: нужны поля sections и criteria.');
+    S.draft = { ...cl, version: S.checklist.version };
+    S.cSel = null;
+    render();
+    toast(`Чек-лист из файла в черновике. Проверьте изменения и сохраните как v${S.checklist.version + 1}.`);
+  },
 };

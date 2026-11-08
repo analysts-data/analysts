@@ -6,4 +6,5 @@ export const f2 = x => x == null ? '—' : x.toLocaleString('ru-RU', { minimumFr
 export const fn = x => (Math.round(x * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 export const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 export const ansTxt = (c, a) => a == null ? 'ждёт оценки' : a === 'na' ? 'N/A' : a === 'yes' ? 'Да' : a === 'no' ? 'Нет'
-  : c.type === 'scale' ? `${a} из ${Math.max(...c.steps)}` : String(a);
+  : c.type === 'scale' ? `${a} из ${Math.max(...c.steps)}`
+  : c.type === 'flag' ? (c.questions || []).filter(q => a[q.k]).map(q => q.label).join(', ') || 'Нарушений нет' : String(a);

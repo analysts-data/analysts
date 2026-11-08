@@ -213,6 +213,14 @@ async def test_criterion_for_same_channel_is_asked() -> None:
     assert (ev.result.a, ev.result.calls, model.keys()) == ("yes", 1, ["05"])
 
 
+async def test_call_addendum_reaches_the_model_only_on_calls() -> None:
+    with_call = CRITERIA["01"].model_copy(update={"call": "Уточнение для звонка."})
+    model = FakeModel()
+    await evaluator(model).evaluate(CHAT, CHECKLIST, [with_call])
+    await evaluator(model).evaluate(CALL, CHECKLIST, [with_call])
+    assert ["Уточнение для звонка." in m[1]["content"] for m in model.calls] == [False, True]
+
+
 async def test_verifier_is_not_called_when_no_criterion_needs_a_call() -> None:
     verifier = FakeVerifier()
     chat_only = CRITERIA["05"].model_copy(update={"channel": "chat", "na": True})
