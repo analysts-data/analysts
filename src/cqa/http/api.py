@@ -314,9 +314,19 @@ FEATURES = {
 }
 
 
+def _paths(routes: Any) -> set[str]:
+    """Пути маршрутов; FastAPI 0.16x оборачивает include_router, пути лежат в `original_router`."""
+    out: set[str] = set()
+    for r in routes:
+        out.add(getattr(r, "path", ""))
+        if inner := getattr(r, "original_router", None):
+            out |= _paths(inner.routes)
+    return out
+
+
 def features(app: Any) -> list[str]:
     """Ключи разделов, чьи пути есть среди маршрутов приложения."""
-    paths = {getattr(r, "path", "") for r in app.routes}
+    paths = _paths(app.routes)
     return [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
 
 

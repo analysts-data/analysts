@@ -70,3 +70,7 @@ def test_markdown_raw_html_is_escaped() -> None:
     html = to_html('<script>alert("x")</script>\n\nтекст <img src=x onerror=alert(1)>')
     assert "<script" not in html and "<img" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_config_features_include_docs(client: TestClient) -> None:
+    assert "docs" in client.get("/api/config").json()["features"]
