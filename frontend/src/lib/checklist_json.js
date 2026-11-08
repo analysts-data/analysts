@@ -1,42 +1,44 @@
 // Формат обмена — значение questions запроса Jev, без настроек подсчёта баллов.
+import { t } from './i18n.js';
+
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const fail = (id, message) => { throw new Error(`${id}: ${message}`); };
 
 function parseQuestion(id, q) {
-  if (!object(q) || !['noul', 'choice', 'score'].includes(q.type)) fail(id, 'ожидается тип noul, choice или score');
-  if (typeof q.instructions !== 'string' || !q.instructions.trim()) fail(id, 'instructions должен содержать текст');
+  if (!object(q) || !['noul', 'choice', 'score'].includes(q.type)) fail(id, t('ожидается тип noul, choice или score'));
+  if (typeof q.instructions !== 'string' || !q.instructions.trim()) fail(id, t('instructions должен содержать текст'));
   const source = { type: q.type, instructions: q.instructions, criteria: structuredClone(q.criteria) };
   const c = { id, name: id, type: 'bool', w: 0, na: false, text: q.instructions, channel: 'all' };
   if (q.type === 'score') {
-    if (!Array.isArray(q.criteria) || !q.criteria.length) fail(id, 'criteria шкалы должен быть непустым массивом строк');
+    if (!Array.isArray(q.criteria) || !q.criteria.length) fail(id, t('criteria шкалы должен быть непустым массивом строк'));
     const steps = new Map();
     for (const line of q.criteria) {
       const m = typeof line === 'string' && line.match(/^\s*(\d+|n\/a|na|not_applicable)\s*:\s*(.+)$/i);
-      if (!m) fail(id, 'ступень должна иметь вид «0: описание» или «n/a: условие»');
+      if (!m) fail(id, t('ступень должна иметь вид «0: описание» или «n/a: условие»'));
       if (/^\d+$/.test(m[1])) {
         const n = Number(m[1]);
-        if (!Number.isSafeInteger(n) || steps.has(n)) fail(id, 'некорректная или повторная ступень шкалы');
+        if (!Number.isSafeInteger(n) || steps.has(n)) fail(id, t('некорректная или повторная ступень шкалы'));
         steps.set(n, m[2]);
       } else {
-        if (c.na) fail(id, 'повторное условие N/A');
+        if (c.na) fail(id, t('повторное условие N/A'));
         c.na = true; c.naCond = m[2];
       }
     }
-    if (steps.size < 2 || Math.max(...steps.keys()) <= 0) fail(id, 'нужны хотя бы две ступени и положительный максимум');
+    if (steps.size < 2 || Math.max(...steps.keys()) <= 0) fail(id, t('нужны хотя бы две ступени и положительный максимум'));
     c.type = 'scale'; c.steps = [...steps.keys()].sort((a, b) => b - a); c.stepText = Object.fromEntries(steps);
     for (const k of ['min', 'max']) {
       if (q[k] !== undefined) {
-        if (!Number.isSafeInteger(q[k]) || q[k] < 0) fail(id, `${k} должен быть неотрицательным целым числом`);
+        if (!Number.isSafeInteger(q[k]) || q[k] < 0) fail(id, t('{k} должен быть неотрицательным целым числом', { k }));
         source[k] = q[k];
       }
     }
     if ((source.min !== undefined && source.min !== Math.min(...c.steps)) ||
-        (source.max !== undefined && source.max !== Math.max(...c.steps))) fail(id, 'min/max должны совпадать с границами ступеней');
+        (source.max !== undefined && source.max !== Math.max(...c.steps))) fail(id, t('min/max должны совпадать с границами ступеней'));
   } else {
-    if (!object(q.criteria) || Object.values(q.criteria).some(v => typeof v !== 'string' || !v.trim())) fail(id, 'criteria должен содержать текстовые описания ответов');
+    if (!object(q.criteria) || Object.values(q.criteria).some(v => typeof v !== 'string' || !v.trim())) fail(id, t('criteria должен содержать текстовые описания ответов'));
     const keys = Object.keys(q.criteria), required = q.type === 'noul' ? ['true', 'false'] : ['yes', 'no'];
-    if (required.some(k => !keys.includes(k)) || keys.some(k => !required.includes(k) && !(q.type === 'choice' && ['na', 'not_applicable'].includes(k)))) fail(id, 'неподдерживаемые варианты ответа');
-    if (keys.includes('na') && keys.includes('not_applicable')) fail(id, 'используйте только один ключ N/A');
+    if (required.some(k => !keys.includes(k)) || keys.some(k => !required.includes(k) && !(q.type === 'choice' && ['na', 'not_applicable'].includes(k)))) fail(id, t('неподдерживаемые варианты ответа'));
+    if (keys.includes('na') && keys.includes('not_applicable')) fail(id, t('используйте только один ключ N/A'));
     c.naCond = q.criteria.not_applicable ?? q.criteria.na ?? null;
     c.na = c.naCond !== null;
   }
@@ -46,10 +48,10 @@ function parseQuestion(id, q) {
 
 export function importQuestions(draft, input) {
   const questions = object(input) && object(input.questions) ? input.questions : input;
-  if (!object(questions) || !Object.keys(questions).length) throw new Error('Ожидается непустой объект questions');
+  if (!object(questions) || !Object.keys(questions).length) throw new Error(t('Ожидается непустой объект questions'));
   // Сначала проверяем весь файл: ошибка не должна оставлять частично загруженный черновик.
   const parsed = Object.entries(questions).map(([id, q]) => {
-    if (!id.trim()) fail(id, 'пустой ID');
+    if (!id.trim()) fail(id, t('пустой ID'));
     return parseQuestion(id, q);
   });
   const result = structuredClone(draft);
@@ -62,7 +64,7 @@ export function importQuestions(draft, input) {
     } else {
       const old = result.criteria[index];
       result.criteria[index] = { ...c, sec: old.sec, name: old.name, w: old.w, channel: old.channel || 'all', ...(old.signal ? { signal: old.signal } : {}), ...(old.call ? { call: old.call } : {}) };
-      if (result.criteria[index].channel !== 'all' && !c.na) fail(c.id, 'сохранённый канал требует N/A; выберите «Все каналы» перед импортом');
+      if (result.criteria[index].channel !== 'all' && !c.na) fail(c.id, t('сохранённый канал требует N/A; выберите «Все каналы» перед импортом'));
       updated++;
     }
   }
@@ -101,6 +103,6 @@ export function exportQuestions(draft) {
       entries.push([c.id, { ...copy.jev, instructions: c.text }]);
     }
   }
-  if (new Set(entries.map(([id]) => id)).size !== entries.length) throw new Error('Совпадают ID экспортируемых вопросов');
+  if (new Set(entries.map(([id]) => id)).size !== entries.length) throw new Error(t('Совпадают ID экспортируемых вопросов'));
   return Object.fromEntries(entries);
 }

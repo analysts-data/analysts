@@ -4,6 +4,7 @@ import { ChevronDown, Download, Plus, Save, Upload } from 'lucide-react';
 import { useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react';
 import { exportQuestions, importQuestions } from '../lib/checklist_json.js';
 import { f2, fn } from '../lib/format.js';
+import { t } from '../lib/i18n.js';
 import { href } from '../lib/router.js';
 import { calc } from '../lib/scoring.js';
 import { api, cancelRun, failedDialogs, reload, runNote, startRun, toast } from '../lib/state.js';
@@ -11,9 +12,9 @@ import { rerender, useS } from '../store';
 import { Button, Card, Chip, cn, PageHead, Tip } from '../ui';
 import { Dlg } from './checklist/Dlg';
 import { Term } from '../terms';
-import { Editor, RulesEditor, setDraft, SIGNAL_CHIP } from './checklist/Editor';
+import { Editor, RulesEditor, setDraft, signalChip } from './checklist/Editor';
 
-const TYPE_NAME: Record<string, string> = { bool: 'Да/Нет', scale: 'Шкала', flag: 'Грубая ошибка' };
+const typeName = (type: string): string | undefined => ({ bool: t('Да/Нет'), scale: t('Шкала'), flag: t('Грубая ошибка') } as Record<string, string>)[type];
 const scored = (cs: any[]) => cs.filter(c => c.type !== 'flag');
 const wsum = (cs: any[]) => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -35,21 +36,21 @@ function summary(cl: any, dr: any) {
   for (const n of dr.criteria) {
     const o: any = old.get(n.id);
     if (!o) {
-      parts.push(`добавлен ${n.id}`);
+      parts.push(t('добавлен {id}', { id: n.id }));
       reeval = true;
       continue;
     }
     const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter(k => !same(o[k], n[k]));
     if (!keys.length) continue;
     if (keys.some(k => !NO_REEVAL.has(k))) reeval = true;
-    parts.push(keys.length === 1 && keys[0] === 'w' ? `вес ${n.id}: ${o.w} → ${n.w}` : `изменён ${n.id}`);
+    parts.push(keys.length === 1 && keys[0] === 'w' ? t('вес {id}: {from} → {to}', { id: n.id, from: o.w, to: n.w }) : t('изменён {id}', { id: n.id }));
   }
-  for (const o of cl.criteria) if (!dr.criteria.some((x: any) => x.id === o.id)) parts.push(`удалён ${o.id}`);
-  if (!same(cl.sections, dr.sections)) parts.push('секции');
-  if (dr.rules !== cl.rules) parts.push('общие правила');
+  for (const o of cl.criteria) if (!dr.criteria.some((x: any) => x.id === o.id)) parts.push(t('удалён {id}', { id: o.id }));
+  if (!same(cl.sections, dr.sections)) parts.push(t('секции'));
+  if (dr.rules !== cl.rules) parts.push(t('общие правила'));
   if (!parts.length) return null;
-  const head = parts.length > 4 ? `${parts.slice(0, 4).join(', ')} и ещё ${parts.length - 4}` : parts.join(', ');
-  return `${head[0].toUpperCase()}${head.slice(1)}. ${reeval ? 'Изменённые критерии после сохранения нужно оценить заново.' : 'Итоги пересчитаются без новой оценки.'}`;
+  const head = parts.length > 4 ? t('{list} и ещё {n}', { list: parts.slice(0, 4).join(', '), n: parts.length - 4 }) : parts.join(', ');
+  return `${head[0].toUpperCase()}${head.slice(1)}. ${reeval ? t('Изменённые критерии после сохранения нужно оценить заново.') : t('Итоги пересчитаются без новой оценки.')}`;
 }
 const item = 'flex min-h-8 w-full cursor-pointer items-center rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink no-underline hover:bg-hover hover:text-ink';
 const closeMenu = (e: { currentTarget: HTMLElement }) => {
@@ -104,7 +105,7 @@ export function Checklist() {
     try {
       setDiff({ title, md: (await load()).trimEnd() });
     } catch (e) {
-      toast(`Сравнение не получено: ${e.message}`);
+      toast(t('Сравнение не получено: {msg}', { msg: e.message }));
     }
   };
 
@@ -115,9 +116,13 @@ export function Checklist() {
         S.pending = [...new Set([...(S.pending || []), ...pending])];
         if (S.run?.status !== 'running') S.run = null; // итог прошлого запуска относится к прежней версии
         await reload();
-        toast(pending.length ? `Сохранена версия v${version}. Критерии ${pending.join(', ')} ждут оценки.` : `Сохранена версия v${version}. Итоги пересчитаны без новой оценки модели.`);
+        toast(
+          pending.length
+            ? t('Сохранена версия v{version}. Критерии {ids} ждут оценки.', { version, ids: pending.join(', ') })
+            : t('Сохранена версия v{version}. Итоги пересчитаны без новой оценки модели.', { version }),
+        );
       } catch (e) {
-        toast(`Чек-лист не сохранён: ${e.message}`);
+        toast(t('Чек-лист не сохранён: {msg}', { msg: e.message }));
       }
     });
 
@@ -139,10 +144,10 @@ export function Checklist() {
     } catch {
       /* не JSON */
     }
-    if (!Array.isArray(file?.sections) || !Array.isArray(file?.criteria)) return toast('Файл не похож на чек-лист: нужны поля sections и criteria.');
+    if (!Array.isArray(file?.sections) || !Array.isArray(file?.criteria)) return toast(t('Файл не похож на чек-лист: нужны поля sections и criteria.'));
     setDraft({ ...file, version: S.checklist.version });
     S.cSel = null;
-    toast(`Чек-лист из файла в черновике. Проверьте изменения и сохраните как v${S.checklist.version + 1}.`);
+    toast(t('Чек-лист из файла в черновике. Проверьте изменения и сохраните как v{v}.', { v: S.checklist.version + 1 }));
   };
 
   // формат Jev: вопросы сливаются в черновик по ID, несохранённые правки остаются
@@ -153,9 +158,9 @@ export function Checklist() {
       try {
         const result = importQuestions(S.draft, JSON.parse(text));
         setDraft(result.draft);
-        toast(`Добавлено ${result.added}, обновлено ${result.updated}. Проверьте веса и сохраните версию.`);
+        toast(t('Добавлено {added}, обновлено {updated}. Проверьте веса и сохраните версию.', { added: result.added, updated: result.updated }));
       } catch (err) {
-        toast(`Импорт не выполнен: ${err.message}`);
+        toast(t('Импорт не выполнен: {msg}', { msg: err.message }));
       }
     });
 
@@ -169,30 +174,30 @@ export function Checklist() {
       link.download = `questions-v${S.draft.version}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (S.draft.criteria.some((x: any) => x.type === 'flag')) toast('Грубые ошибки экспортированы отдельными noul-вопросами с ID «критерий_подвопрос».');
+      if (S.draft.criteria.some((x: any) => x.type === 'flag')) toast(t('Грубые ошибки экспортированы отдельными noul-вопросами с ID «критерий_подвопрос».'));
     } catch (err) {
-      toast(`Экспорт не выполнен: ${err.message}`);
+      toast(t('Экспорт не выполнен: {msg}', { msg: err.message }));
     }
   };
 
   return (
     <>
       <PageHead
-        title="Чек-лист качества"
+        title={t('Чек-лист качества')}
         sub={
           <>
             <span className="sub">
-              {qa ? '' : 'Как оценивается ваша работа. '}
-              <Term k="version">Версия {cl.version}</Term> применяется к набору. Изменения сохраняются новой версией.
+              {qa ? '' : t('Как оценивается ваша работа.') + ' '}
+              <Term k="version">{t('Версия {v}', { v: cl.version })}</Term> {t('применяется к набору. Изменения сохраняются новой версией.')}
             </span>
             {qa && dirty && (
               <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-                <Chip tone="ev">Есть несохранённые изменения</Chip>
+                <Chip tone="ev">{t('Есть несохранённые изменения')}</Chip>
                 {note && <span className="text-ink2">{note}</span>}
                 {before != null && after != null && f2(before) !== f2(after) && (
-                  <Tip content="Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам">
+                  <Tip content={t('Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам')}>
                     <span tabIndex={0}>
-                      Средний итог {f2(before)} → <b className="text-ink">{f2(after)}</b>
+                      {t('Средний итог {before} →', { before: f2(before) })} <b className="text-ink">{f2(after)}</b>
                     </span>
                   </Tip>
                 )}
@@ -202,18 +207,18 @@ export function Checklist() {
         }
       >
         {qa && (
-          <Menu label="Импорт" icon={<Upload size={16} aria-hidden="true" />}>
+          <Menu label={t('Импорт')} icon={<Upload size={16} aria-hidden="true" />}>
             <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')}>
-              Импорт из файла чек-листа (JSON)
+              {t('Импорт из файла чек-листа (JSON)')}
               <input type="file" accept=".json,application/json" data-act="cimport" className="sr" disabled={dirty} onChange={importJson} />
             </label>
             <label className={cn(item, S.busy && 'cursor-not-allowed opacity-45')}>
-              Импорт из формата Jev
+              {t('Импорт из формата Jev')}
               <input type="file" accept=".json,application/json" data-act="cjevimport" className="sr" disabled={S.busy} onChange={importJev} />
             </label>
             <span className="px-2.5 pt-1 text-xs text-muted">
-              {dirty ? 'Файл чек-листа заменит черновик: сначала сохраните или отмените правки. ' : 'Файл чек-листа заменяет черновик. '}
-              Вопросы Jev обновляют его по ID, веса настраиваются отдельно.
+              {dirty ? t('Файл чек-листа заменит черновик: сначала сохраните или отмените правки.') : t('Файл чек-листа заменяет черновик.')}{' '}
+              {t('Вопросы Jev обновляют его по ID, веса настраиваются отдельно.')}
             </span>
           </Menu>
         )}
@@ -221,21 +226,21 @@ export function Checklist() {
         {qa && (
           <>
             <Button variant="ghost" data-act="creset" disabled={!dirty} onClick={() => (setDraft(null), rerender())}>
-              Отменить изменения
+              {t('Отменить изменения')}
             </Button>
-            <Button data-act="cwhat" disabled={!dirty} onClick={() => showDiff(`Что изменится при сохранении v${cl.version + 1}`, () => api.diffDraft(S.draft))}>
-              Что изменится
+            <Button data-act="cwhat" disabled={!dirty} onClick={() => showDiff(t('Что изменится при сохранении v{v}', { v: cl.version + 1 }), () => api.diffDraft(S.draft))}>
+              {t('Что изменится')}
             </Button>
             <Button data-act="cadd" onClick={add}>
               <Plus size={16} aria-hidden="true" />
-              Добавить критерий
+              {t('Добавить критерий')}
             </Button>
             {/* у неактивной кнопки нет событий мыши: подсказку держит обёртка */}
-            <Tip content={S.busy ? 'Сохраняем…' : dirty ? null : 'Изменений нет: правьте критерий или общие правила, затем сохраните новую версию.'}>
+            <Tip content={S.busy ? t('Сохраняем…') : dirty ? null : t('Изменений нет: правьте критерий или общие правила, затем сохраните новую версию.')}>
               <span tabIndex={dirty ? undefined : 0} className="inline-flex">
                 <Button variant="primary" data-act="csave" disabled={!dirty || S.busy} onClick={save}>
                   <Save size={16} aria-hidden="true" />
-                  Сохранить как v{cl.version + 1}
+                  {t('Сохранить как v{v}', { v: cl.version + 1 })}
                 </Button>
               </span>
             </Tip>
@@ -244,22 +249,23 @@ export function Checklist() {
       </PageHead>
 
       {(pend.length > 0 || run || errs) && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-ev-line bg-ev-soft p-4" aria-label="Оценка набора">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-ev-line bg-ev-soft p-4" aria-label={t('Оценка набора')}>
           <span>
             {pend.length > 0 && (
               <>
-                {pend.length === 1 ? `Критерий ${pend[0]} «${nameOf(pend[0]) || 'Без названия'}» не оценён` : `Критерии ${pend.join(', ')} не оценены`} в <b>{unscored} диалогах</b>.
-                Пока итог считается без {pend.length === 1 ? 'него' : 'них'}.{' '}
+                {pend.length === 1
+                  ? t('Критерий {id} «{name}» не оценён', { id: pend[0], name: nameOf(pend[0]) || t('Без названия') })
+                  : t('Критерии {ids} не оценены', { ids: pend.join(', ') })}{' '}
+                {t('в')} <b>{t('{n} диалогах', { n: unscored })}</b>.{' '}
+                {pend.length === 1 ? t('Пока итог считается без него.') : t('Пока итог считается без них.')}{' '}
               </>
             )}
             {run && (
               <>
-                Оценено{' '}
-                <b>
-                  {run.done} из {run.total}
-                </b>{' '}
-                ответов по критериям, ${fn(run.cost)}
-                {run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.
+                {t('Оценено')}{' '}
+                <b>{t('{done} из {total}', { done: run.done, total: run.total })}</b>{' '}
+                {t('ответов по критериям, ${cost}', { cost: fn(run.cost) })}
+                {run.eta_s != null ? t(', осталось около {s} с', { s: Math.ceil(run.eta_s) }) : ''}.
               </>
             )}
           </span>
@@ -267,7 +273,7 @@ export function Checklist() {
             <span className="flex flex-wrap gap-2">
               {run && (
                 <Button data-act="stop" onClick={() => cancelRun()}>
-                  Остановить
+                  {t('Остановить')}
                 </Button>
               )}
               {pend.length > 0 && (
@@ -277,7 +283,7 @@ export function Checklist() {
                   disabled={!!run || S.busy}
                   onClick={() => busy(S, () => startRun({ dialogs: null, criteria: waiting(S) }))}
                 >
-                  {run ? 'Идёт оценка…' : 'Оценить набор'}
+                  {run ? t('Идёт оценка…') : t('Оценить набор')}
                 </Button>
               )}
             </span>
@@ -287,7 +293,7 @@ export function Checklist() {
       )}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.3fr)]">
-        <Card className="p-2.5" aria-label="Структура чек-листа">
+        <Card className="p-2.5" aria-label={t('Структура чек-листа')}>
           {dr.sections.map((s: string, si: number) => {
             const items = dr.criteria.filter((x: any) => x.sec === si);
             return (
@@ -312,13 +318,13 @@ export function Checklist() {
                     >
                       <span className="text-xs text-muted">{x.id}</span>
                       <span className="flex flex-wrap items-center gap-1">
-                        {x.name || <span className="text-muted">Без названия</span>}
-                        {changed(x.id) && <Chip tone="ev">изменён</Chip>}
-                        {pend.includes(x.id) && <Chip tone="ev">ждёт оценки</Chip>}
-                        {x.signal && <Chip tone={x.signal === 'risk' ? 'risk' : 'info'}>{SIGNAL_CHIP[x.signal] ?? x.signal}</Chip>}
+                        {x.name || <span className="text-muted">{t('Без названия')}</span>}
+                        {changed(x.id) && <Chip tone="ev">{t('изменён')}</Chip>}
+                        {pend.includes(x.id) && <Chip tone="ev">{t('ждёт оценки')}</Chip>}
+                        {x.signal && <Chip tone={x.signal === 'risk' ? 'risk' : 'info'}>{signalChip(x.signal) ?? x.signal}</Chip>}
                       </span>
                       <span className="text-xs text-muted">
-                        {TYPE_NAME[x.type] ?? x.type}
+                        {typeName(x.type) ?? x.type}
                         {x.na ? ', N/A' : ''}
                       </span>
                       <b className="num">
@@ -332,17 +338,20 @@ export function Checklist() {
           })}
           <div className="mt-2 flex flex-col gap-1 border-t border-line2 px-2.5 pb-1 pt-3">
             <span>
-              <Chip tone={sum === 100 ? 'ok' : 'ev'}>Сумма весов {sum}</Chip>
+              <Chip tone={sum === 100 ? 'ok' : 'ev'}>{t('Сумма весов {sum}', { sum })}</Chip>
             </span>
             {sum !== 100 && (
               <span className="text-xs text-muted">
-                {sum > 100 ? `Уменьшите другие веса на ${sum - 100}.` : `Добавьте к весам ${100 - sum}.`} Итог всё равно приводится к 100, но вклад каждого критерия незаметно {sum > 100 ? 'уменьшится' : 'вырастет'}.
+                {sum > 100 ? t('Уменьшите другие веса на {n}.', { n: sum - 100 }) : t('Добавьте к весам {n}.', { n: 100 - sum })}{' '}
+                {sum > 100
+                  ? t('Итог всё равно приводится к 100, но вклад каждого критерия незаметно уменьшится.')
+                  : t('Итог всё равно приводится к 100, но вклад каждого критерия незаметно вырастет.')}
               </span>
             )}
           </div>
           <div className="flex flex-col gap-1 px-2.5 pb-1 pt-3 text-[13px]">
             <span className="text-xs font-semibold text-muted">
-              Версии
+              {t('Версии')}
             </span>
             {S.versions
               .slice()
@@ -352,7 +361,7 @@ export function Checklist() {
                   v{v.v}: {v.note}{' '}
                   {v.v === cl.version ? (
                     <Chip tone="ok">
-                      применяется
+                      {t('применяется')}
                     </Chip>
                   ) : (
                     <Button
@@ -360,9 +369,9 @@ export function Checklist() {
                       variant="ghost"
                       data-act="cdiff"
                       data-v={v.v}
-                      onClick={() => showDiff(`Сравнение v${v.v} с текущей v${cl.version}`, () => api.diffVersions(v.v, cl.version))}
+                      onClick={() => showDiff(t('Сравнение v{a} с текущей v{b}', { a: v.v, b: cl.version }), () => api.diffVersions(v.v, cl.version))}
                     >
-                      Сравнить с текущей
+                      {t('Сравнить с текущей')}
                     </Button>
                   )}
                 </span>
@@ -373,8 +382,8 @@ export function Checklist() {
           <Editor c={c} readOnly={!qa} />
         ) : (
           <Card className="flex flex-col items-center gap-3 p-10 text-center text-muted">
-            Критериев нет.
-            {qa && <Button onClick={add}>Добавить первый критерий</Button>}
+            {t('Критериев нет.')}
+            {qa && <Button onClick={add}>{t('Добавить первый критерий')}</Button>}
           </Card>
         )}
       </div>
@@ -384,11 +393,11 @@ export function Checklist() {
         <Dlg
           wide
           title={diff.title}
-          sub="Разницу считает сервер; ничего не сохраняется."
+          sub={t('Разницу считает сервер; ничего не сохраняется.')}
           onClose={() => setDiff(null)}
           footer={
             <Button variant="primary" onClick={() => setDiff(null)}>
-              Закрыть
+              {t('Закрыть')}
             </Button>
           }
         >
@@ -424,10 +433,10 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
     </a>
   );
   return (
-    <Menu label="Экспорт" icon={<Download size={16} aria-hidden="true" />} pop="menu-pop">
+    <Menu label={t('Экспорт')} icon={<Download size={16} aria-hidden="true" />} pop="menu-pop">
       <label className="mb-1 flex flex-col gap-1.5 px-2.5 pt-1">
         <span className="text-[13px] font-semibold text-ink2">
-          Сохранённая версия
+          {t('Сохранённая версия')}
         </span>
         <select className="fld" value={sel} onChange={e => setV(Number(e.currentTarget.value))}>
           {S.versions
@@ -436,7 +445,7 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
             .map((x: any) => (
               <option key={x.v} value={x.v}>
                 v{x.v}
-                {x.v === cur ? ', действует' : ''}
+                {x.v === cur ? t(', действует') : ''}
               </option>
             ))}
         </select>
@@ -444,12 +453,12 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
       {link('json', 'JSON', { 'data-act': 'cexport', download: '' })}
       {link('csv', 'Excel (CSV)', { 'data-act': 'cmenu', download: '' })}
       {link('md', 'Markdown', { 'data-act': 'cmenu', download: '' })}
-      {link('html', 'Памятка для печати', { 'data-act': 'cmenu', target: '_blank', rel: 'noopener' })}
+      {link('html', t('Памятка для печати'), { 'data-act': 'cmenu', target: '_blank', rel: 'noopener' })}
       {onJev && (
         <>
           <hr className="my-1 border-line2" />
           <button type="button" className={item} data-act="cjevexport" onClick={onJev}>
-            Экспорт в формат Jev
+            {t('Экспорт в формат Jev')}
           </button>
         </>
       )}
@@ -460,12 +469,12 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
 // Ошибки запуска: строки «<диалог>: …» или «<диалог>/<критерий>: …», диалог — ссылка на карточку.
 function RunErrors({ run }: { run: any }) {
   const n = run.errors.length;
-  const head = run.status === 'running' ? `Ошибок пока: ${n}, в диалогах: ${failedDialogs(run.errors).length}.` : runNote(run);
+  const head = run.status === 'running' ? t('Ошибок пока: {n}, в диалогах: {d}.', { n, d: failedDialogs(run.errors).length }) : runNote(run);
   return (
     <div className="box risk flex basis-full flex-col gap-1.5">
       <b>{head}</b>
       <details>
-        <summary className="cursor-pointer">Показать ошибки ({n})</summary>
+        <summary className="cursor-pointer">{t('Показать ошибки ({n})', { n })}</summary>
         <ul className="mt-1.5 list-disc pl-5 [overflow-wrap:anywhere]">
           {run.errors.map((e: string, i: number) => {
             const id = failedDialogs([e])[0];
