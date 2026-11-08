@@ -31,8 +31,9 @@ def test_dynamics_section_names_the_data_parameter() -> None:
 
 
 def test_no_key_demo_is_the_first_section() -> None:
-    first = re.search(r"^## (.+)$", README, re.M)
-    assert first and first.group(1) == "Посмотреть без ключа"
+    # перед демо может идти раздел «Преимущества» (решение команды 08.11)
+    heads = re.findall(r"^## (.+)$", README, re.M)
+    assert "Посмотреть без ключа" in heads[:2]
     assert "make demo" in section("Посмотреть без ключа")
     assert re.search(r"^demo:", (ROOT / "Makefile").read_text(encoding="utf-8"), re.M)
 
