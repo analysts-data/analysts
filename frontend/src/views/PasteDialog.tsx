@@ -85,7 +85,8 @@ function PasteDialog({ onClose }: { onClose: () => void }) {
             <p className="box risk" id="pErr" role="alert" hidden={!err}>
               {err}
             </p>
-            <div className="flex justify-end gap-2.5">
+            <div className="flex flex-wrap items-center justify-end gap-2.5">
+              {!canSave(title, text) && <span className="mr-auto text-xs text-muted">Заполните название и текст диалога.</span>}
               <Button onClick={onClose}>Отмена</Button>
               <Button variant="primary" data-act="psave" disabled={busy || !canSave(title, text)} onClick={save}>
                 {busy ? 'Сохраняем…' : 'Сохранить'}

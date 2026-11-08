@@ -5,7 +5,7 @@ import { href } from '../../lib/router.js';
 import { cancelRun, failedDialogs, runNote, startRun } from '../../lib/state.js';
 import { useS } from '../../store';
 import { Button, Card } from '../../ui';
-import type { Row } from './order';
+import { DIALOGS, plural, type Row } from './order';
 
 function Bar({ pct, label }: { pct: number; label: string }) {
   return (
@@ -42,12 +42,12 @@ export function RunErrors({ run }: { run: any }) {
 }
 
 /** dialogs — идентификаторы видимых строк, null — весь набор. */
-export function RunPanel({ all, dialogs }: { all: Row[]; dialogs: string[] | null }) {
+export function RunPanel({ all, dialogs, pending }: { all: Row[]; dialogs: string[] | null; pending: number }) {
   const S = useS();
   const run = S.run;
   const runBtn = (
-    <Button variant="primary" data-act="run" onClick={() => startRun({ dialogs, criteria: null })} title={dialogs ? 'Оценить видимые по фильтрам диалоги' : 'Оценить весь набор'}>
-      <Play size={16} aria-hidden="true" /> Оценить
+    <Button variant="primary" data-act="run" onClick={() => startRun({ dialogs, criteria: null })}>
+      <Play size={16} aria-hidden="true" /> {!pending ? 'Оценить' : dialogs ? `Оценить показанные: ${pending}` : `Оценить ${pending} ${plural(pending, DIALOGS)}`}
     </Button>
   );
   let body;
@@ -67,7 +67,7 @@ export function RunPanel({ all, dialogs }: { all: Row[]; dialogs: string[] | nul
               </b>{' '}
               оценено по чек-листу v{S.checklist.version}
             </span>
-            <span className="text-[13px] text-muted" title="Вызовы модели и стоимость последних оценок">
+            <span className="text-xs text-muted">
               {calls} вызовов, ${fn(usd)}
             </span>
           </div>
@@ -91,7 +91,7 @@ export function RunPanel({ all, dialogs }: { all: Row[]; dialogs: string[] | nul
               </b>{' '}
               ответов по критериям
             </span>
-            <span className="text-[13px] text-muted">
+            <span className="text-xs text-muted">
               {run.calls} вызовов, ${fn(run.cost)}
               {eta}
               {run.errors.length ? `, ошибок: ${run.errors.length}` : ''}
@@ -100,7 +100,7 @@ export function RunPanel({ all, dialogs }: { all: Row[]; dialogs: string[] | nul
           <Bar pct={run.total ? (100 * run.done) / run.total : 0} label="Прогресс оценки" />
         </div>
         {run.status === 'running' ? (
-          <Button data-act="stop" onClick={() => cancelRun()} title="Остановить оценку: уже оценённые ответы сохранятся">
+          <Button data-act="stop" onClick={() => cancelRun()}>
             <Square size={16} aria-hidden="true" /> Остановить
           </Button>
         ) : (

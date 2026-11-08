@@ -7,6 +7,17 @@ import { rerender, S } from '../../store';
 
 export type Row = { d: any; c: any; g: string };
 
+/** 1 диалог, 3 диалога, 5 диалогов. */
+export const plural = (n: number, [one, few, many]: string[]) => {
+  const a = n % 10,
+    b = n % 100;
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
+};
+export const DIALOGS = ['диалог', 'диалога', 'диалогов'];
+
+/** Все диалоги с расчётом и группой, без фильтров. */
+export const rowsOf = (): Row[] => S.dialogs.map((d: any) => ({ d, c: calc(d, S.checklist, S.appeals), g: groupOf(d, S.checklist, S.appeals) }));
+
 /** Строки очереди в порядке queueOrder после фильтров grp, lang, ch, lost и поиска S.q. */
 export function visibleRows(p: Record<string, string>): Row[] {
   const cl = S.checklist,
@@ -26,9 +37,13 @@ export function visibleRows(p: Record<string, string>): Row[] {
     if (ql && !(titleOf(d) + ' ' + (d.lines || []).map((l: any) => l.text || '').join(' ')).toLowerCase().includes(ql)) continue;
     byId[d.id] = { d, c: calc(d, cl, ap), g };
   }
-  return queueOrder(S.dialogs, cl, ap)
+  const rows: Row[] = queueOrder(S.dialogs, cl, ap)
     .map((id: string) => byId[id])
     .filter(Boolean);
+  if (S.role !== 'operator') return rows;
+  // оператору «Нужна проверка человека» не показывается: эти строки идут в «Остальные»
+  const rank: Record<string, number> = { risk: 0, next: 1 };
+  return rows.sort((a, b) => (rank[a.g] ?? 2) - (rank[b.g] ?? 2));
 }
 
 export const hasFilters = (p: Record<string, string>) => !!(p.grp || p.lang || p.ch || p.lost || S.q);
