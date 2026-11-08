@@ -46,10 +46,10 @@ export function Coaching() {
     <>
       <PageHead title="Обучение" sub="Обратная связь на конкретных репликах из наших диалогов: где модель снизила балл и как сказать лучше">
         {coach && (
-        <Button className="no-print" data-act="sheet" onClick={() => document.getElementById('sheet')?.scrollIntoView({ block: 'start' })} title="Перейти к листу для встречи с оператором">
-          <ListChecks size={16} aria-hidden="true" />
-          Разбор для встречи: {picked.length}
-        </Button>
+          <Button className="no-print" data-act="sheet" onClick={() => document.getElementById('sheet')?.scrollIntoView({ block: 'start' })}>
+            <ListChecks size={16} aria-hidden="true" />
+            Разбор для встречи: {picked.length}
+          </Button>
         )}
       </PageHead>
 
@@ -98,9 +98,7 @@ export function Coaching() {
                   <span className="text-[13px]">
                     <a href={href('d', x.dialogId)}>{titleOf(dlg(x.dialogId))}</a>, {LANG[x.lang] || x.lang}
                   </span>
-                  <Chip tone={c.type === 'bool' ? 'risk' : 'ev'} title="Ответ модели с учётом решений специалистов">
-                    {ansTxt(c, x.answer)}
-                  </Chip>
+                  <Chip tone="ev">{ansTxt(c, x.answer)}</Chip>
                 </div>
                 {x.line && <p className="border-l-2 border-ev pl-3 text-[15px]">«{x.line.text}»</p>}
                 <p className="text-[13px]">
@@ -146,35 +144,35 @@ export function Coaching() {
       </div>
 
       {coach && (
-      <Card id="sheet" className="flex scroll-mt-20 flex-col gap-3 p-4" aria-label="Разбор для встречи с оператором">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">Разбор для встречи с оператором</h2>
-          <div className="no-print flex flex-wrap gap-2">
-            <Button data-act="copy" disabled={!picked.length} onClick={copy}>
-              <ClipboardCopy size={16} aria-hidden="true" />
-              Скопировать текст
-            </Button>
-            <Button data-act="print" disabled={!picked.length} onClick={() => window.print()}>
-              <Printer size={16} aria-hidden="true" />
-              Печать
-            </Button>
+        <Card id="sheet" className="flex scroll-mt-20 flex-col gap-3 p-4" aria-label="Разбор для встречи с оператором">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">Разбор для встречи с оператором</h2>
+            <div className="no-print flex flex-wrap gap-2">
+              <Button data-act="copy" disabled={!picked.length} onClick={copy}>
+                <ClipboardCopy size={16} aria-hidden="true" />
+                Скопировать текст
+              </Button>
+              <Button data-act="print" disabled={!picked.length} onClick={() => window.print()}>
+                <Printer size={16} aria-hidden="true" />
+                Печать
+              </Button>
+            </div>
           </div>
-        </div>
-        {picked.length ? (
-          <ol ref={list} className="m-0 flex list-decimal flex-col gap-2 pl-5">
-            {picked.map(x => (
-              <li key={x.key}>
-                <b>
-                  {titleOf(dlg(x.dialogId))}, {x.c.name}.
-                </b>{' '}
-                {x.why} Лучше: «{x.better}»
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="text-muted">Отметьте «Добавить в разбор» у моментов выше, и они соберутся в один лист для встречи.</p>
-        )}
-      </Card>
+          {picked.length ? (
+            <ol ref={list} className="m-0 flex list-decimal flex-col gap-2 pl-5">
+              {picked.map(x => (
+                <li key={x.key}>
+                  <b>
+                    {titleOf(dlg(x.dialogId))}, {x.c.name}.
+                  </b>{' '}
+                  {x.why} Лучше: «{x.better}»
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-muted">Отметьте «Добавить в разбор» у моментов выше, и они соберутся в один лист для встречи.</p>
+          )}
+        </Card>
       )}
     </>
   );

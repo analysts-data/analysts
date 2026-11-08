@@ -7,6 +7,7 @@ import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import { esc } from '../../lib/format.js';
 import { currentTheme, go } from '../../store';
+import { Term, type TermKey } from '../../terms';
 import { Card } from '../../ui';
 
 echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
@@ -16,7 +17,23 @@ export type Bar = { name: string; value: number; label: string; href?: string };
 
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(`--${n}`).trim();
 
-export function Chart({ title, caption, rows, color = 'accent', vertical, action }: { title: string; caption: string; rows: Bar[]; color?: string; vertical?: boolean; action?: React.ReactNode }) {
+export function Chart({
+  title,
+  term,
+  caption,
+  rows,
+  color = 'accent',
+  vertical,
+  action,
+}: {
+  title: string;
+  term?: TermKey;
+  caption: string;
+  rows: Bar[];
+  color?: string;
+  vertical?: boolean;
+  action?: React.ReactNode;
+}) {
   currentTheme(); // токены читаются при каждой отрисовке: смена темы зовёт rerender
   const muted = css('muted');
   const cat = {
@@ -32,7 +49,7 @@ export function Chart({ title, caption, rows, color = 'accent', vertical, action
   const option = {
     animation: false,
     textStyle: { fontFamily: css('font'), fontSize: 12 },
-    grid: { left: 4, right: vertical ? 4 : 44, top: vertical ? 20 : 4, bottom: 4, containLabel: true },
+    grid: { left: 12, right: vertical ? 4 : 44, top: vertical ? 20 : 4, bottom: 4, containLabel: true },
     // подпись из данных сервера уходит в HTML подсказки только через esc
     tooltip: {
       trigger: 'item',
@@ -41,7 +58,8 @@ export function Chart({ title, caption, rows, color = 'accent', vertical, action
       borderColor: css('line'),
       textStyle: { color: css('ink'), fontSize: 12 },
       extraCssText: 'box-shadow: var(--shadow)',
-      formatter: (p: { dataIndex: number }) => `${esc(rows[p.dataIndex].name)}: <b>${esc(rows[p.dataIndex].label)}</b>` },
+      formatter: (p: { dataIndex: number }) => `${esc(rows[p.dataIndex].name)}: <b>${esc(rows[p.dataIndex].label)}</b>`,
+    },
     xAxis: vertical ? cat : val,
     yAxis: vertical ? val : cat,
     series: [
@@ -60,7 +78,7 @@ export function Chart({ title, caption, rows, color = 'accent', vertical, action
     <Card className="flex min-w-0 flex-col gap-3 p-4" aria-label={title}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold">{title}</h2>
+          <h2 className="text-base font-semibold">{term ? <Term k={term}>{title}</Term> : title}</h2>
           <p className="text-[13px] text-muted">{caption}</p>
         </div>
         {action}
