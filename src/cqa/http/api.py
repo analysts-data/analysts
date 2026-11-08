@@ -27,6 +27,7 @@ from cqa.services.checklists import (
     normalize_draft,
     save_checklist,
     simulate_draft,
+    trial_draft,
 )
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
@@ -202,6 +203,17 @@ async def post_checklist_diff(
 async def post_checklist_simulate(draft: Checklist, request: Request) -> dict[str, Any]:
     """«Что если»: итоги по черновику без сохранения, с объяснением каждого изменения."""
     return simulate_draft(request.app.state.store, draft)
+
+
+class TrialIn(BaseModel):
+    checklist: Checklist
+    dialogs: list[str]
+
+
+@router.post("/checklist/trial")
+async def post_checklist_trial(body: TrialIn, request: Request) -> dict[str, Any]:
+    """Песочница: изменённые критерии черновика на выбранных диалогах; ход — GET /api/runs/{id}."""
+    return trial_draft(request.app.state.store, _runner(request), body.checklist, body.dialogs)
 
 
 @router.post("/checklist/normalize")

@@ -49,7 +49,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `build_source` | `src/cqa/compose.py`, dialog-ingest | `build_source(settings: Settings) -> OrgDialogSource`, не ходит в сеть |
 | `build_evaluator` | `src/cqa/compose.py`, llm-evaluation | `build_evaluator(settings: Settings) -> LlmEvaluator`, не бросает; `ConfigError` — при `evaluate` |
 | `parse_payload`, `ingest_records` | `src/cqa/domain/ingest.py`, dialog-ingest | чистая пара для снимка: `ingest_records(records, *, group_id, now, shift_s, shift_paused_s) -> IngestResult` |
-| `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
+| `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)`; `start(dialogs, criteria, checklist=None)` — `checklist` черновика для песочницы, по умолчанию текущая версия |
 | `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
 | `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
 | `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
@@ -262,7 +262,7 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `simulate`, `normalize` | там же | `simulate(old, new, dialogs, before, after, bands) -> dict` — тело `POST /api/checklist/simulate` без `save_errors`; `normalize(checklist) -> dict` с `checklist: Checklist` |
 | `effective_answers` | `src/cqa/domain/review.py` | `effective_answers(dialog, appeals) -> {cid: Answer}` с учётом решений; общий для отчёта и «что если» |
 | `state_for` | `src/cqa/services/state.py` | `state_for(store, checklist) -> (dialogs, appeals)` — как в `GET /api/state`, но по отпечаткам `checklist` (для черновика — состояние сразу после сохранения) |
-| `draft_errors`, `simulate_draft`, `normalize_draft`, `criteria_templates`, `checklist_presets` | `src/cqa/services/checklists.py` | `draft_errors(draft) -> dict[путь, текст]` — правила `save_checklist`; остальное — тела ответов из контракта |
+| `draft_errors`, `simulate_draft`, `trial_draft`, `normalize_draft`, `criteria_templates`, `checklist_presets` | `src/cqa/services/checklists.py` | `draft_errors(draft) -> dict[путь, текст]` — правила `save_checklist`; остальное — тела ответов из контракта |
 | `bands_view`, `current_bands`, `save_bands` | `src/cqa/services/bands.py` | шкала из таблицы `bands` или `src/cqa/catalog/bands.json` |
 | `cqa.catalog.load` | `src/cqa/catalog/__init__.py` | `load(name) -> Any` — JSON рядом: `bands.json`, `criteria_templates.json`, `checklist_presets.json` |
 | `SEED_CHECKLIST` | `src/cqa/services/checklists.py` | `tests/fixtures/checklist_v3.json`: начальная версия (`seed_checklist`) и пресет «Официальный» |

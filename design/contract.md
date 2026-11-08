@@ -118,6 +118,7 @@
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
 | `POST /api/checklist/simulate` | черновик Checklist | «что если» без сохранения (раздел «Настройка чек-листа») |
+| `POST /api/checklist/trial` | `{checklist: черновик, dialogs: [id, 1–20]}` | `{run_id, criteria, dialogs}`: песочница (раздел «Настройка чек-листа»), ход — `GET /api/runs/{id}` |
 | `POST /api/checklist/normalize` | черновик Checklist | `{checklist, changes, shares, explanation}`: веса к сумме 100, ничего не сохраняет |
 | `GET /api/checklist/presets` | — | `[{key, name, description, official, criteria, checklist}]`: готовые чек-листы для импорта в черновик |
 | `GET /api/criteria/templates?tag=<тег>` | — | `{tags, templates: [{key, tags, section, why, criterion}]}`; без `tag` — все |
@@ -238,6 +239,12 @@ JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {di
 - `pending[].dialogs` — у скольких диалогов не будет ответа по критерию; `why` — «новый критерий», «изменено: текст, ступени» или «изменены общие правила».
 - `save_errors` — что не даст сохранить черновик (те же тексты, что 422 у `PUT /api/checklist`); «что если» считается и с ними.
 - Операторов и продуктов в данных нет: группы — канал и язык.
+
+### Песочница
+
+`POST /api/checklist/trial` оценивает на 1–20 выбранных диалогах только новые и изменённые по смыслу критерии черновика (`criteria` — как `pending` у `PUT /api/checklist`), версию не сохраняет. Это обычный запуск `Runner` с черновиком вместо текущей версии: 409, пока идёт другой запуск, запрет реальных звонков и ошибки моделей — как у `POST /api/runs`, ход и цена — `GET /api/runs/{id}`, `Dialog.cost` — по этой оценке. Ответы пишутся с отпечатками черновика (`version` — текущая + 1): текущее состояние они не меняют, «что если» с тем же черновиком сразу показывает их в `dialogs[].answers` и `why` («ответ «15 из 20» → «5 из 20»»), а после сохранения черновика они становятся текущими без новой оценки. 422: диалогов 0 или больше 20; черновик не пройдёт сохранение (`fields` как у `PUT /api/checklist`); нет изменённых по смыслу критериев.
+
+`dialogs[].answers` в «что если»: `[{id, name, before, after}]` — критерии с новым смыслом и критерии, у которых ответ с учётом решений изменился; `null` — ответа нет.
 
 ### Нормировка весов
 

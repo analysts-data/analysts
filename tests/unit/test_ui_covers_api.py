@@ -14,6 +14,7 @@ FRONT = ROOT / "frontend" / "src"
 EXEMPT = {"/health", "/login"} | {
     # UI в работе: шкала оценок, «что если», нормировка, шаблоны и готовые чек-листы (PR checklist-flex)
     "/bands", "/checklist/simulate", "/checklist/normalize", "/checklist/presets", "/criteria/templates",
+    "/checklist/trial",
 }  # fmt: skip
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')

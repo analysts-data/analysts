@@ -14,6 +14,7 @@ from cqa.domain.review import diff_checklists, effective_answers, version_note
 from cqa.domain.tuning import normalize, simulate
 from cqa.services.bands import current_bands
 from cqa.services.errors import Conflict, Invalid, NotFound
+from cqa.services.runs import Runner
 from cqa.services.state import state_for
 
 # ponytail: seed is the test fixture; a separate product file if the two ever diverge
@@ -116,6 +117,29 @@ def simulate_draft(store: Store, draft: Checklist) -> dict[str, Any]:
         current_bands(store),
     )
     return {**sim, "save_errors": draft_errors(draft)}
+
+
+TRIAL_MAX = 20  # диалогов в песочнице: проба на выборке, а не новая оценка набора
+
+
+def trial_draft(store: Store, runner: Runner, draft: Checklist, dialogs: list[str]) -> dict[str, Any]:
+    """Песочница: оценить только новые и изменённые по смыслу критерии черновика на выбранных диалогах,
+    не сохраняя версию. Ответы пишутся с отпечатками черновика: «что если» сразу сравнивает их с текущими,
+    а после сохранения черновика они становятся текущими без повторной оценки."""
+    picked = list(dict.fromkeys(dialogs))
+    if not 1 <= len(picked) <= TRIAL_MAX:
+        raise Invalid(f"Выберите от 1 до {TRIAL_MAX} диалогов для песочницы, выбрано {len(picked)}")
+    if errors := draft_errors(draft):
+        raise Invalid("; ".join(errors.values()), fields=errors)
+    cur = checklist_version(store, None)
+    pending = diff_checklists(cur, draft).pending
+    if not pending:
+        raise Invalid(
+            "В черновике нет новых или изменённых по смыслу критериев: оценивать нечего, "
+            "«Что если» показывает новые итоги сразу"
+        )
+    run_id = runner.start(picked, pending, checklist=draft.model_copy(update={"version": cur.version + 1}))
+    return {"run_id": run_id, "criteria": pending, "dialogs": picked}
 
 
 def normalize_draft(draft: Checklist) -> dict[str, Any]:

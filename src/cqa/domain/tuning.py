@@ -153,6 +153,8 @@ def simulate(
         for ch in d["changed"]
         if ch["reevaluate"]
     }
+    known = {c.id for c in old.criteria}
+    meaning = {c.id for c in new.criteria if d["rules_changed"] or c.id in fields or c.id not in known}
     rows: list[dict[str, Any]] = []
     for dlg in dialogs:
         a0, a1 = before.get(dlg.id, {}), after.get(dlg.id, {})
@@ -170,6 +172,11 @@ def simulate(
                 "before": t0, "after": t1, "delta": _delta(t0, t1),
                 "band_before": b0.label if b0 else None, "band_after": b1.label if b1 else None,
                 "why": why, "text": text,
+                "answers": [
+                    {"id": c.id, "name": c.name, "before": a0.get(c.id), "after": a1.get(c.id)}
+                    for c in new.criteria
+                    if c.id in meaning or a0.get(c.id) != a1.get(c.id)
+                ],
             }
         )  # fmt: skip
 

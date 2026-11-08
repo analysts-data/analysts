@@ -63,15 +63,20 @@ class Runner:
             raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
         self._evaluator = evaluator
 
-    def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
-        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
+    def start(
+        self, dialogs: list[str] | None, criteria: list[str] | None, checklist: Checklist | None = None
+    ) -> int:
+        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
+
+        `checklist` — несохранённый черновик для песочницы: ответы пишутся с его отпечатками и становятся
+        текущими только после сохранения черновика; по умолчанию — текущая версия."""
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт")
         if dialogs is not None:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
                 raise NotFound(f"Диалоги не найдены: {', '.join(unknown)}")
-        checklist = self._store.current_checklist()
+        checklist = self._store.current_checklist() if checklist is None else checklist
         assert checklist is not None, "create_app сеет чек-лист на пустой базе"
         if criteria is not None:
             known = {c.id for c in checklist.criteria}

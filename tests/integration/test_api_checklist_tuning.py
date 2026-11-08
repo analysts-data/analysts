@@ -1,14 +1,20 @@
 """Шкала оценок, «что если», нормировка весов, шаблоны и готовые чек-листы через HTTP."""
 
 import copy
+import sqlite3
+import time
+from collections.abc import Iterator
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Dialog
+from cqa.domain.models import CriterionResult, Dialog
 from cqa.domain.review import fingerprint
-from fakes import prototype_checklist
+from cqa.http.app import create_app
+from cqa.settings import Settings
+from fakes import FakeEvaluator, FakeSource, prototype_checklist
 
 
 def evaluate(store: Store, dialog: Dialog) -> None:
@@ -188,3 +194,91 @@ def test_report_counts_dialogs_by_band(client: TestClient, store: Store, dialogs
         ("Критично", 0),
     ]
     assert bands[1]["share"] == 1.0
+
+
+# --- песочница: оценка изменённых критериев черновика на выбранных диалогах ---
+
+
+@pytest.fixture
+def sandbox(
+    settings: Settings, store: Store, conn: sqlite3.Connection
+) -> Iterator[tuple[TestClient, FakeEvaluator]]:
+    """Свой оценщик: 04 у call-024 по новому смыслу — 5. Клиент-контекст держит задачу запуска."""
+    evaluator = FakeEvaluator(res={"call-024": {"04": CriterionResult(a=5)}})
+    with TestClient(create_app(settings, source=FakeSource(), evaluator=evaluator, conn=conn)) as client:
+        yield client, evaluator
+
+
+def wait(client: TestClient, run_id: int) -> dict[str, Any]:
+    deadline = time.monotonic() + 2
+    while (run := client.get(f"/api/runs/{run_id}").json())["status"] == "running":
+        assert time.monotonic() < deadline, "запуск не закончился за 2 с"
+        time.sleep(0.01)
+    return run
+
+
+def test_trial_evaluates_only_changed_meaning_criteria_on_chosen_dialogs_without_saving(
+    sandbox: tuple[TestClient, FakeEvaluator], store: Store, dialogs: list[Dialog]
+) -> None:
+    client, evaluator = sandbox
+    evaluate(store, dialogs[0])  # call-024: 04 = 15 по текущему смыслу
+    draft = with_criterion(current(client), "04", text="Новый текст")
+
+    response = client.post("/api/checklist/trial", json={"checklist": draft, "dialogs": ["call-024"]})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["criteria"], body["dialogs"]) == (["04"], ["call-024"])
+    assert wait(client, body["run_id"])["status"] == "done"
+    assert evaluator.seen == ["04"]
+    assert current(client)["version"] == 3
+    state = {d["id"]: d["res"] for d in client.get("/api/state").json()["dialogs"]}
+    assert state["call-024"]["04"]["a"] == 15  # текущая версия не тронута
+    sim = client.post("/api/checklist/simulate", json=draft).json()
+    call = next(r for r in sim["dialogs"] if r["id"] == "call-024")
+    assert call["answers"] == [
+        {"id": "04", "name": "Корректная и полная консультация", "before": 15, "after": 5}
+    ]
+    assert call["why"] == ["«Корректная и полная консультация»: ответ «15 из 20» → «5 из 20»"]
+    assert sim["pending"][0]["dialogs"] == 1  # p1-ru-003 ещё ждёт
+
+
+@pytest.mark.parametrize(
+    ("dialog_ids", "detail"),
+    [
+        ([], "Выберите от 1 до 20 диалогов для песочницы, выбрано 0"),
+        ([f"d{i}" for i in range(21)], "Выберите от 1 до 20 диалогов для песочницы, выбрано 21"),
+    ],
+)
+def test_trial_needs_1_to_20_dialogs(
+    sandbox: tuple[TestClient, FakeEvaluator], dialog_ids: list[str], detail: str
+) -> None:
+    client, _ = sandbox
+    draft = with_criterion(current(client), "04", text="Новый текст")
+
+    response = client.post("/api/checklist/trial", json={"checklist": draft, "dialogs": dialog_ids})
+
+    assert (response.status_code, response.json()["detail"]) == (422, detail)
+
+
+def test_trial_without_changed_meaning_has_nothing_to_evaluate(
+    sandbox: tuple[TestClient, FakeEvaluator],
+) -> None:
+    client, evaluator = sandbox
+    draft = with_criterion(current(client), "05", w=30)
+
+    response = client.post("/api/checklist/trial", json={"checklist": draft, "dialogs": ["call-024"]})
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("В черновике нет новых или изменённых по смыслу критериев")
+    assert evaluator.calls == 0
+
+
+def test_trial_refuses_a_draft_that_would_not_save(sandbox: tuple[TestClient, FakeEvaluator]) -> None:
+    client, _ = sandbox
+    draft = with_criterion(current(client), "04", text="Новый", channel="chat", na=False)
+
+    response = client.post("/api/checklist/trial", json={"checklist": draft, "dialogs": ["call-024"]})
+
+    assert response.status_code == 422
+    assert response.json()["fields"] == {"criteria.3.na": "Критерий 04: для канала chat нужен na: true"}
