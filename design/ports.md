@@ -256,7 +256,7 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `dialog_prosody(..., fresh=True)` | `src/cqa/services/prosody.py` | считать заново и перезаписать сохранённый разбор; `/talkstats` — для разбора без `talk` |
 | `Span`, `call_stats`, `chat_stats`, `norms`, `mark`, `CALL`, `CHAT`, `RULE` | `src/cqa/domain/talkstats.py` | статистика разговора, чистые функции: `call_stats(spans) -> dict` (поле `talk` разбора), `chat_stats(lines) -> dict \| None`, `norms(rows, metrics) -> Norms`, `mark(stats, norms) -> list` |
 | `dialog_talkstats`, `team_norms` | `src/cqa/services/talkstats.py` | `async dialog_talkstats(store, source, voice, dialog_id) -> dict`, `team_norms(store) -> dict`; `NotFound`, `Upstream` |
-| `Store.prosodies` | `src/cqa/adapters/store.py` | `prosodies() -> list[dict]`: все сохранённые разборы для норм |
+| `Store.prosodies` | `src/cqa/adapters/store.py` | `prosodies() -> dict[str, dict]`: все сохранённые разборы по id звонка для норм |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
 

@@ -224,7 +224,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 | Метод и путь | Тело | Ответ |
 | --- | --- | --- |
 | `GET /api/dialogs/{id}/talkstats` | — | `{ch, rule, n, note, metrics: [{key, label, unit, value, median, lo, hi, out_of_norm}]}`; 404 — неизвестный id, звонок без записи, чат без ответов оператора с метками; 502 — запись звонка не получена |
-| `GET /api/talkstats/norms` | — | `{rule, call: Norms, chat: Norms}`, Norms — `{n, note, metrics: [{key, label, unit, n, median, q1, q3, iqr, lo, hi}]}` |
+| `GET /api/talkstats/norms` | — | `{rule, call: Norms, chat: Norms, operators: {"<Dialog.operator>": {call: Norms, chat: Norms}}}`, Norms — `{n, note, metrics: [{key, label, unit, n, median, q1, q3, iqr, lo, hi}]}` |
 
 ```json
 {"ch": "call", "n": 12, "note": null,
@@ -237,6 +237,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 - Метрики звонка по порядку: `operator_share` — доля времени речи оператора от речи оператора и клиента, %; `monologue_s` — самый долгий монолог оператора: от начала первой до конца последней его реплики подряд, без реплик клиента между ними, с; `pause_median_s`, `pause_max_s` — тишина перед ответом оператора на реплику клиента, с; `interrupt_operator`, `interrupt_client` — сколько раз сторона перебила другую (флаг `overlap` разбора); `silence_share` — доля тишины на участках разговора, %; `wps_operator`, `wps_client` — слов в секунду речи стороны.
 - Метрики чата: `reply_median_s`, `reply_max_s` — от первого неотвеченного сообщения клиента до ответа оператора по меткам `t`, только `conv` (и без `seg`): ожидание в очереди к боту в норму оператора не входит.
 - Норма — по всем диалогам канала в базе: звонки — с сохранённым разбором с `talk`, чаты — с хотя бы одним ответом. `median` при любом `n`; `q1`, `q3` — квартили (`statistics.quantiles`, `inclusive`), `lo = q1 − 1,5·iqr`, `hi = q3 + 1,5·iqr`. Меньше 5 значений метрики — `lo`, `hi`, квартили `null`; меньше 5 диалогов канала — `note: "недостаточно данных: 3 из 5 диалогов"`.
+- `operators`: те же Norms по диалогам каждого сотрудника (`Dialog.operator`, без сотрудника — только в общей норме); главное в них — `median`, отметки `out_of_norm` по ним не ставятся.
 - `out_of_norm`: `true` — значение вне `[lo; hi]`, `false` — внутри, `null` — нет значения или нормы. `value: null` — метрику не посчитать (нет ответов оператора, нет речи стороны).
 - Только время: длительности речи, паузы, наложения и темп; интонационные признаки — в `/prosody`, содержание реплик не читается.
 - Интерфейс: блок «Статистика разговора» в карточке — строки `label`, `value` `unit`, рядом медиана команды; точка у `out_of_norm: true`; `note` — приглушённой строкой; 404 — блока нет.

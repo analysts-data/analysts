@@ -123,3 +123,19 @@ async def test_norms_cover_calls_with_prosody_and_chats() -> None:
     assert (share["median"], share["q1"], share["q3"], share["n"]) == (55.0, 50.0, 60.0, 5)
     assert body["chat"]["n"] == 1
     assert body["chat"]["note"] == "недостаточно данных: 1 из 5 диалогов"
+
+
+async def test_norms_have_per_operator_aggregates() -> None:
+    app = make_app(FakeVoice(None))
+    for dialog_id, share in zip(TEAM, (40.0, 50.0, 55.0, 60.0, 70.0), strict=True):
+        seed(app, dialog_id, operator_share=share)
+    for dialog_id in TEAM[:2]:
+        app.state.store.set_operator(dialog_id, "Оператор А")
+    async with client(app) as c:
+        body = (await c.get("/api/talkstats/norms")).json()
+
+    mine = body["operators"]["Оператор А"]
+    assert mine["call"]["n"] == 2
+    assert by_key(mine["call"])["operator_share"]["median"] == 45.0
+    assert mine["chat"]["n"] == 0
+    assert set(body["operators"]) == {"Оператор А"}
