@@ -55,4 +55,6 @@ class Settings(BaseSettings):
     holdout_dir: Path | None = None
     telemetry: Literal["on", "off"] = "on"  # метрики использования (README «Метрики использования»)
     telemetry_retention_days: int = 30
+    eval_reports_dir: Path = Path("eval/reports")  # отчёты make eval для GET /api/quality
+    results_dir: Path = Path("results")  # файлы организаторов <set>/results.json
     access_token: SecretStr | None = None  # show over the LAN: cookie from /login?token=, empty — open

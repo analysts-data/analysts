@@ -14,6 +14,12 @@ FRONT = ROOT / "frontend" / "src"
 EXEMPT = {
     "/health",
     "/login",
+    # UI в работе: страница «Отчёты» (reports-hub, PR #82)
+    "/reports",
+    "/quality",
+    "/quality/{report_id}",
+    "/runs/{run_id}/report",
+    "/results/{which}",
     # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
     "/audit",
     "/employees",
