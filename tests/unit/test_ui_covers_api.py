@@ -27,6 +27,10 @@ EXEMPT = {
     "/employees/{employee_id}",
     "/me",
     "/overview",
+    # UI в работе: экран «Пакеты» (пакетная обработка), спецификация — в PR «пакетная обработка»
+    "/batches",
+    "/batches/{job_id}",
+    "/batches/{job_id}/{action}",
     # UI в работе: история оценок, возврат оценки, сравнение и принятие запусков (review-workflow-history)
     "/dialogs/{dialog_id}/history",
     "/results/{result_id}/restore",

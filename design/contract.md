@@ -334,6 +334,25 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 
 `GET /api/overview`: `employees` — `[{id, name, role, team, active, today: {"<action>": n}, week: {"<action>": n}, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed, median_decision_min}]`; `today` — с полуночи по Астане, `week` — 7 календарных дней с сегодняшним, счётчики — за всё время журнала (`decisions` — `appeal.decide` и `review.decide`), `median_decision_min` — медиана минут от `at` до `decidedAt` апелляций, решённых сотрудником, или `null`. `teams` — `[{team, employees, today, week, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed}]` по имени команды, суммы её сотрудников. `unattributed` — `{today, week}` действий без входа. `workload` — `{pending_appeals, needs_review, unreviewed}`: апелляции на рассмотрении и диалоги «нужна проверка» как в отчёте для руководства, диалоги без отметки «проверен».
 
+## Пакетная обработка (eval-and-delivery)
+
+Большие объёмы оцениваются заданиями: задание делится на батчи, одна очередь в процессе отдаёт батчи `Runner` по одному. Каждый батч — обычный запуск (`POST /api/runs` с его диалогами), поэтому правило одного активного запуска сохраняется: пока идёт запуск вне очереди, очередь ждёт его конца. Следующий батч берётся у задания с высшим приоритетом (`high` → `normal` → `low`), внутри приоритета — по порядку создания; новое задание `high` обгоняет начатое `normal` на границе батча.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `POST /api/batches` | `{"dialogs": [..]}` или `{"filter": {source_id?, ch?, lang?, product?, since?: "YYYY-MM-DD", unscored_only: true}}`, `batch_size: 20` (1..200), `priority: "high" \| "normal" \| "low"` (`normal`), `force: false` | Job |
+| `GET /api/batches` | — | `{jobs: [Job без batches и failed], rate_limit}`, новые первыми |
+| `GET /api/batches/{id}` | — | Job |
+| `POST /api/batches/{id}/pause \| resume \| cancel \| retry` | — | Job после действия |
+
+Job: `{id, status: "queued" | "running" | "paused" | "done" | "cancelled" | "failed", priority, batch_size, force, note, created, total, done, errors, pending, cost, throughput_per_min, eta_s, eta_basis, batches: [{no, n, done, errors, started, finished, cost, run_id}], failed: [{dialog, error}], rate_limit: {rpm, parallel}}`. Счётчики — в диалогах; `started`, `finished` — ISO UTC, `cost` — USD из запусков батча (с повторами), `run_id` — последний запуск батча, его ход — `GET /api/runs/{run_id}`.
+
+- Ровно один из `dialogs` и `filter`, иначе 422; неизвестный диалог — 404; пустой выбор — 422. Фильтр: равенство полей диалога (`source_id`, `ch`, `lang`, `product`; поля, которого у диалога нет, ничего не находит), `since` — дата `at` не раньше (в `at` нет года: сравнение в пределах года), `unscored_only` — только диалоги с парами без текущего результата. Неизвестное поле фильтра — 422. `force: true` — 422, пока `Runner` не умеет повторную проверку: батч оценивает только пары без текущего результата.
+- `pause` (из `queued`, `running`) и `cancel` (из `queued`, `running`, `paused`) не прерывают батч в работе: он дорабатывает (не больше `batch_size` диалогов), следующий не начинается. `resume` — из `paused` в `queued`. `retry` — диалоги с ошибкой снова в очередь, задание `done`/`failed` → `queued`, `paused` остаётся на паузе; без ошибок или у `cancelled` — 409. Недоступное действие — 409, неизвестное — 422.
+- Сбой диалога или батча задание не останавливает: диалог получает ошибку из `errors` запуска (`failed`), очередь идёт дальше. Повторы 429/5xx с паузами делает клиент модели, очередь их не дублирует. Задание закончено, когда в очереди нет диалогов: `failed`, если с ошибкой все, иначе `done`. Запуск батча, отменённый через `POST /api/runs/{id}/cancel`, ставит задание на паузу с `note`.
+- `throughput_per_min` и `eta_s` — по скорости последних 3 завершённых батчей (`eta_basis`: «по скорости последних 3 батчей», «последнего батча», «нет завершённых батчей» — тогда `null`); `eta_s` только у `queued` и `running`.
+- `rate_limit` — `CQA_LLM_RPM` (запросов в минуту, `0` — без лимита; окно 60 с в клиенте модели держит темп каждой попытки) и `CQA_LLM_MAX_PARALLEL`. Остаток лимита провайдер не сообщает, поэтому его нет.
+- Перезапуск сервера: состояние в SQLite (`batch_jobs`, `batch_items`, `batch_runs`). Задания `queued` и `running` встают на паузу с `note` «Сервер перезапускался…», диалоги прерванного батча — снова в очереди. Само задание не продолжается: после перезапуска могли смениться модель, ключи и режим данных (`CQA_LLM_MODE`, `CQA_ALLOW_REAL_DATA`), а оценка тратит деньги — продолжает человек кнопкой. `resume` и `retry` стирают `note`.
 ## История оценок и повторная проверка (review-workflow, history)
 
 Таблица `results` только растёт: каждый ответ модели, ручной ответ и возврат прежней оценки — новая строка, итог берёт последнюю строку текущего смысла пары. Строка помнит запуск (`run_id`, `null` — ручной ответ или строка до появления колонки); кто ответил — `CriterionResult.model`.

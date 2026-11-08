@@ -110,6 +110,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
 | `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
+| `batches` | `Batches` | eval-and-delivery (`src/cqa/services/batches.py`, таблицы в `src/cqa/adapters/batches.py`): `/api/batches`; lifespan запускает `Batches.work()`, `create_app` — `recover()` |
 
 | Строка в `create_app` | Трек |
 | --- | --- |
@@ -129,7 +130,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_LLM_PROFILE` | `llm_profile` | `str` | `plain` | llm-evaluation |
 | `CQA_LLM_REASONING` | `llm_reasoning` | `Literal["on", "off"]` | `on` | llm-evaluation |
 | `CQA_LLM_MAX_PARALLEL` | `llm_max_parallel` | `int` | `4` | llm-evaluation (семафор), review-workflow (`Runner.parallel`) |
-| `CQA_LLM_RPM` | `llm_rpm` | `int` | `120` (`0` — без лимита) | llm-evaluation |
+| `CQA_LLM_RPM` | `llm_rpm` | `int` | `120` (`0` — без лимита) | llm-evaluation, eval-and-delivery (`rate_limit` в `/api/batches`) |
 | `CQA_LLM_TIMEOUT_S` | `llm_timeout_s` | `float` | `180` | llm-evaluation |
 | `CQA_LLM_PRICE_IN`, `CQA_LLM_PRICE_OUT` | `llm_price_in`, `llm_price_out` | `float` | `0.0` (USD за 1 млн токенов) | llm-evaluation |
 | `CQA_VERIFIER` | `verifier` | `Literal["jev"] \| None` | `None` (пусто) | llm-evaluation, review-workflow (`mode`) |
