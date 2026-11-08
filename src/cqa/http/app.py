@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from cqa.adapters.batches import BatchStore
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_evaluator, build_source
+from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api, batches, docs
 from cqa.http.access import protect
@@ -120,7 +120,9 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
+    evaluator = (
+        evaluator if evaluator is not None else build_routed(settings, prosody, store)
+    )  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
