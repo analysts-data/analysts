@@ -70,34 +70,37 @@ def test_operators_list_and_card(client: TestClient, store: Store, dialogs: list
     evaluate(store, dialogs[0])  # call-024: 82,94
     client.put("/api/dialogs/call-024/operator", json={"operator": "Сотрудник А"})
 
-    rows = client.get("/api/operators").json()
+    body = client.get("/api/operators").json()
+    rows = body["operators"]
     card = client.get("/api/operators/Сотрудник А").json()
 
-    assert [(r["operator"], r["dialogs"], r["scored"], r["avg_total"]) for r in rows] == [
-        ("Сотрудник А", 1, 1, 82.94),
-        ("Не указан", 1, 0, None),
+    assert (body["min_n"], "Стьюдент" in body["definitions"]["ci95"]) == (5, True)
+    assert [(r["operator"], r["dialogs"], r["n"], r["avg_total"], r["reason"]) for r in rows] == [
+        ("Сотрудник А", 1, 1, 82.94, "недостаточно данных (n=1, нужно ≥5)"),
+        ("Не указан", 1, 0, None, "сотрудник не указан"),
     ]
     assert set(rows[0]) == {
-        "operator", "dialogs", "scored", "avg_total", "gross_errors", "needs_review", "appeals_open",
-        "weakest", "trend",
+        "operator", "dialogs", "n", "avg_total", "sd", "ci95", "ranked", "reason", "gross_errors",
+        "needs_review", "appeals_open", "weakest", "trend",
     }  # fmt: skip
+    assert (card["ranked"], card["ci95"], card["definitions"]) == (False, None, body["definitions"])
     assert (card["dialog_ids"], card["trend"][0]["day"]) == (["call-024"], dialogs[0].at[:5])
     assert isinstance(card["reasons"], list)
     assert client.get("/api/operators/Не указан").json()["dialog_ids"] == ["p1-ru-003"]
     assert client.get("/api/operators/Никто").status_code == 404
 
 
-def test_report_section_filter_and_escaped_name(
-    client: TestClient, store: Store, dialogs: list[Dialog]
-) -> None:
+def test_report_filter_and_escaped_name(client: TestClient, store: Store, dialogs: list[Dialog]) -> None:
     for d in dialogs:
         evaluate(store, d)
     client.put("/api/dialogs/call-024/operator", json={"operator": XSS})
     client.put("/api/dialogs/p1-ru-003/operator", json={"operator": "Сотрудник Б"})
 
-    html = client.get("/api/report").text
+    html = client.get(
+        "/api/report", params={"operator": XSS}
+    ).text  # имя в строке «Сформирован … · сотрудник»
     filtered = client.get("/api/report", params={"format": "json", "operator": "Сотрудник Б"}).json()
 
-    assert "По сотрудникам" in html
     assert XSS not in html and "&lt;img src=x onerror=alert(1)&gt;" in html
+    assert XSS in client.get("/api/operators").text  # JSON отдаёт имя как есть, экранирует интерфейс
     assert (filtered["summary"]["dialogs"], filtered["filters"]["operator"]) == (1, "Сотрудник Б")

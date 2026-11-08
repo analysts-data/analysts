@@ -7,7 +7,15 @@ from typing import Any, Literal
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
-from cqa.domain.report import build_report, operator_card, operators, to_html, to_markdown
+from cqa.domain.report import (
+    DEFINITIONS,
+    MIN_SCORED,
+    build_report,
+    operator_card,
+    operators,
+    to_html,
+    to_markdown,
+)
 from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
@@ -72,8 +80,8 @@ def report(
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
 
 
-def operator_rows(store: Store) -> list[dict[str, Any]]:
-    return operators(*current_state(store))
+def operator_rows(store: Store) -> dict[str, Any]:
+    return {"definitions": DEFINITIONS, "min_n": MIN_SCORED, "operators": operators(*current_state(store))}
 
 
 def operator_page(store: Store, name: str) -> dict[str, Any]:
@@ -81,7 +89,7 @@ def operator_page(store: Store, name: str) -> dict[str, Any]:
     card = operator_card(checklist, dialogs, appeals, store.get_owners(), name)
     if card is None:
         raise NotFound(f"Сотрудник {name} не найден")
-    return card
+    return {**card, "definitions": DEFINITIONS, "min_n": MIN_SCORED}
 
 
 def scores_csv(store: Store, shape: Shape, *, lang: str | None, ch: str | None) -> tuple[int, str]:

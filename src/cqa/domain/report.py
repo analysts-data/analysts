@@ -4,6 +4,8 @@
 те же числа, что видит интерфейс.
 """
 
+import math
+import statistics
 from collections.abc import Mapping, Sequence
 from html import escape
 from typing import Any
@@ -169,8 +171,45 @@ def build_report(
 # --- По сотрудникам ---
 
 UNKNOWN = "Не указан"  # группа диалогов без сотрудника
-ATTENTION, BEST = 5, 3
+ATTENTION, STRENGTHS = 5, 3
 _CARD_ONLY = ("dialog_ids", "reasons")
+# Сравнивать сотрудников можно только от 5 оценённых диалогов: при n = 4 одна оценка сдвигает среднее
+# на четверть шкалы, а 95 % интервал среднего — ±1,6 стандартного отклонения (t(0,975; 3) = 3,18).
+MIN_SCORED = 5
+# t(0,975; df) распределения Стьюдента, df = 1..30; дальше — разложение Корниша — Фишера (точность 1e-4)
+_T95 = (
+    12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145, 2.131,
+    2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+)  # fmt: skip
+DEFINITIONS = {
+    "n": "оценённые диалоги сотрудника: есть итог с учётом решений по апелляциям",
+    "avg_total": "средний итог n оценённых диалогов",
+    "sd": "выборочное стандартное отклонение итога (делитель n − 1); при n < 2 — null",
+    "ci95": "95 % доверительный интервал среднего итога по Стьюденту: среднее ± t(0,975; n − 1) · sd / √n, "
+    "обрезан до шкалы 0–100; при n < 2 — null",
+    "ranked": f"в порядке «требуют внимания» только сотрудники с n ≥ {MIN_SCORED}: при меньшем n одна оценка "
+    "сдвигает среднее на четверть шкалы и больше, а интервал шире любой разницы между сотрудниками; "
+    "диалоги без сотрудника не ранжируются",
+    "order": "сначала ранжированные по возрастанию среднего итога (кому нужна помощь — выше), "
+    "затем остальные по убыванию n",
+}
+
+
+def _t95(df: int) -> float:
+    if df <= len(_T95):
+        return _T95[df - 1]
+    z = 1.959964
+    return z + (z**3 + z) / (4 * df) + (5 * z**5 + 16 * z**3 + 3 * z) / (96 * df**2)
+
+
+def ci95(totals: Sequence[float]) -> tuple[float | None, list[float] | None]:
+    """Выборочное стандартное отклонение и 95 % интервал среднего по Стьюденту; при n < 2 — (None, None)."""
+    n = len(totals)
+    if n < 2:
+        return None, None
+    sd = statistics.stdev(totals)
+    mean, half = sum(totals) / n, _t95(n - 1) * sd / math.sqrt(n)
+    return r2(sd), [r2(max(0.0, mean - half)), r2(min(100.0, mean + half))]
 
 
 def _operator(
@@ -184,11 +223,24 @@ def _operator(
     days: dict[str, list[float]] = {}
     for d, _, t in rows:
         days.setdefault(d.at[:5], []).append(t)  # `at` — «ДД.ММ ЧЧ:ММ»
+    n = s["scored"]
+    sd, interval = ci95([t for _, _, t in rows])
+    reason = (
+        "сотрудник не указан"
+        if name == UNKNOWN
+        else f"недостаточно данных (n={n}, нужно ≥{MIN_SCORED})"
+        if n < MIN_SCORED
+        else None
+    )
     return {
         "operator": name,
         "dialogs": s["dialogs"],
-        "scored": s["scored"],
+        "n": n,
         "avg_total": s["avg_total"],
+        "sd": sd,
+        "ci95": interval,
+        "ranked": reason is None,
+        "reason": reason,
         "gross_errors": s["risk"]["dialogs"],
         "needs_review": s["needs_review"],
         "appeals_open": s["open_appeals"],
@@ -217,12 +269,12 @@ def _by_operator(dialogs: Sequence[Dialog]) -> dict[str, list[Dialog]]:
 def operators(
     checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]
 ) -> list[dict[str, Any]]:
-    """GET /api/operators: строка на сотрудника, худший средний итог первым, без оценённых — в конце."""
+    """GET /api/operators: строка на сотрудника в порядке `DEFINITIONS["order"]`."""
     rows = [
         {k: v for k, v in _operator(checklist, name, mine, appeals, {}).items() if k not in _CARD_ONLY}
         for name, mine in _by_operator(dialogs).items()
     ]
-    return sorted(rows, key=lambda r: (r["avg_total"] is None, r["avg_total"] or 0.0))
+    return sorted(rows, key=lambda r: (not r["ranked"], r["avg_total"] if r["ranked"] else -r["n"]))
 
 
 def operator_card(
@@ -238,10 +290,12 @@ def operator_card(
 
 
 def _section(checklist: Checklist, picked: Sequence[Dialog], appeals: Sequence[Appeal]) -> dict[str, Any]:
-    """«По сотрудникам»: до 5 худших и до 3 лучших оценённых, без «Не указан»; списки не пересекаются."""
-    rows = [r for r in operators(checklist, picked, appeals) if r["scored"] and r["operator"] != UNKNOWN]
-    best = min(BEST, len(rows) // 2)
-    return {"attention": rows[: min(ATTENTION, len(rows) - best)], "best": rows[::-1][:best]}
+    """«По сотрудникам»: только ранжированные; до 5 «требуют внимания» (ниже средний итог) и до 3
+    «сильные стороны» (выше), списки не пересекаются. Это не рейтинг: тех, у кого мало данных, тут нет."""
+    rows = [r for r in operators(checklist, picked, appeals) if r["ranked"]]
+    rows = rows if len(rows) >= 2 else []  # одного не с кем сравнить
+    top = min(STRENGTHS, len(rows) // 2)
+    return {"attention": rows[: min(ATTENTION, len(rows) - top)], "strengths": rows[::-1][:top]}
 
 
 # --- Выводы словами ---
@@ -311,7 +365,15 @@ def _findings(rep: dict[str, Any], resolution: bool) -> list[str]:
 Table = tuple[str, list[str], set[int], list[tuple[list[str], float]]]  # заголовок, шапка, числа, строки
 
 
-OPERATOR_HEAD = ["Сотрудник", "Оценено", "Средний итог", "Грубые нарушения", "Слабее всего"]
+OPERATOR_HEAD = [
+    "Сотрудник",
+    "Оценено (n)",
+    "Средний итог",
+    "95 % интервал",
+    "Грубые нарушения",
+    "Слабее всего",
+]
+NUM = {1, 2, 3, 4}  # числовые колонки OPERATOR_HEAD
 
 
 def _tables(rep: dict[str, Any]) -> list[Table]:
@@ -327,8 +389,9 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
             (
                 [
                     r["operator"],
-                    str(r["scored"]),
+                    str(r["n"]),
                     _d(r["avg_total"]),
+                    f"{_d(r['ci95'][0])}–{_d(r['ci95'][1])}" if r["ci95"] else "—",
                     str(r["gross_errors"]),
                     ", ".join(w["name"] for w in r["weakest"]) or "—",
                 ],
@@ -353,8 +416,8 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
                 for r in rep["reasons"]
             ],
         ),
-        ("По сотрудникам: нужна помощь", OPERATOR_HEAD, {1, 2, 3}, people(rep["operators"]["attention"])),
-        ("По сотрудникам: лучшие", OPERATOR_HEAD, {1, 2, 3}, people(rep["operators"]["best"])),
+        ("По сотрудникам: требуют внимания", OPERATOR_HEAD, NUM, people(rep["operators"]["attention"])),
+        ("По сотрудникам: сильные стороны", OPERATOR_HEAD, NUM, people(rep["operators"]["strengths"])),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
     ]  # fmt: skip

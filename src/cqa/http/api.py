@@ -178,7 +178,7 @@ async def post_operators_import(request: Request) -> dict[str, object]:
 
 
 @router.get("/operators")
-async def get_operators(request: Request) -> list[dict[str, Any]]:
+async def get_operators(request: Request) -> dict[str, Any]:
     return operator_rows(request.app.state.store)
 
 
