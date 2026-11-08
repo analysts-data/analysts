@@ -18,6 +18,7 @@ from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api, docs
+from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
@@ -59,6 +60,14 @@ async def _detail(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def seed_checklist(store: Store) -> None:
+    """Начальный чек-лист на пустой базе: первый запуск сервера или scripts/results.py --evaluate."""
+    if store.current_checklist() is None:
+        store.add_checklist(
+            Checklist.model_validate_json(SEED_CHECKLIST.read_text(encoding="utf-8")), "начальная версия"
+        )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -80,6 +89,8 @@ def create_app(
     )
     settings = settings or Settings()
     app.state.settings = settings
+    if settings.access_token:
+        protect(app, settings.access_token.get_secret_value())
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
 
@@ -90,10 +101,7 @@ def create_app(
     store = Store(conn if conn is not None else connect(settings.db_path))
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
-    if store.current_checklist() is None:
-        store.add_checklist(
-            Checklist.model_validate_json(SEED_CHECKLIST.read_text(encoding="utf-8")), "начальная версия"
-        )
+    seed_checklist(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
     app.state.syncer = Syncer(store, app.state.source)

@@ -43,3 +43,10 @@ def test_every_settings_variable_is_in_env_example() -> None:
     for field in Settings.model_fields:
         name = f"CQA_{field.upper()}"
         assert name in present, f"{name} нет в .env.example"
+
+
+def test_jury_lan_access_section_names_share_token_link_and_revoke() -> None:
+    jury = section("Доступ для жюри по сети")
+    for word in ("make share", "/login?token=", "CQA_ACCESS_TOKEN"):
+        assert word in jury, word
+    assert re.search(r"^share:", (ROOT / "Makefile").read_text(encoding="utf-8"), re.M)
