@@ -117,6 +117,7 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
+| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -159,6 +160,8 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 Ключ только записывается: ни в ответах, ни в журнале его нет, есть `has_key`; пустой `key` при изменении оставляет сохранённый. Список провайдеров хранится в базе и заменяет `CQA_PROVIDERS` из `.env`.
 
+Провайдер `openrouter-jev` (Jev Router через OpenRouter) есть всегда, вторым после `env`: `{"label": "OpenRouter — Jev Router", "base_url": "https://openrouter.ai/api/v1", "model": "typesafe/jev-router", "profile": "plain", "where": "external"}`, ключ — `CQA_OPENROUTER_API_KEY` или `PUT`. `PUT /api/providers/openrouter-jev` меняет только `model` и `key`, остальные поля тела игнорирует; `DELETE` не удаляет, а возвращает его к умолчанию (409 — как у других, если он выбран). Если провайдер возвращает `usage.cost` (OpenRouter), `cost` — эта цена, а не цена за токены.
+
 Основная модель — провайдер `llm_provider`: его `where` становится `mode.where`, `model` — `mode.model`. `verifier`: `"jev"`, код провайдера (те же вопросы по критериям уходят модели этого провайдера, её ответ — в `alt`) или `null`; `mode.verifier` повторяет его, поэтому в `mode` бывает и код провайдера.
 
 Ошибки: неизвестный провайдер в `llm_provider` или `verifier`, нет ключа для `live` — 422, режим не меняется. Неверный `id`, адрес не `http(s)://`, неизвестный профиль, `PUT /api/providers/env` — 422. `DELETE` основной модели, второго мнения или `env` — 409, неизвестный `id` — 404. Любое изменение во время запуска — 409, как у `PUT /api/config`.
@@ -200,3 +203,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 - Оценщик (`LlmEvaluator`, `JevEvaluator`, второе мнение) у звонка берёт разбор `dialog_prosody` (из таблицы `prosody` или считает) и добавляет блок `sound_block(summary)` после `</dialog>` (Jev и второе мнение — следом за репликами в тексте диалога): строка «Анализ звука записи (автоматически, по тону и громкости; распознавание речи не проверялось):», строки `summary` с «- » (пустая сводка — «- отклонений тона, громкости, темпа и пауз не найдено»), правило: тон, паузы и темп — по этим строкам, сверх них о звуке ничего, дикции и разборчивости по ним не оценить.
 - Чат, звонок без записи, 404/502, нет ffmpeg или любая ошибка разбора — блока нет, запрос байт в байт прежний; системный промпт не меняется. Запрет реальных звонков (`CQA_ALLOW_REAL_DATA`) проверяется до разбора; в блоке только роли и номера реплик, без текста и имён.
 - Отпечаток (`fingerprint`) звук не учитывает: появление интонации готовые ответы не пересчитывает, она входит в следующие оценки звонка. `make eval` идёт без интонации.
+
+## Отчёт для руководства (eval-and-delivery)
+
+JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».

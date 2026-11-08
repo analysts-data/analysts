@@ -167,6 +167,20 @@ async def test_failed_dialog_is_an_error_and_does_not_stop_the_rest(store: Store
     assert store.get_dialog("p1-ru-003").cost is None  # type: ignore[union-attr]
 
 
+async def test_eta_does_not_extrapolate_from_a_dialog_that_failed_at_once(store: Store) -> None:
+    # live: a call refused without CQA_ALLOW_REAL_DATA counts as done in 0 s and made ETA climb to minutes
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(fail_on={"call-024"}, gate=gate), parallel=1, clock=_clock())
+    run_id = runner.start(["call-024", "p1-ru-003"], None)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    progress = runner.progress(run_id)
+    assert (progress["done"], progress["eta_s"]) == (8, None)
+    gate.set()
+    await _drain(runner)
+    assert runner.progress(run_id)["eta_s"] == 0
+
+
 async def test_missing_answer_is_an_error_and_waits_for_evaluation(store: Store) -> None:
     run = store.get_run(await _execute(store, FakeEvaluator(skip={"04"})))
     assert run is not None
