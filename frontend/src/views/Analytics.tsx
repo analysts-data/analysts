@@ -10,7 +10,7 @@ import { href } from '../lib/router.js';
 import { calc, r2 } from '../lib/scoring.js';
 import { t } from '../lib/i18n.js';
 import { api, toast } from '../lib/state.js';
-import { go, rerender, useRoute, useS } from '../store';
+import { currentTheme, go, rerender, useRoute, useS } from '../store';
 import { Term, TERMS } from '../terms';
 import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip } from '../ui';
 import { Chart, type Bar } from './analytics/Chart';
@@ -45,7 +45,11 @@ const HEAT_BG = [
   'color-mix(in srgb, var(--ev) 58%, var(--surface))',
   'var(--ev)',
 ];
-const heatStyle = (h: number) => ({ background: HEAT_BG[h], color: h === 4 ? 'var(--surface)' : h ? 'var(--ink)' : 'var(--muted)' });
+// в тёмной теме насыщенная ячейка светлая: текст на ней тёмный, иначе контраст ниже 4,5:1
+const heatStyle = (h: number, dark: boolean) => ({
+  background: HEAT_BG[h],
+  color: h === 4 ? 'var(--surface)' : h === 3 && dark ? 'var(--bg)' : h ? 'var(--ink)' : 'var(--muted)',
+});
 
 function download(name: string, text: string) {
   const a = document.createElement('a');
@@ -60,13 +64,14 @@ const reportUrl = (fmt = '') => `${resolveBase(location.search, document.querySe
 
 const TILE = 'flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5 text-ink no-underline transition-colors hover:bg-hover';
 
-/** Плитка сводки: число в <strong>, подпись и пояснение; со ссылкой — <a>, иначе <div>. */
-function Tile({ label, value, hint, children, ...a }: { label: string; value: React.ReactNode; hint: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+/** Плитка сводки: показатель, число в <strong>, пояснение и рубрика мелко; со ссылкой — <a>, иначе <div>. */
+function Tile({ label, value, hint, rubric, children, ...a }: { label: string; value: React.ReactNode; hint: string; rubric?: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
   const body = (
     <>
-      <span className="text-[13px] font-semibold text-muted">{label}</span>
+      <span className="text-[13px] font-semibold text-ink2">{label}</span>
       <strong className="text-[28px] font-bold leading-tight">{value}</strong>
       <span className="text-[13px] text-ink2">{children}</span>
+      {rubric && <span className="text-xs text-muted">{rubric}</span>}
     </>
   );
   return (
@@ -115,6 +120,7 @@ export function Analytics() {
   const { params } = useRoute();
   const tab = (TABS as readonly string[]).includes(params.tab) ? params.tab : 'overview';
   const [saving, setSaving] = useState<Record<string, string>>({});
+  const [more, setMore] = useState(false); // графики «Подробно» рисуются только в открытом блоке
   const totals: number[] = S.dialogs.map((d: any) => calc(d, S.checklist, S.appeals).total).filter((x: number | null) => x != null);
   if (!totals.length)
     return (
@@ -162,10 +168,9 @@ export function Analytics() {
       return { name: `${x.cid} ${x.name}`, value: Math.round(100 * share), label: pct(share), href: lost(x.cid) };
     });
   const kinds: Bar[] = fl.kinds.map(k => ({ name: k.label, value: k.n, label: String(k.n), href: '#/queue?grp=risk' }));
-  const owners: Bar[] = OWNERS.map(o => {
-    const n = new Set(rs.recurring.filter(g => (saving[g.tag] ?? g.owner) === o).flatMap(g => g.dialogs)).size;
-    return { name: ownerName(o), value: n, label: String(n) };
-  });
+  const owners = OWNERS.map(o => [o, rs.recurring.filter(g => (saving[g.tag] ?? g.owner) === o).length] as const).filter(([, n]) => n);
+  const reviewsN = q.reviews.confirmed + q.reviews.changed;
+  const dark = currentTheme() === 'dark';
 
   // Без оптимистичного обновления: до ответа селектор заблокирован и показывает выбор, при ошибке вернётся прежнее значение.
   async function setOwner(tag: string, value: string) {
@@ -181,23 +186,32 @@ export function Analytics() {
 
   return (
     <>
-      <PageHead title={t('Аналитика')} sub={t('Каждое число открывает список диалогов, из него карточку и реплику')}>
-        <span className="text-[13px] text-muted">
-          {t('В наборе {n} диалогов.', { n: S.dialogs.length })} {LANGS.map(l => `${l} ${S.dialogs.filter((d: any) => d.lang === l).length}`).join(', ')}
-        </span>
-        <LinkButton size="sm" href={reportUrl()} target="_blank" rel="noopener">
+      <PageHead
+        title={t('Аналитика')}
+        sub={
+          <>
+            {t('Каждое число открывает список диалогов, из него карточку и реплику')}
+            <span className="block text-[13px]">
+              {t('В наборе {n} диалогов.', { n: S.dialogs.length })} {LANGS.map(l => `${l} ${S.dialogs.filter((d: any) => d.lang === l).length}`).join(', ')}
+            </span>
+          </>
+        }
+      >
+        <LinkButton size="sm" variant="primary" href={reportUrl()} target="_blank" rel="noopener">
           <Printer size={16} aria-hidden="true" /> {t('Отчёт для руководства')}
         </LinkButton>
         <LinkButton size="sm" href={reportUrl('?format=md')} download="cqa-report.md">
-          <Download size={16} aria-hidden="true" /> {t('Скачать .md')}
+          <Download size={16} aria-hidden="true" /> {t('Отчёт .md')}
         </LinkButton>
-        <Button size="sm" data-act="resultscsv" onClick={() => download('cqa-results.csv', resultsCsv(S.dialogs, S.checklist, S.appeals))}>
-          <Download size={16} aria-hidden="true" /> {t('Скачать итоги по диалогам (CSV)')}
-        </Button>
+        <Tip content={t('Итог и ответы по каждому диалогу с учётом решений, как на экране.')}>
+          <Button size="sm" data-act="resultscsv" onClick={() => download('cqa-results.csv', resultsCsv(S.dialogs, S.checklist, S.appeals))}>
+            <Download size={16} aria-hidden="true" /> {t('Итоги CSV')}
+          </Button>
+        </Tip>
         <Tip content={t('Оценки для Excel с сервера: строка на диалог, ответ по каждому критерию с учётом решений.')}>
           <span>
             <DownloadButton path="/scores/export?format=csv&shape=wide" name="cqa-scores.csv" kind="scores-wide">
-              <Download size={16} aria-hidden="true" /> {t('Выгрузить оценки (CSV)')}
+              <Download size={16} aria-hidden="true" /> {t('Оценки CSV')}
             </DownloadButton>
           </span>
         </Tip>
@@ -227,19 +241,26 @@ export function Analytics() {
           {t('из 100 по {n} диалогам', { n: totals.length })}
           {totals.length < S.dialogs.length ? t(', ещё {n} ждут оценки', { n: S.dialogs.length - totals.length }) : ''}
         </Tile>
-        <Tile href="#/queue?grp=next" label={t('Качество сервиса')} value={nextN} hint={t('Группа «Без следующего шага» в очереди: клиент ушёл без решения и без понятного следующего шага.')}>
-          {nextN === 1 ? t('запрос остался без решения или понятного следующего шага') : t('запросов остались без решения или понятного следующего шага')}
+        <Tile
+          href="#/queue?grp=next"
+          label={t('Без решения запроса')}
+          rubric={t('Качество сервиса')}
+          value={nextN}
+          hint={t('Группа «Без следующего шага» в очереди: клиент ушёл без решения и без понятного следующего шага.')}
+        >
+          {t('из {n} диалогов', { n: S.dialogs.length })}
         </Tile>
-        <Tile href="#/queue?grp=risk" label={t('Контроль рисков')} value={flagged} hint={TERMS.gross}>
-          {t('диалогов с грубыми ошибками, проверено {n}', { n: fl.reviewed })}
+        <Tile href="#/queue?grp=risk" label={t('Грубые ошибки')} rubric={t('Контроль рисков')} value={flagged} hint={TERMS.gross}>
+          {t('из {n} диалогов, проверено {r}', { n: S.dialogs.length, r: fl.reviewed })}
         </Tile>
         <Tile
           href="#/coaching"
-          label={t('Развитие сотрудников')}
+          label={dev ? t('Теряют баллы на «{name}»', { name: dev.name }) : t('Где теряем баллы')}
+          rubric={t('Развитие сотрудников')}
           value={dev ? pct(dev.share) : '—'}
           hint={t('Где теряем больше всего: критерий, на котором чаще всего снижен балл (не меньше трёх применимых оценок). Ссылка ведёт в «Обучение».')}
         >
-          {dev ? t('применимых диалогов ({lost} из {n}) теряют баллы на критерии «{name}»', { lost: dev.lost, n: dev.n, name: dev.name }) : t('мало данных')}
+          {dev ? t('{lost} из {n} применимых диалогов', { lost: dev.lost, n: dev.n }) : t('мало данных')}
         </Tile>
         <Tile
           href="#/analytics"
@@ -248,23 +269,14 @@ export function Analytics() {
             e.preventDefault();
             document.getElementById('reasons')?.scrollIntoView({ block: 'start' });
           }}
-          label={t('Улучшение процессов')}
+          label={t('Повторяющаяся причина')}
+          rubric={t('Улучшение процессов')}
           value={top ? top.dialogs.length : 0}
           hint={t('Самая частая повторяющаяся причина снижения. Кто её исправляет, выбирают в таблице «Повторяющиеся причины».')}
         >
-          {top ? t('диалогов с одной причиной: {tag}', { tag: top.tag.toLowerCase() }) : t('повторяющихся причин нет')}
+          {top ? t('диалогов: {tag}', { tag: top.tag.toLowerCase() }) : t('повторяющихся причин нет')}
         </Tile>
       </section>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Chart
-          title={t('Распределение итогов')}
-          caption={totals.length < S.dialogs.length ? t('Сколько диалогов получили итог в каждом диапазоне; без итога: {n}.', { n: S.dialogs.length - totals.length }) : t('Сколько диалогов получили итог в каждом диапазоне.')}
-          rows={bands}
-          vertical
-        />
-        <Chart title={t('Доля баллов по критериям')} caption={t('Сколько баллов от максимума набрано среди применимых оценок; при 100% у всех полный балл.')} rows={shares} />
-      </div>
 
       <Card aria-label={t('Результат по критериям')}>
         <div className="px-4 pb-1.5 pt-4">
@@ -314,7 +326,7 @@ export function Analytics() {
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 items-start lg:grid-cols-2">
         <Card className="flex min-w-0 flex-col gap-3 p-4" aria-label={t('Критерий и язык')}>
           <div>
             <h2 className="text-base font-semibold">{t('Критерий и язык')}</h2>
@@ -344,11 +356,11 @@ export function Analytics() {
                       return (
                         <td key={l} className="w-[84px] !p-1">
                           {b ? (
-                            <a className={`heat hm${h} grid min-h-9 place-items-center rounded text-[13px] font-semibold no-underline`} style={heatStyle(h)} href={lost(x.cid, l)}>
+                            <a className={`heat hm${h} grid min-h-9 place-items-center rounded text-[13px] font-semibold no-underline`} style={heatStyle(h, dark)} href={lost(x.cid, l)}>
                               {t('{lost} из {n}', { lost: b.lost, n: b.n })}
                             </a>
                           ) : (
-                            <div className="heat hm0 grid min-h-9 place-items-center rounded text-[13px]" style={heatStyle(0)}>
+                            <div className="heat hm0 grid min-h-9 place-items-center rounded text-[13px]" style={heatStyle(0, dark)}>
                               —
                             </div>
                           )}
@@ -361,90 +373,39 @@ export function Analytics() {
             </table>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            <span>{t('Доля диалогов, потерявших баллы: светлее реже')}</span>
+            <span>{t('Чем насыщеннее цвет, тем чаще теряют баллы')}</span>
             <span className="inline-flex gap-0.5" aria-hidden="true">
               {[1, 2, 3, 4].map(h => (
-                <i key={h} className="h-3 w-6 rounded-sm" style={heatStyle(h)} />
+                <i key={h} className="h-3 w-6 rounded-sm" style={heatStyle(h, dark)} />
               ))}
             </span>
           </div>
         </Card>
 
-        <div className="flex min-w-0 flex-col gap-4">
-          <Chart
-            title={t('Грубые ошибки по видам')}
-            term="gross"
-            caption={t('Сколько диалогов с каждым видом грубой ошибки. Балл они не снижают, каждую нужно проверить. Проверено {n} из {total}.', { n: fl.reviewed, total: flagged })}
-            rows={kinds}
-            color="risk"
-            action={
-              <a className="text-[13px]" href="#/queue?grp=risk">
-                {t('Открыть {n} в очереди', { n: flagged })}
-              </a>
-            }
-          />
-          <Card className="flex flex-col gap-3 p-4" aria-label={t('Качество самой оценки')}>
-            <div>
-              <h2 className="text-base font-semibold">{t('Качество самой оценки')}</h2>
-              <p className="text-[13px] text-muted">{t('Можно ли доверять оценке: как часто люди меняют ответы модели.')}</p>
-            </div>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-              {two && (
-                <Stat to="#/queue?grp=review" value={q.answers ? `${Math.round((100 * q.agree) / q.answers)}%` : '—'} hint={TERMS.second}>
-                  {t('ответов: второе мнение совпало ({agree} из {n})', { agree: q.agree, n: q.answers })}
-                </Stat>
-              )}
-              <Stat to="#/queue?grp=review" value={q.evFail}>
-                {two ? t('ответов не подтверждены цитатой из диалога') : t('ответов не подтверждены цитатой из диалога; второе мнение выключено')}
-              </Stat>
-              <Stat to="#/queue?grp=review" value={q.awaiting} hint={TERMS.review}>
-                {t('ответов: нужна проверка человека')}
-              </Stat>
-              <Stat to="#/appeals" value={t('{lost} из {n}', { lost: q.appeals.changed, n: decidedAppeals })} hint={TERMS.appeal}>
-                {t('решённых апелляций изменили оценку; ждут {pending}, закрыто новой версией {closed}', { pending: q.appeals.pending, closed: q.appeals.closed })}
-              </Stat>
-              <Stat value={t('{lost} из {n}', { lost: q.reviews.changed, n: q.reviews.confirmed + q.reviews.changed })}>{t('решений специалиста по расхождениям моделей изменили ответ')}</Stat>
-            </div>
-            <h3 className="text-[13px] font-semibold text-muted">{t('Где модель расходится с людьми')}</h3>
-            {q.byCriterion.length ? (
-              <div className="relative overflow-x-auto">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>{t('Критерий')}</th>
-                      <th>{t('Язык')}</th>
-                      <th className="num">{t('Решено')}</th>
-                      <th className="num">{t('Изменено')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {q.byCriterion.map(x => (
-                      <tr key={`${x.cid}|${x.lang}`} {...rowLink(lost(x.cid, x.lang))} tabIndex={0} onKeyDown={e => e.key === 'Enter' && go(lost(x.cid, x.lang))}>
-                        <td>
-                          <span className="text-muted">{x.cid}</span> {crit(x.cid)?.name ?? ''}
-                        </td>
-                        <td>{x.lang}</td>
-                        <td className="num">{x.decided}</td>
-                        <td className="num">{x.changed}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-[13px] text-muted">{t('Решений пока нет.')}</p>
-            )}
-          </Card>
-        </div>
+        <Chart
+          title={t('Грубые ошибки по видам')}
+          term="gross"
+          caption={t('Сколько диалогов с каждым видом грубой ошибки. Балл они не снижают, каждую нужно проверить. Проверено {n} из {total}.', { n: fl.reviewed, total: flagged })}
+          rows={kinds}
+          color="risk"
+          action={
+            <a className="text-[13px]" href="#/queue?grp=risk">
+              {t('Открыть {n} в очереди', { n: flagged })}
+            </a>
+          }
+        />
       </div>
-
-      <Chart title={t('Кто исправляет причины')} caption={t('Сколько диалогов с повторяющимися причинами у каждого, кто исправляет. Выбор в таблице «Повторяющиеся причины».')} rows={owners} color="ev" />
 
       <Card id="reasons" aria-label={t('Повторяющиеся причины')} className="scroll-mt-20">
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 pb-1.5 pt-4">
           <div>
             <h2 className="text-base font-semibold">{t('Повторяющиеся причины')}</h2>
             <p className="text-[13px] text-muted">{t('Причины снижения сгруппированы по точной формулировке. Кому их исправлять, решает человек: выберите в колонке «Кто исправляет».')}</p>
+            {owners.length > 0 && (
+              <p className="text-[13px] text-ink2">
+                {t('Кто исправляет:')} {owners.map(([o, n]) => `${ownerName(o)}: ${n}`).join(', ')}
+              </p>
+            )}
           </div>
           <Button size="sm" data-act="csv" onClick={() => download('cqa-reasons.csv', reasonsCsv(S))}>
             <Download size={16} aria-hidden="true" /> {t('Скачать причины (CSV)')}
@@ -514,6 +475,87 @@ export function Analytics() {
         </div>
         {rs.single ? <p className="px-4 pb-4 text-[13px] text-muted">{t('Ещё {n} причин встретились по одному разу. Они видны в карточках и в разделе «Обучение».', { n: rs.single })}</p> : null}
       </Card>
+
+      <details onToggle={e => setMore(e.currentTarget.open)}>
+        <summary className="cursor-pointer py-1 text-base font-semibold">{t('Подробно: распределение итогов, доля баллов, качество самой оценки')}</summary>
+        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+          {more && (
+            <>
+              <Chart
+                title={t('Распределение итогов')}
+                caption={totals.length < S.dialogs.length ? t('Сколько диалогов получили итог в каждом диапазоне; без итога: {n}.', { n: S.dialogs.length - totals.length }) : t('Сколько диалогов получили итог в каждом диапазоне.')}
+                rows={bands}
+                vertical
+              />
+              <Chart title={t('Доля баллов по критериям')} caption={t('Сколько баллов от максимума набрано среди применимых оценок; при 100% у всех полный балл.')} rows={shares} />
+            </>
+          )}
+          {/* в DOM всегда: текст блока ищут тесты и диктор, графики выше рисуются только в открытом блоке */}
+          <Card className="flex flex-col gap-3 p-4 lg:col-span-2" aria-label={t('Качество самой оценки')}>
+          <div>
+            <h2 className="text-base font-semibold">{t('Качество самой оценки')}</h2>
+            <p className="text-[13px] text-muted">{t('Можно ли доверять оценке: как часто люди меняют ответы модели.')}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {two && (
+              <Stat to="#/queue?grp=review" value={q.answers ? `${Math.round((100 * q.agree) / q.answers)}%` : '—'} hint={TERMS.second}>
+                {t('ответов: второе мнение совпало ({agree} из {n})', { agree: q.agree, n: q.answers })}
+              </Stat>
+            )}
+            <Stat to="#/queue?grp=review" value={q.evFail}>
+              {two ? t('ответов не подтверждены цитатой из диалога') : t('ответов не подтверждены цитатой из диалога; второе мнение выключено')}
+            </Stat>
+            <Stat to="#/queue?grp=review" value={q.awaiting} hint={TERMS.review}>
+              {t('ответов: нужна проверка человека')}
+            </Stat>
+            {decidedAppeals > 0 && (
+              <Stat to="#/appeals" value={t('{lost} из {n}', { lost: q.appeals.changed, n: decidedAppeals })} hint={TERMS.appeal}>
+                {t('решённых апелляций изменили оценку; ждут {pending}, закрыто новой версией {closed}', { pending: q.appeals.pending, closed: q.appeals.closed })}
+              </Stat>
+            )}
+            {reviewsN > 0 && <Stat value={t('{lost} из {n}', { lost: q.reviews.changed, n: reviewsN })}>{t('решений специалиста по расхождениям моделей изменили ответ')}</Stat>}
+          </div>
+          {!decidedAppeals && !reviewsN && (
+            <p className="text-[13px] text-muted">
+              {q.appeals.pending ? (
+                <a href="#/appeals">{t('Решений пока нет, апелляций ждут решения: {n}.', { n: q.appeals.pending })}</a>
+              ) : (
+                t('Апелляций и решений пока нет.')
+              )}
+            </p>
+          )}
+          {q.byCriterion.length > 0 && (
+            <>
+              <h3 className="text-[13px] font-semibold text-muted">{t('Где модель расходится с людьми')}</h3>
+              <div className="relative overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>{t('Критерий')}</th>
+                      <th>{t('Язык')}</th>
+                      <th className="num">{t('Решено')}</th>
+                      <th className="num">{t('Изменено')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {q.byCriterion.map(x => (
+                      <tr key={`${x.cid}|${x.lang}`} {...rowLink(lost(x.cid, x.lang))} tabIndex={0} onKeyDown={e => e.key === 'Enter' && go(lost(x.cid, x.lang))}>
+                        <td>
+                          <span className="text-muted">{x.cid}</span> {crit(x.cid)?.name ?? ''}
+                        </td>
+                        <td>{x.lang}</td>
+                        <td className="num">{x.decided}</td>
+                        <td className="num">{x.changed}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Card>
+        </div>
+      </details>
       </>
       )}
     </>

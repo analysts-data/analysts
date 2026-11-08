@@ -211,15 +211,22 @@ export function coachingStats(S) {
 }
 
 // «Как звучит хороший ответ»: реплики оператора из оснований ответов с полным баллом.
+// Диалог с грубой ошибкой не образец; реплика-основание сниженного или флагового критерия тоже.
 export function goodExamples(S, cid, limit = 3) {
   const c = S.checklist.criteria.find(x => x.id === cid);
   const out = [];
   for (const d of S.dialogs) {
     const r = d.res[cid];
     if (!r || !r.ev || frac(c, ans(d, cid, S.appeals)) !== 1) continue;
+    if (flagsOf(d, S.checklist, S.appeals).length) continue;
+    const bad = new Set(
+      S.checklist.criteria
+        .filter(x => x.type === 'flag' || (frac(x, ans(d, x.id, S.appeals)) ?? 1) < 1)
+        .flatMap(x => (d.res[x.id] && d.res[x.id].ev) || [])
+    );
     for (const n of r.ev) {
       const l = lineOf(d, n);
-      if (l && l.who === 'operator') out.push({ dialogId: d.id, lineNo: n, text: l.text });
+      if (l && l.who === 'operator' && !bad.has(n)) out.push({ dialogId: d.id, lineNo: n, text: l.text });
     }
   }
   return out.slice(0, limit);
