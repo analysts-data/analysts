@@ -62,6 +62,7 @@ def test_whole_set_is_evaluated_with_progress(api: TestClient) -> None:
         "status": "done",
         "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
         "skipped": 0,
+        "insufficient": 0,
         "dialogs": [
             {"id": "call-024", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
             {"id": "p1-ru-003", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
