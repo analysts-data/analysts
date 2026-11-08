@@ -1,9 +1,8 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
-from datetime import date, datetime
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
@@ -15,8 +14,8 @@ from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
-from cqa.services.analytics import analytics
 from cqa.http.actor import actor_from, signed
+from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
