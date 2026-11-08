@@ -130,6 +130,12 @@
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
 | `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data}` — режим оценки без ключей; провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
+| `POST /api/evaluate?wait=true\|false` | запись организаторов `{conversation_id, channel, language, transcript, audio_url?, operator?}` или `{text, ch, title}`; заголовок `Idempotency-Key` необязателен | 200 `{dialog_id, run_id, total, critical_flag, criteria: [CriterionResult + cid, name], results_v1, errors}`; `wait=false` или оценка дольше 120 с — 202 `{dialog_id, run_id}` (раздел «Интеграционный API») |
+| `POST /api/evaluate/batch` | `{"dialogs": [1..100 элементов как у /evaluate]}`; `Idempotency-Key` | 202 `{run_id, dialog_ids}` |
+| `GET /api/dialogs/{id}` | — | `{dialog_id, total, critical_flag, criteria, results_v1, dialog: Dialog}`; неизвестный id — 404 |
+| `GET /api/runs/{id}/dialogs` | — | ход запуска как `GET /api/runs/{id}` и `run_id`, `dialogs: [{dialog_id, status: "queued" \| "evaluating" \| "done" \| "error" \| "cancelled", done, total, error}]` |
+| `GET /api/results?ids=<id>&ids=<id>` | — | файл результатов организаторов JSON 1.0 `{schema_version, team_name, model, results}` по `ids` в их порядке, без `ids` — по всем диалогам |
+| `GET /api/openapi.json` | — | схема OpenAPI 3.1 по-русски; снимок `docs/openapi.json` (`make openapi`) |
 
 Ссылки организаторов на записи подписаны и живут около часа, поэтому в браузер они не уходят: интерфейс ходит только в `/audio` и `/player`. Сервер хранит `audio_url` в колонке таблицы `dialogs` и не отдаёт её ни в одном ответе. Если ссылку получить не удалось, `/audio` отвечает 502.
 
@@ -212,3 +218,15 @@ JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {di
 ## Доступ по токену (eval-and-delivery)
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
+
+## Интеграционный API (eval-and-delivery)
+
+Для CRM, Dynamics 365 и контакт-центра: те же пути, что у интерфейса, плюс оценка одним вызовом. Примеры curl и Python — `docs/api-examples.md`, схема — `GET /api/openapi.json`.
+
+- `POST /api/evaluate` сохраняет диалог тем же путём, что «Загрузить JSON» (запись организаторов, лишние поля вроде `operator` проходят как есть) или вставка текста (`paste-<n>`), и оценивает его текущим чек-листом через `Runner.start`: запрет реальных звонков без `CQA_ALLOW_REAL_DATA=1` и обезличивание — в оценщике, как у «Оценить». Повтор `conversation_id` диалог не заменяет, готовые пары берутся из кэша. Ошибки оценки (реальный звонок без разрешения, модель недоступна) — строками в `errors`, `criteria` тогда пуст.
+- `total` и `critical_flag` — с учётом последнего решения по апелляциям, как в интерфейсе; `critical_flag` — нарушение любого флага. `results_v1` — запись `results[]` файла JSON 1.0 по карте `results/criteria_map.json`; `null`, если карта не подходит к изменённому чек-листу (`GET /api/results` тогда — 409).
+- `Idempotency-Key` (до 255 символов): повтор с тем же ключом и тем же телом возвращает сохранённый ответ 2xx без новой оценки; другое тело — 422, повтор, пока первый запрос идёт, — 409. Ключи живут в памяти процесса, последние 1000.
+- 409 из-за активного запуска (у `/evaluate`, `/evaluate/batch`, `POST /api/runs`): `{"detail": "Запуск 41 ещё идёт", "run_id": 41, "done": 24, "total": 80, "eta_s": 95}`; диалог при этом не сохраняется.
+- 422 по телу или параметрам у всех путей: `{"detail": "Запрос не прошёл проверку: language — обязательное поле", "errors": [{"path": "language", "message": "обязательное поле", "expected": "\"ru\", \"kz\" или \"en\""}]}`; `path` — поля через точку от корня тела (`dialogs.1.ch`), `""` — тело целиком.
+- Вебхук: при `CQA_WEBHOOK_URL` по концу каждого запуска (в том числе без работы) — `POST` JSON `{"event": "run.finished", run_id, status, done, total, errors, dialog_ids}`, без текста диалогов; при `CQA_WEBHOOK_SECRET` — заголовок `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела>`. Сбой доставки — строка в журнале без адреса, запуск не падает, повтора нет.
+- Доступ: при `CQA_ACCESS_TOKEN` клиент API шлёт `Authorization: Bearer <токен>` вместо cookie; предзапрос CORS проходит без токена, CORS разрешает заголовки `Authorization` и `Idempotency-Key`.

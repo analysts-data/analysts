@@ -81,10 +81,14 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | --- | --- | --- | --- |
 | `NotFound` | `src/cqa/services/errors.py` | 404 | неизвестный диалог, критерий, апелляция, запуск; `/audio` и `/player` для чата |
 | `Invalid` | там же | 422 | недопустимый ответ, пустая причина, плохой `group_id`, файл не в формате организаторов |
-| `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция |
+| `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция; `Conflict(msg, **extra)` — поля `extra` идут в тело рядом с `detail` (`Runner.ensure_idle`: `run_id`, `done`, `total`, `eta_s`) |
 | `Upstream` | там же | 502 | API организаторов не ответил или вернул ошибку; ссылку на запись получить не удалось |
 | `Unavailable` | там же | 503 | источник или оценщик не подключён (`app.state.source is None`, `app.state.runner is None`) |
 | `ConfigError` | там же | — | нет ключа или неизвестный профиль; бросает `evaluate`, попадает строкой в `errors` запуска |
+
+Ошибка проверки тела или параметров FastAPI (`RequestValidationError`) — 422 `{"detail": "Запрос не прошёл проверку: …", "errors": [{path, message, expected}]}` (`src/cqa/http/validation.py`).
+
+`Runner(store, evaluator, *, parallel, clock=time.time, on_finish=None)`: `on_finish(event)` получает `{"event": "run.finished", run_id, status, done, total, errors, dialog_ids}` по каждому запуску из `start`; `ensure_idle()` — Conflict при активном запуске; `dialog_ids(run_id)` и `in_flight()` — состав запуска и диалоги в работе (в памяти процесса).
 
 Примеры 422 из `save_checklist`: `Критерий 05: для канала chat нужен na: true`, `Повторяется id критерия 04`.
 | `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |
@@ -110,6 +114,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.integration.router)` — `/api/evaluate`, `/evaluate/batch`, `/dialogs/{id}`, `/runs/{id}/dialogs`, `/results`; обработчик 422 `cqa.http.validation`; `document(app)` из `cqa.http.openapi` — разделы и описания схемы `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
 
@@ -138,6 +143,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
+| `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (пусто — без вебхука) | eval-and-delivery (`create_app` → `Runner(on_finish=...)`) |
+| `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (пусто — без подписи) | eval-and-delivery (`src/cqa/adapters/webhook.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
 
@@ -191,6 +198,7 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `make eval` | `CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)` | `ARGS="--checklist PATH"`, `ARGS=--accept` |
 | `make eval-holdout` | то же с `--holdout` | `CQA_HOLDOUT_DIR` вне репозитория |
 | `make backup` | `scripts/backup_db.py` → `data/backup/cqa-<HHMM>.db` | `CQA_DB_PATH` |
+| `make openapi` | снимок схемы `/api/openapi.json` в `docs/openapi.json`; `tests/integration/test_openapi.py` сверяет его с кодом | — |
 
 | Файл | Формат | Владелец |
 | --- | --- | --- |
