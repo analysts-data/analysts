@@ -147,6 +147,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (события не отправляются) | eval-and-delivery (алерты, `alert.created`) |
+| `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (без подписи) | eval-and-delivery (`X-CQA-Signature`) |
 | `CQA_ALLOW_PRIVATE_SOURCES` | `allow_private_sources` | `bool` | `False` | dialog-ingest (`src/cqa/adapters/http_source.py`): `http_json` во внутренней сети |
 | `CQA_TELEMETRY` | `telemetry` | `Literal["on", "off"]` | `on` | eval-and-delivery (`POST /api/telemetry`) |
 | `CQA_TELEMETRY_RETENTION_DAYS` | `telemetry_retention_days` | `int` | `30` | eval-and-delivery (очистка при старте) |
@@ -171,6 +173,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `run_dialogs` | `run_id`, `dialog_id` (PK вместе), `status CHECK IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')`, `total`, `done`, `skipped`, `error`; статус меняется (`Runner`) | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
 | `bands` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON `{bands, why}`), `saved` (ISO); `Store.bands() -> (body, saved) \| None`, `Store.set_bands(body)` | eval-and-delivery (`src/cqa/services/bands.py`) |
+| `markers` | `dialog_id`, `label`, `by`, `at`, PK (`dialog_id`, `label`) — ручные маркеры | eval-and-delivery (alerts) |
+| `lists` | `name TEXT PK` (`markers_catalog`, `alert_rules`), `body` JSON | eval-and-delivery (alerts) |
+| `alerts` | `id`, `rule_id`, `severity`, `title`, `target_type`, `target_id`, `basis` JSON, `created`, `status CHECK IN ('new', 'ack', 'resolved')`, `assignee`, `acked_by`, `acked_at`, `resolved_by`, `resolved_at`, `note`; `UNIQUE (rule_id, target_type, target_id)` | eval-and-delivery (alerts) |
 | `appeal_reasons` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON-список `{code, label, applies}`); нет строки — каталог по умолчанию | eval-and-delivery (reason-codes) |
 | `telemetry` | `id`, `at` (ISO UTC, мс), `actor`, `role`, `event`, `page`, `props` (JSON после `clean_props`); `UPDATE` запрещён триггером, `DELETE` — только очистка старше `telemetry_retention_days` в `create_app` | eval-and-delivery (`src/cqa/services/telemetry.py`) |
 | `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |

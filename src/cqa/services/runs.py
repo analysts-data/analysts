@@ -2,8 +2,9 @@
 отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -16,6 +17,8 @@ from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
 from cqa.services.sufficiency import assess_dialogs
+
+log = logging.getLogger(__name__)
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -138,8 +141,15 @@ class Runner:
     """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди."""
 
     def __init__(
-        self, store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time
+        self,
+        store: Store,
+        evaluator: Evaluator,
+        *,
+        parallel: int,
+        clock: Callable[[], float] = time.time,
+        on_finish: Callable[[], Awaitable[object]] | None = None,  # проверка алертов после запуска
     ) -> None:
+        self._on_finish = on_finish
         self._store = store
         self._evaluator = evaluator
         self._parallel = parallel
@@ -294,6 +304,11 @@ class Runner:
         finally:
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
+        if self._on_finish is not None:
+            try:
+                await self._on_finish()
+            except Exception:  # алерты вторичны: запуск уже сохранён
+                log.exception("проверка алертов после запуска %s", run_id)
 
     async def _evaluate(
         self,

@@ -37,6 +37,8 @@ DEFAULTS = {
     "db_path": "data/cqa.db",
     "eval_dataset": Path("data/dev.json"),
     "holdout_dir": None,
+    "webhook_url": None,
+    "webhook_secret": None,
     "telemetry": "on",
     "telemetry_retention_days": 30,
     "eval_reports_dir": Path("eval/reports"),
