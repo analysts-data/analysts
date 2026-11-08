@@ -1,0 +1,13 @@
+# Локальный запуск для базовой технической проверки: том ./data для базы, .env необязателен
+# (без него контейнер стартует в replay на записанных ответах, без ключа и сети).
+services:
+  cqa:
+    build: .
+    image: cqa:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - path: .env
+        required: false

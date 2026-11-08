@@ -189,10 +189,12 @@ class Runner:
                     return
                 await self._evaluate(run_id, checklist, fps, dialog, criteria)
 
+        cancelled = True  # прерванная задача (Ctrl-C, остановка сервера) — не «done»
         try:
             await asyncio.gather(*(worker() for _ in range(self._parallel)))
+            cancelled = self._cancel.is_set()
         finally:
-            self._store.finish_run(run_id, self._clock(), "cancelled" if self._cancel.is_set() else "done")
+            self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
 
     async def _evaluate(

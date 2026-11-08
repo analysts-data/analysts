@@ -55,3 +55,4 @@ class Settings(BaseSettings):
     holdout_dir: Path | None = None
     webhook_url: str | None = None  # POST run.finished when a run ends (integration API)
     webhook_secret: SecretStr | None = None  # HMAC-SHA256 of the body in X-CQA-Signature
+    access_token: SecretStr | None = None  # show over the LAN: cookie from /login?token=, empty — open

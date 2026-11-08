@@ -1,0 +1,22 @@
+# секреты и локальный конфиг: в образ не попадают
+.env
+.env.*
+!.env.example
+
+# локальные данные и базы: в контейнере том (docker-compose.yml), а не контекст сборки
+data/
+
+# рабочие копии агентов, окружения и кэши
+.worktrees/
+node_modules/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+test-results/
+playwright-report/
+
+# служебное
+.git
+.DS_Store
