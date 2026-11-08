@@ -208,3 +208,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Доступ по токену (eval-and-delivery)
+
+Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
