@@ -209,6 +209,7 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | --- | --- | --- |
 | `CQA_LLM_PROVIDER` → `llm_provider` | `Settings`, `str`, `env` | код основной модели; `effective` переносит поля провайдера в `llm_base_url`, `llm_model`, `llm_profile`, `llm_api_key`, `data_where` |
 | `CQA_PROVIDERS` → `providers` | `Settings`, `dict[str, Provider]`, `{}` | JSON `{код: {label, base_url, model, profile, where, key}}`; `effective` добавляет `env`, список из базы (`overrides["providers"]`) заменяет этот |
+| `CQA_OPENROUTER_API_KEY` → `openrouter_api_key` | `Settings`, `SecretStr \| None`, `None` | ключ встроенного провайдера `openrouter-jev`; `effective` добавляет его вторым после `env` |
 | `CQA_VERIFIER` → `verifier` | `Settings`, `str \| None` | `"jev"` или код провайдера; `Mode.verifier` — `str \| None` |
 | `Provider` | `src/cqa/settings.py` | `label`, `base_url: str \| None`, `model`, `profile`, `where`, `key: SecretStr \| None` |
 | `put_provider`, `delete_provider`, `provider`, `as_llm` | `src/cqa/services/llm_config.py` | `put_provider(store, settings, pid, body, apply)`, `delete_provider(store, settings, pid, apply)` -> `Settings`, как `configure`; `provider(settings, pid)` — `NotFound`; `as_llm(provider)` — поля основной модели |
