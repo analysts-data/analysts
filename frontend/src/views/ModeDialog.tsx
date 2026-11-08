@@ -1,10 +1,11 @@
 // Окно режима оценки по клику на плашку #mode: оценщик, модели OpenAI-формата со своими ключами, основная модель,
 // второе мнение, обезличивание, реальные звонки. GET и PUT /api/config, PUT и DELETE /api/providers/{id}, POST …/check.
+// Пояснения здесь строкой, не Tip: подсказка Radix рисуется в body, под верхним слоем модального <dialog>.
 import { useEffect, useState } from 'react';
 import { configBody, providerBody, risks, whereOf } from '../lib/config.js';
 import { api, reload, toast } from '../lib/state.js';
 import { useS } from '../store';
-import { Term, TERMS } from '../terms';
+import { TERMS } from '../terms';
 import { Button, Chip, Field } from '../ui';
 import { Dlg } from './checklist/Dlg';
 
@@ -191,7 +192,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       }
     >
       {cfg.llm_mode !== 'live' && (
-        <p className="box ev" title={TERMS.replay}>
+        <p className="box ev">
           Демо-режим: модель не вызывается, показаны записанные ответы. Настройки подключения ниже не используются.
         </p>
       )}
@@ -233,7 +234,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
               </span>
             </label>
             <span className="flex flex-wrap gap-1.5">
-              <Button size="sm" data-act="prov-check" title="Один короткий запрос без реальных данных" onClick={() => check(p)}>
+              <Button size="sm" data-act="prov-check" onClick={() => check(p)}>
                 Проверить связь
               </Button>
               {p.id !== ENV && (
@@ -241,7 +242,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
                   <Button size="sm" data-act="prov-edit" onClick={() => setEdit(p)}>
                     Изменить
                   </Button>
-                  <Button size="sm" variant={p.id === BUILTIN ? 'default' : 'danger'} data-act="prov-del" title={p.id === BUILTIN ? 'Вернуть исходные настройки' : undefined} onClick={() => del(p)}>
+                  <Button size="sm" variant={p.id === BUILTIN ? 'default' : 'danger'} data-act="prov-del" onClick={() => del(p)}>
                     {p.id === BUILTIN ? 'Сбросить' : 'Удалить'}
                   </Button>
                 </>
@@ -255,7 +256,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </Button>
         </div>
       </fieldset>
-      <Field label={<Term k="second">Второе мнение</Term>} hint="Ещё один ответ на диалог; расхождения уходят в «Нужна проверка человека». В режиме «Только Jev» не используется.">
+      <Field label="Второе мнение" hint={`${TERMS.second} В режиме «Только Jev» не используется.`}>
         <select name="verifier" className={fld} defaultValue={cfg.verifier || ''}>
           {second.map(([v, t]) => (
             <option key={v} value={v}>
@@ -270,8 +271,8 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       <label className="flex items-baseline gap-2 text-sm">
         <input type="checkbox" name="anonymize" defaultChecked={cfg.anonymize} />
         <span>
-          <Term k="anon">Обезличивать транскрипты</Term> перед отправкой модели
-          <span className="block text-xs text-muted">Имена, телефоны, почта, номера карт, IBAN и ИИН заменяются метками до запроса.</span>
+          Обезличивать транскрипты перед отправкой модели
+          <span className="block text-xs text-muted">Имена, телефоны, почта, номера карт, IBAN и ИИН заменяются метками до отправки модели.</span>
         </span>
       </label>
       <label className="flex items-baseline gap-2 text-sm">

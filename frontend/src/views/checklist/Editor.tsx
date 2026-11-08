@@ -10,7 +10,7 @@ import { Button, Card, Chip, Field } from '../../ui';
 
 const SIGNALS = [
   ['', 'Нет'],
-  ['resolution', 'Решение запроса (группа «Без следующего шага»)'],
+  ['resolution', 'Решение запроса'],
   ['risk', 'Грубая ошибка'],
 ];
 export const SIGNAL_CHIP: Record<string, string> = { resolution: 'Решение запроса', risk: 'Грубая ошибка' };
@@ -129,7 +129,9 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
           <div className="box na flex flex-col gap-2">
             <label className="flex flex-wrap items-center gap-x-2 font-semibold">
               <input id="cf-na" type="checkbox" checked={!!c.na} onChange={on('na')} />
-              Может быть <Term k="na">N/A</Term> (не применимо)
+              <span>
+                Может быть <Term k="na">N/A</Term> (не применимо)
+              </span>
               <span className="basis-full text-xs font-normal text-muted">Если условие выполнено, критерий не оценивается, а его вес делят остальные.</span>
             </label>
             {c.na && (
@@ -155,7 +157,7 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
               {opts(CHANNELS)}
             </select>
           </Field>
-          <Field label="Роль в отчётах" hint="Определяет, в какую группу очереди и плитку аналитики попадёт критерий.">
+          <Field label="Роль в отчётах" hint="Определяет группу очереди и плитку аналитики: «Решение запроса» даёт группу «Без следующего шага».">
             <select id="cf-sig" className="fld" value={c.signal || ''} onChange={on('signal')}>
               {opts(SIGNALS)}
             </select>

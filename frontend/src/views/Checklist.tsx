@@ -1,6 +1,6 @@
 // Редактор чек-листа: черновик S.draft — копия применяемой версии, правки живут в браузере до сохранения.
 // Сохранение создаёт новую версию (PUT /api/checklist), ответ pending — критерии, которые ждут оценки модели.
-import { ChevronDown, Download, GitCompare, Plus, RotateCcw, Save, Upload } from 'lucide-react';
+import { ChevronDown, Download, Plus, Save, Upload } from 'lucide-react';
 import { useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react';
 import { exportQuestions, importQuestions } from '../lib/checklist_json.js';
 import { f2, fn } from '../lib/format.js';
@@ -8,9 +8,9 @@ import { href } from '../lib/router.js';
 import { calc } from '../lib/scoring.js';
 import { api, cancelRun, failedDialogs, reload, runNote, startRun, toast } from '../lib/state.js';
 import { rerender, useS } from '../store';
-import { Button, Card, Chip, cn, PageHead } from '../ui';
+import { Button, Card, Chip, cn, PageHead, Tip } from '../ui';
 import { Dlg } from './checklist/Dlg';
-import { TERMS } from '../terms';
+import { Term } from '../terms';
 import { Editor, RulesEditor, setDraft, SIGNAL_CHIP } from './checklist/Editor';
 
 const TYPE_NAME: Record<string, string> = { bool: 'Да/Нет', scale: 'Шкала', flag: 'Грубая ошибка' };
@@ -153,20 +153,23 @@ export function Checklist() {
       <PageHead
         title="Чек-лист качества"
         sub={
-          <span className="sub" title={TERMS.version}>
-            {qa ? '' : 'Как оценивается ваша работа. '}Версия {cl.version} применяется к набору. Изменения сохраняются новой версией.
+          <span className="sub">
+            {qa ? '' : 'Как оценивается ваша работа. '}
+            <Term k="version">Версия {cl.version}</Term> применяется к набору. Изменения сохраняются новой версией.
           </span>
         }
       >
         {dirty && qa && <Chip tone="ev">Есть несохранённые изменения</Chip>}
         {qa && before != null && after != null && f2(before) !== f2(after) && (
-          <span className="text-[13px] text-muted" title="Средний итог по набору сейчас и после сохранения черновика, по уже полученным ответам">
-            Средний итог {f2(before)} → <b className="text-ink">{f2(after)}</b>
-          </span>
+          <Tip content="Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам">
+            <span tabIndex={0} className="text-[13px] text-muted">
+              Средний итог {f2(before)} → <b className="text-ink">{f2(after)}</b>
+            </span>
+          </Tip>
         )}
         {qa && (
           <Menu label="Импорт" icon={<Upload size={16} aria-hidden="true" />}>
-            <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')} title={dirty ? 'Сначала сохраните или отмените правки: файл заменит черновик' : undefined}>
+            <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')}>
               Импорт из файла чек-листа (JSON)
               <input type="file" accept=".json,application/json" data-act="cimport" className="sr" disabled={dirty} onChange={importJson} />
             </label>
@@ -174,28 +177,34 @@ export function Checklist() {
               Импорт из формата Jev
               <input type="file" accept=".json,application/json" data-act="cjevimport" className="sr" disabled={S.busy} onChange={importJev} />
             </label>
-            <span className="px-2.5 pt-1 text-xs text-muted">Файл чек-листа заменяет черновик. Вопросы Jev обновляют его по ID, веса настраиваются отдельно.</span>
+            <span className="px-2.5 pt-1 text-xs text-muted">
+              {dirty ? 'Файл чек-листа заменит черновик: сначала сохраните или отмените правки. ' : 'Файл чек-листа заменяет черновик. '}
+              Вопросы Jev обновляют его по ID, веса настраиваются отдельно.
+            </span>
           </Menu>
         )}
         <ExportMenu S={S} onJev={qa ? exportJev : null} />
         {qa && (
           <>
-            <Button data-act="creset" disabled={!dirty} onClick={() => (setDraft(null), rerender())}>
-              <RotateCcw size={16} aria-hidden="true" />
+            <Button variant="ghost" data-act="creset" disabled={!dirty} onClick={() => (setDraft(null), rerender())}>
               Отменить изменения
             </Button>
-            <Button data-act="cwhat" disabled={!dirty} title="Сервер сравнит черновик с действующей версией; ничего не сохраняется" onClick={() => showDiff(`Что изменится при сохранении v${cl.version + 1}`, () => api.diffDraft(S.draft))}>
-              <GitCompare size={16} aria-hidden="true" />
+            <Button data-act="cwhat" disabled={!dirty} onClick={() => showDiff(`Что изменится при сохранении v${cl.version + 1}`, () => api.diffDraft(S.draft))}>
               Что изменится
             </Button>
             <Button data-act="cadd" onClick={add}>
               <Plus size={16} aria-hidden="true" />
               Добавить критерий
             </Button>
-            <Button variant="primary" data-act="csave" disabled={!dirty || S.busy} onClick={save}>
-              <Save size={16} aria-hidden="true" />
-              Сохранить как v{cl.version + 1}
-            </Button>
+            {/* у неактивной кнопки нет событий мыши: подсказку держит обёртка */}
+            <Tip content={S.busy ? 'Сохраняем…' : dirty ? null : 'Изменений нет: правьте критерий или общие правила, затем сохраните новую версию.'}>
+              <span tabIndex={dirty ? undefined : 0} className="inline-flex">
+                <Button variant="primary" data-act="csave" disabled={!dirty || S.busy} onClick={save}>
+                  <Save size={16} aria-hidden="true" />
+                  Сохранить как v{cl.version + 1}
+                </Button>
+              </span>
+            </Tip>
           </>
         )}
       </PageHead>
@@ -232,7 +241,6 @@ export function Checklist() {
                   variant={dirty ? 'default' : 'primary'}
                   data-act="crun"
                   disabled={!!run || S.busy}
-                  title="Модель оценит только эти критерии; остальные ответы уже есть"
                   onClick={() => busy(S, () => startRun({ dialogs: null, criteria: waiting(S) }))}
                 >
                   {run ? 'Идёт оценка…' : 'Оценить набор'}
@@ -244,7 +252,7 @@ export function Checklist() {
         </section>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.3fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.3fr)]">
         <Card className="p-2.5" aria-label="Структура чек-листа">
           {dr.sections.map((s: string, si: number) => {
             const items = dr.criteria.filter((x: any) => x.sec === si);
@@ -252,7 +260,7 @@ export function Checklist() {
               <div key={si}>
                 <p className="flex justify-between px-2.5 pb-1 pt-2 text-xs font-semibold text-muted">
                   <span>{s}</span>
-                  <span title="Сумма весов секции">{wsum(scored(items)) || ''}</span>
+                  <span>{wsum(scored(items)) || ''}</span>
                 </p>
                 <div className="flex flex-col gap-0.5">
                   {items.map((x: any) => (
@@ -262,7 +270,6 @@ export function Checklist() {
                       data-act="csel"
                       data-cid={x.id}
                       aria-current={x.id === S.cSel}
-                      title={x.text}
                       onClick={() => ((S.cSel = x.id), rerender())}
                       className={cn(
                         'grid min-h-10 w-full grid-cols-[auto_minmax(0,1fr)_auto_30px] items-center gap-2 rounded-lg px-2.5 py-1.5 text-left',
@@ -280,7 +287,7 @@ export function Checklist() {
                         {TYPE_NAME[x.type] ?? x.type}
                         {x.na ? ', N/A' : ''}
                       </span>
-                      <b className="num" title="Вес">
+                      <b className="num">
                         {x.type === 'flag' ? '—' : x.w}
                       </b>
                     </button>
@@ -300,7 +307,7 @@ export function Checklist() {
             )}
           </div>
           <div className="flex flex-col gap-1 px-2.5 pb-1 pt-3 text-[13px]">
-            <span className="text-xs font-semibold text-muted" title={TERMS.version}>
+            <span className="text-xs font-semibold text-muted">
               Версии
             </span>
             {S.versions
@@ -310,7 +317,7 @@ export function Checklist() {
                 <span key={v.v} className="flex flex-wrap items-center gap-1.5">
                   v{v.v}: {v.note}{' '}
                   {v.v === cl.version ? (
-                    <Chip tone="ok" title={TERMS.version}>
+                    <Chip tone="ok">
                       применяется
                     </Chip>
                   ) : (
@@ -319,7 +326,6 @@ export function Checklist() {
                       variant="ghost"
                       data-act="cdiff"
                       data-v={v.v}
-                      title={`Что отличается в v${v.v} от действующей v${cl.version}`}
                       onClick={() => showDiff(`Сравнение v${v.v} с текущей v${cl.version}`, () => api.diffVersions(v.v, cl.version))}
                     >
                       Сравнить с текущей
@@ -386,7 +392,7 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
   return (
     <Menu label="Экспорт" icon={<Download size={16} aria-hidden="true" />} pop="menu-pop">
       <label className="mb-1 flex flex-col gap-1.5 px-2.5 pt-1">
-        <span className="text-[13px] font-semibold text-ink2" title={TERMS.version}>
+        <span className="text-[13px] font-semibold text-ink2">
           Сохранённая версия
         </span>
         <select className="fld" value={sel} onChange={e => setV(Number(e.currentTarget.value))}>
@@ -408,7 +414,7 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
       {onJev && (
         <>
           <hr className="my-1 border-line2" />
-          <button type="button" className={item} data-act="cjevexport" title="Вопросы Jev из текущего черновика" onClick={onJev}>
+          <button type="button" className={item} data-act="cjevexport" onClick={onJev}>
             Экспорт в формат Jev
           </button>
         </>
