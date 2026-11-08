@@ -165,15 +165,20 @@ def empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> None:
-    monkeypatch.setattr(results, "build_evaluator", lambda settings: evaluator)
+def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> list[object]:
+    """Подменяет оценщик; список — порты интонации, с которыми его собрали."""
+    ports: list[object] = []
+    monkeypatch.setattr(
+        results, "build_evaluator", lambda settings, prosody: ports.append(prosody) or evaluator
+    )
+    return ports
 
 
 def test_evaluate_loads_the_file_evaluates_missing_pairs_and_exports_them(
     empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     evaluator = FakeEvaluator(fail_on=[SYN[0]])
-    fake_model(monkeypatch, evaluator)
+    ports = fake_model(monkeypatch, evaluator)
     out = empty / "dev.json"
     args = ["dev", "--source", str(ORG_PAYLOAD), "--evaluate", "--model-name", "fake", "--out", str(out)]
 
@@ -187,6 +192,7 @@ def test_evaluate_loads_the_file_evaluates_missing_pairs_and_exports_them(
     assert [r["conversation_id"] for r in doc["results"]] == SYN
     assert [r["status"] for r in doc["results"]] == ["error", *["ok"] * (len(SYN) - 1)]
     assert sorted(evaluator.order) == sorted(SYN)
+    assert len(ports) == 1 and callable(ports[0])  # звонки оцениваются с интонацией, как в интерфейсе
 
     again = FakeEvaluator()
     fake_model(monkeypatch, again)

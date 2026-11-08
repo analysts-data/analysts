@@ -5,6 +5,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -24,6 +25,19 @@ PROFILES: dict[str, dict[str, dict[str, Any]]] = {
         "off": {"thinking": {"type": "disabled"}, "response_format": {"type": "json_object"}},
     },
 }
+
+
+# атрибуция приложения у OpenRouter, только для его адреса
+_OPENROUTER_HEADERS = {"HTTP-Referer": "https://github.com/analysts-data/analysts", "X-Title": "CQA"}
+
+
+def _is_openrouter(base_url: str | None) -> bool:
+    return urlsplit(base_url or "").hostname == "openrouter.ai"
+
+
+def _headers(base_url: str | None, key: str) -> dict[str, str]:
+    auth = {"Authorization": f"Bearer {key}"}
+    return auth | _OPENROUTER_HEADERS if _is_openrouter(base_url) else auth
 
 
 def _error_text(response: httpx.Response) -> str:
@@ -96,7 +110,7 @@ async def ping(http: httpx.AsyncClient, provider: Provider) -> dict[str, Any]:
     http_ms: list[float] = []
     try:
         url = f"{provider.base_url}/chat/completions"
-        await post_json(http, url, body, {"Authorization": f"Bearer {key}"}, attempts=1, http_ms=http_ms)
+        await post_json(http, url, body, _headers(provider.base_url, key), attempts=1, http_ms=http_ms)
     except (ModelUnavailable, ValueError) as exc:
         return {"ok": False, "ms": int(sum(http_ms)), "error": str(exc)}
     return {"ok": True, "ms": int(sum(http_ms)), "error": None}
@@ -147,10 +161,12 @@ class ChatClient:
             )
         body: dict[str, Any] = {"model": self._settings.llm_model, "messages": messages}
         body |= profile[self._settings.llm_reasoning]
+        if _is_openrouter(self._settings.llm_base_url):
+            body["usage"] = {"include": True}  # OpenRouter возвращает цену запроса в usage.cost
         # ключа может не быть в replay (кассеты не ходят в сеть); в live отсутствие ключа
         # раньше этого места блокирует LlmEvaluator через config_error
         api_key = self._settings.llm_api_key.get_secret_value() if self._settings.llm_api_key else ""
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = _headers(self._settings.llm_base_url, api_key)
         http_ms: list[float] = []
         async with self._semaphore:
             data = await post_json(
@@ -163,9 +179,11 @@ class ChatClient:
                 http_ms=http_ms,
             )
         usage = data.get("usage") or {}
-        cost = (
-            usage.get("prompt_tokens", 0) * self._settings.llm_price_in
-            + usage.get("completion_tokens", 0) * self._settings.llm_price_out
-        ) / 1_000_000
+        cost = usage.get("cost")  # цена от провайдера (OpenRouter) точнее цены за токены из настроек
+        if not isinstance(cost, int | float):
+            cost = (
+                usage.get("prompt_tokens", 0) * self._settings.llm_price_in
+                + usage.get("completion_tokens", 0) * self._settings.llm_price_out
+            ) / 1_000_000
         text = data["choices"][0]["message"]["content"] or ""  # только рассуждение: content null
         return Reply(text=text, cost=cost, ms=int(sum(http_ms)))

@@ -21,6 +21,7 @@ DEFAULTS = {
     "llm_price_out": 0.0,
     "llm_provider": "env",
     "providers": {},
+    "openrouter_api_key": None,
     "verifier": None,
     "evaluator": "llm",
     "jev_api_key": None,
