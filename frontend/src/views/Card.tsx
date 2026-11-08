@@ -222,29 +222,32 @@ export function CardView({ id }: { id: string | null }) {
           </Tip>
         )}
         {qa && todo < cl.criteria.length && (
-          <Tip
-            content={
-              running
-                ? t('Идёт оценка. Кнопка станет активной, когда она закончится.')
-                : t('Модель оценит диалог ещё раз. Ручные ответы и решения по апелляциям не меняются, прежние оценки остаются в истории.')
-            }
-          >
-            <span>
-              <Button
-                data-act="rerun"
-                disabled={running || again}
-                onClick={async () => {
-                  setAgain(true);
-                  await rerun(d);
-                  setAgain(false);
-                }}
-              >
-                {t('Оценить заново')}
-              </Button>
-            </span>
-          </Tip>
+          <span className="inline-flex">
+            <Tip
+              content={
+                running
+                  ? t('Идёт оценка. Кнопка станет активной, когда она закончится.')
+                  : t('Модель оценит диалог ещё раз. Ручные ответы и решения по апелляциям не меняются, прежние оценки остаются в истории.')
+              }
+            >
+              <span>
+                <Button
+                  data-act="rerun"
+                  className="rounded-r-none"
+                  disabled={running || again}
+                  onClick={async () => {
+                    setAgain(true);
+                    await rerun(d);
+                    setAgain(false);
+                  }}
+                >
+                  {t('Оценить заново')}
+                </Button>
+              </span>
+            </Tip>
+            <RecheckMenu dialogs={[d.id]} joined />
+          </span>
         )}
-        {qa && todo < cl.criteria.length && <RecheckMenu dialogs={[d.id]} />}
         {qa && (
           <Button data-act="reviewed" disabled={busy} onClick={markReviewed}>
             {d.reviewed ? t('Снять отметку') : t('Отметить проверенным')}

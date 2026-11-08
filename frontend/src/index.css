@@ -65,6 +65,7 @@ html{--shadow-pop:0 8px 24px rgba(16,24,40,.12),0 1px 2px rgba(16,24,40,.06);--o
   .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
   .tbl td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
   .tbl tr.click{cursor:pointer}
+  .tbl tr.align-top>td{vertical-align:top}
   .tbl tr.click:hover td{background:var(--hover)}
   .tbl tr.grp td{background:var(--sunken);font-weight:600;font-size:13px;padding:9px 12px}
   .tbl tr.sel td{background:var(--accent-soft)}

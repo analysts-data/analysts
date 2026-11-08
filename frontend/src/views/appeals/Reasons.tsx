@@ -21,12 +21,20 @@ const TOP = 5;
 
 /** «Изменено людьми»: доля пар диалог × критерий, где ответ модели заменили решением или ручным ответом. */
 export function Changed({ stats }: { stats: any }) {
+  const [all, setAll] = useState(false);
   const m = stats?.modified;
   if (!m?.pairs) return null;
   const crit: any[] = m.criteria ?? [];
   const why: any[] = stats.reasons ?? [];
   const langs: any[] = m.langs ?? [];
-  const more = (n: number) => n > TOP && <p className="pt-2 text-xs text-muted">{t('И ещё {n}', { n: n - TOP })}</p>;
+  const top = all ? undefined : TOP;
+  const more = (n: number) =>
+    n > TOP && (
+      <button type="button" className="pt-2 text-xs font-semibold text-accent hover:text-accent-ink" onClick={() => setAll(!all)}>
+        {all ? t('Свернуть') : t('Показать ещё {n}', { n: n - TOP })}
+      </button>
+    );
+  const quiet = !m.changed && !why.length; // пока никто ничего не исправил, таблицы из нулей не нужны
   return (
     <Card className="divide-y divide-line2" aria-label={t('Изменено людьми')} data-act="changed">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-4">
@@ -37,74 +45,76 @@ export function Changed({ stats }: { stats: any }) {
           {t('Ответы, которые проверяющий заменил решением по апелляции или специалист исправил вручную. Чем выше доля у критерия, тем хуже модель его понимает.')}
         </p>
       </div>
-      <div className="grid gap-x-6 gap-y-4 px-5 py-4 md:grid-cols-2">
-        <div className="min-w-0">
-          <h3 className="mb-1 text-[13px] font-semibold text-ink2">{t('По критериям, худшие первыми')}</h3>
-          <div className="overflow-x-auto">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>{t('Критерий')}</th>
-                  <th className="!text-right">{t('Изменено')}</th>
-                  <th className="!text-right">{t('Доля')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {crit.slice(0, TOP).map(c => (
-                  <tr key={c.id}>
-                    <td>
-                      {c.id} {c.name}
-                    </td>
-                    <td className="num text-right">{t('{changed} из {pairs}', { changed: c.changed, pairs: c.pairs })}</td>
-                    <td className="num text-right font-semibold">{pct(c.share)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {more(crit.length)}
-          {langs.length > 1 && (
-            <p className="pt-2 text-xs text-muted">
-              {t('По языкам:')} {langs.map(l => `${l.key} ${pct(l.share)} (${l.changed}/${l.pairs})`).join(', ')}
-            </p>
-          )}
-        </div>
-        <div className="min-w-0">
-          <h3 className="mb-1 text-[13px] font-semibold text-ink2">{t('Причины решений: {n}', { n: stats.decisions ?? 0 })}</h3>
-          {why.length ? (
+      {!quiet && (
+        <div className="grid gap-x-6 gap-y-4 px-5 py-4 md:grid-cols-2">
+          <div className="min-w-0">
+            <h3 className="mb-1 text-[13px] font-semibold text-ink2">{t('По критериям, худшие первыми')}</h3>
             <div className="overflow-x-auto">
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>{t('Причина')}</th>
                     <th>{t('Критерий')}</th>
-                    <th className="!text-right">{t('Решений')}</th>
+                    <th className="!text-right">{t('Изменено')}</th>
+                    <th className="!text-right">{t('Доля')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {why.slice(0, TOP).map(r => (
-                    <tr key={`${r.code}-${r.cid}-${r.status}`}>
+                  {crit.slice(0, top).map(c => (
+                    <tr key={c.id}>
                       <td>
-                        {r.code ? r.label : t('Без кода')}
-                        <span className="block text-xs text-muted">{r.status === 'changed' ? t('Оценка изменена') : t('Оценка подтверждена')}</span>
+                        {c.id} {c.name}
                       </td>
-                      <td>
-                        <Tip content={r.name}>
-                          <span tabIndex={0}>{r.cid}</span>
-                        </Tip>
-                      </td>
-                      <td className="num text-right">{r.n}</td>
+                      <td className="num text-right">{t('{changed} из {pairs}', { changed: c.changed, pairs: c.pairs })}</td>
+                      <td className="num text-right font-semibold">{pct(c.share)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <p className="text-[13px] text-muted">{t('Решений по апелляциям пока нет.')}</p>
-          )}
-          {more(why.length)}
+            {more(crit.length)}
+            {langs.length > 1 && (
+              <p className="pt-2 text-xs text-muted">
+                {t('По языкам:')} {langs.map(l => `${l.key} ${pct(l.share)} (${l.changed}/${l.pairs})`).join(', ')}
+              </p>
+            )}
+          </div>
+          <div className="min-w-0">
+            <h3 className="mb-1 text-[13px] font-semibold text-ink2">{t('Причины решений: {n}', { n: stats.decisions ?? 0 })}</h3>
+            {why.length ? (
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>{t('Причина')}</th>
+                      <th>{t('Критерий')}</th>
+                      <th className="!text-right">{t('Решений')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {why.slice(0, top).map(r => (
+                      <tr key={`${r.code}-${r.cid}-${r.status}`}>
+                        <td>
+                          {r.code ? r.label : t('Без кода')}
+                          <span className="block text-xs text-muted">{r.status === 'changed' ? t('Оценка изменена') : t('Оценка подтверждена')}</span>
+                        </td>
+                        <td>
+                          <Tip content={r.name}>
+                            <span tabIndex={0}>{r.cid}</span>
+                          </Tip>
+                        </td>
+                        <td className="num text-right">{r.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-[13px] text-muted">{t('Решений по апелляциям пока нет.')}</p>
+            )}
+            {more(why.length)}
+          </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 }
