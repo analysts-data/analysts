@@ -149,6 +149,19 @@ class Product(BaseModel):  # тема обращения: справочник G
     description: str = ""
 
 
+class ClientOffer(BaseModel):
+    """Банковское предложение, которое сотрудник/QA проверил и вручную привязал к сигналам."""
+
+    id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=1000)
+    topic_ids: list[str] = []
+    keywords: list[str] = []
+    next_step: str = Field(default="", max_length=500)
+    eligibility: str = Field(default="", max_length=500)
+    approved: bool = False
+
+
 class ProductBasis(BaseModel):
     why: str | None = None  # обоснование: причина от модели с номерами реплик, вывод Jev или причина вручную
     ev: list[int] = []  # реплики-основания (модель)
