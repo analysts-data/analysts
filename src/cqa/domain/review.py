@@ -92,6 +92,14 @@ def effective_answer(result: CriterionResult, decided: Sequence[Appeal]) -> Resu
     return tos[-1] if tos else result.a
 
 
+def effective_answers(d: Dialog, appeals: Sequence[Appeal]) -> dict[str, ResultAnswer]:
+    """Ответы диалога с учётом решений: из них считают итог отчёт и «что если»."""
+    return {
+        cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
+        for cid, r in d.res.items()
+    }
+
+
 def needs_review(c: Criterion, r: CriterionResult) -> bool:
     """Расхождение моделей, проваленное основание или ответ без основания при неполных данных."""
     return c.type in ("bool", "scale") and (

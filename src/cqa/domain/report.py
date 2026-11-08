@@ -1,6 +1,6 @@
 """Отчёт для руководства: ключевые числа, критерии, причины, каналы и языки, выводы. Чистые функции.
 
-Ответ пары — с учётом последнего решения (`effective_answer`), итог — `scoring.total`, доля — `frac`:
+Ответ пары — с учётом последнего решения (`effective_answers`), итог — `scoring.total`, доля — `frac`:
 те же числа, что видит интерфейс.
 """
 
@@ -11,12 +11,13 @@ from html import escape
 from typing import Any
 
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
-from cqa.domain.review import awaits_review, effective_answer
+from cqa.domain.review import awaits_review, effective_answers
 from cqa.domain.scoring import frac, r2, total
 from cqa.domain.tables import CSS as TABLE_CSS
 from cqa.domain.tables import Doc, md_cell, page
 from cqa.domain.tables import Table as Rows
 from cqa.domain.tables import to_csv as doc_csv
+from cqa.domain.tuning import Band, band_of
 
 TOP = 10
 CHANNEL = {"chat": "Чат", "call": "Звонок"}
@@ -59,10 +60,7 @@ def _scored(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[A
     for d in dialogs:
         if _status(d) == "block":  # «Недостаточно данных»: вне средних даже с прежними ответами, виден счёт
             continue
-        answers = {
-            cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
-            for cid, r in d.res.items()
-        }
+        answers = effective_answers(d, appeals)
         if (t := total(checklist, answers)) is not None:
             rows.append((d, answers, t))
     return rows
@@ -157,11 +155,13 @@ def build_report(
     lang: str | None = None,
     ch: str | None = None,
     operator: str | None = None,
+    bands: Sequence[Band] = (),
     source: str | None = None,
     source_names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны;
-    `source_names` — названия источников для раздела «По источникам»."""
+    `source_names` — названия источников для раздела «По источникам»; `bands` — шкала оценок: сколько
+    оценённых диалогов в каждой оценке (`summary.bands`)."""
     lang = lang.upper() if lang else None
     picked = [
         d
@@ -182,6 +182,12 @@ def build_report(
         "operators": _section(checklist, picked, appeals),
         "sources": _groups([(d.source_id or "—", t) for d, _, t in rows], labels),
     }
+    in_band = [b.label for _, _, t in rows if (b := band_of(bands, t))]
+    rep["summary"]["bands"] = [
+        {"label": b.label, "tone": b.tone, "min": b.min, "n": (k := in_band.count(b.label)),
+         "share": _share(k, len(rows))}
+        for b in bands
+    ]  # fmt: skip
     rep["findings"] = _findings(
         rep, any(c.type != "flag" and c.signal == "resolution" for c in checklist.criteria)
     )
@@ -435,6 +441,10 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
                 ([r["tag"], str(r["dialogs"]), r["owner"], ", ".join(r["criteria"])], r["dialogs"] / most)
                 for r in rep["reasons"]
             ],
+        ),
+        (
+            "По шкале оценок", ["Оценка", "Итог от", "Диалогов"], {1, 2},
+            [([b["label"], _d(b["min"]), str(b["n"])], b["share"] or 0) for b in rep["summary"]["bands"]],
         ),
         ("По сотрудникам: требуют внимания", OPERATOR_HEAD, NUM, people(rep["operators"]["attention"])),
         ("По сотрудникам: сильные стороны", OPERATOR_HEAD, NUM, people(rep["operators"]["strengths"])),

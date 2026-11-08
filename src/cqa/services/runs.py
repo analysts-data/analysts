@@ -2,8 +2,9 @@
 отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -16,6 +17,8 @@ from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
 from cqa.services.sufficiency import assess_dialogs
+
+log = logging.getLogger(__name__)
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -138,8 +141,15 @@ class Runner:
     """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди."""
 
     def __init__(
-        self, store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time
+        self,
+        store: Store,
+        evaluator: Evaluator,
+        *,
+        parallel: int,
+        clock: Callable[[], float] = time.time,
+        on_finish: Callable[[], Awaitable[object]] | None = None,  # проверка алертов после запуска
     ) -> None:
+        self._on_finish = on_finish
         self._store = store
         self._evaluator = evaluator
         self._parallel = parallel
@@ -168,6 +178,7 @@ class Runner:
         apply: ApplyMode = "replace",
         override: Mapping[str, Any] | None = None,
         evaluator: Evaluator | None = None,
+        checklist: Checklist | None = None,
     ) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
 
@@ -175,6 +186,8 @@ class Runner:
         нужен `confirm`. `model` — подпись модели в списке запусков. Перепроверка другой моделью:
         `evaluator` только на этот запуск, `override` — его настройки для истории; `apply: "compare"` —
         ответы теневые, текущими их делает `adopt` или `restore`. `override` и `compare` — всегда `force`.
+        `checklist` — несохранённый черновик для песочницы: ответы пишутся с его отпечатками и становятся
+        текущими только после сохранения черновика; по умолчанию — текущая версия.
         """
         force = force or apply == "compare" or override is not None
         if self._active is not None:
@@ -183,7 +196,7 @@ class Runner:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
                 raise NotFound(f"Диалоги не найдены: {', '.join(unknown)}")
-        checklist = self._store.current_checklist()
+        checklist = self._store.current_checklist() if checklist is None else checklist
         assert checklist is not None, "create_app сеет чек-лист на пустой базе"
         if criteria is not None:
             known = {c.id for c in checklist.criteria}
@@ -291,6 +304,11 @@ class Runner:
         finally:
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
+        if self._on_finish is not None:
+            try:
+                await self._on_finish()
+            except Exception:  # алерты вторичны: запуск уже сохранён
+                log.exception("проверка алертов после запуска %s", run_id)
 
     async def _evaluate(
         self,
