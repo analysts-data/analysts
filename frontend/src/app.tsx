@@ -2,11 +2,13 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
+import { Activity, BarChart3, Bell, BookOpen, CircleHelp, ExternalLink, FileText, History, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun, Users } from 'lucide-react';
 import { TERMS } from './terms';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
-import { reload } from './lib/state.js';
+import { api, currentUser, reload, setUser } from './lib/state.js';
+import { track } from './lib/telemetry.js';
+import { useOps } from './ops';
 import { groupOf } from './lib/queue.js';
 import { applyTheme, currentTheme, load, rerender, ROLES, save, setRole, useRoute, useS, type Role } from './store';
 import { Card, cn, Skeleton, Tip, TipProvider } from './ui';
@@ -18,12 +20,17 @@ import { Coaching } from './views/Coaching';
 import { ModeDialog } from './views/ModeDialog';
 import { Palette } from './palette';
 import { PasteHost } from './views/PasteDialog';
+import { Alerts } from './views/Alerts';
+import { People } from './views/People';
+import { Audit } from './views/Audit';
+import { Reports } from './views/Reports';
+import { Usage } from './views/Usage';
 
 // Аналитика тянет ECharts: отдельный кусок сборки, грузится при первом открытии экрана.
 const Analytics = lazy(() => import('./views/Analytics').then(m => ({ default: m.Analytics })));
 
 export const NAME = 'CQA';
-const NAMES: Record<string, string> = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
+const NAMES: Record<string, string> = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист', alerts: 'Алерты', people: 'Сотрудники', audit: 'Журнал действий', reports: 'Отчёты', usage: 'Использование' };
 
 function Logo() {
   return (
@@ -187,6 +194,16 @@ function View({ page, id }: { page: string; id: string | null }) {
       );
     case 'coaching':
       return <Coaching />;
+    case 'alerts':
+      return <Alerts id={id} />;
+    case 'people':
+      return <People id={id} />;
+    case 'audit':
+      return <Audit id={id} />;
+    case 'reports':
+      return <Reports id={id} />;
+    case 'usage':
+      return <Usage id={id} />;
     default:
       return <Queue />;
   }
@@ -208,6 +225,21 @@ export function App() {
     const t = setInterval(() => reload(), 3000);
     return () => clearInterval(t);
   }, [running]);
+
+  useOps();
+  // Метрики: экран, открытие диалога, любое действие с data-act (без текста и значений полей).
+  useEffect(() => {
+    track('page_view');
+    if (r.page === 'd') track('dialog_open');
+  }, [r.page, r.id]);
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const t = (e.target as Element)?.closest?.('[data-act]') as HTMLElement | null;
+      if (t) track('action', { act: t.dataset.act });
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
 
   // Смена экрана: фокус на область содержимого, прокрутка вверх (как в прежнем интерфейсе).
   useEffect(() => {
@@ -247,24 +279,72 @@ export function App() {
             <NavLink page="appeals" current={navPage} icon={<Scale />} badge={appealsBadge} badgeId="bAppeals">
               Апелляции
             </NavLink>
+            <NavLink page="alerts" current={navPage} icon={<Bell />} badge={S.alertsNew} badgeId="bAlerts">
+              Алерты
+            </NavLink>
             <NavLink page="coaching" current={navPage} icon={<BookOpen />}>
               Обучение
             </NavLink>
           </nav>
-          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Обзор и настройка</div>
-          <nav className="flex gap-0.5 md:flex-col" aria-label="Обзор и настройка">
+          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Обзор</div>
+          <nav className="flex gap-0.5 md:flex-col" aria-label="Обзор">
             <NavLink page="analytics" current={navPage} icon={<BarChart3 />}>
               Аналитика
             </NavLink>
+            <NavLink page="people" current={navPage} icon={<Users />}>
+              Сотрудники
+            </NavLink>
+            <NavLink page="reports" current={navPage} icon={<FileText />}>
+              Отчёты
+            </NavLink>
+          </nav>
+          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Настройка</div>
+          <nav className="flex gap-0.5 md:flex-col" aria-label="Настройка">
             <NavLink page="checklist" current={navPage} icon={<ListChecks />}>
               Чек-лист
             </NavLink>
+            <NavLink page="audit" current={navPage} icon={<History />}>
+              Журнал действий
+            </NavLink>
+            <NavLink page="usage" current={navPage} icon={<Activity />}>
+              Использование
+            </NavLink>
           </nav>
-          <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
+          <div className="mt-auto hidden gap-2 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
+            {S.employees?.length > 0 && (
+              <label className="grid gap-1">
+                <span>Вы вошли как</span>
+                <select
+                  className="fld min-h-8 text-[13px]"
+                  data-act="user"
+                  value={currentUser() ?? ''}
+                  onChange={e => {
+                    const id = e.target.value;
+                    setUser(id || null);
+                    const emp = S.employees.find((x: any) => x.id === id);
+                    if (emp && emp.role in ROLES) setRole(emp.role as Role);
+                    else rerender();
+                    reload();
+                  }}
+                >
+                  <option value="">Не выбран</option>
+                  {S.employees
+                    .filter((x: any) => x.active !== false)
+                    .map((x: any) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             <span id="clVer">{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
             <span>
               Команды: <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
+            <a href={`${api.base.replace(/\/api\/?$/, '')}/docs/`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 font-medium no-underline" onClick={() => track('help_open')}>
+              Документация <ExternalLink size={12} aria-hidden="true" />
+            </a>
           </div>
         </aside>
         <div className="min-w-0">
@@ -322,6 +402,18 @@ export function App() {
                   </Tip>
                 ))}
               </div>
+              <Tip content={S.alertsNew ? `Новых алертов: ${S.alertsNew}` : 'Алерты'}>
+                <a
+                  href="#/alerts"
+                  className="relative grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 no-underline hover:bg-hover hover:text-ink"
+                  aria-label={S.alertsNew ? `Алерты, новых: ${S.alertsNew}` : 'Алерты'}
+                >
+                  <Bell size={17} />
+                  {S.alertsNew > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-risk px-1 text-center text-[11px] font-semibold leading-[18px] text-white">{S.alertsNew}</span>
+                  )}
+                </a>
+              </Tip>
               <Tip content="Показать подсказки к этому экрану">
                 <button
                   type="button"

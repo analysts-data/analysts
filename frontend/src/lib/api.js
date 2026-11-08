@@ -1,12 +1,15 @@
 // Клиент API по design/contract.md. Базовый адрес: параметр data страницы, атрибут data-api, иначе /api.
 export const resolveBase = (search, attr) => new URLSearchParams(search).get('data') || attr || '/api';
 
-export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
+// headers — заголовки каждого запроса (X-CQA-User выбранного сотрудника), функция: выбор меняется без пересоздания клиента.
+export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), headers = () => ({})) {
   // send — тело ответа текстом (Markdown разницы версий), call — JSON
   const send = async (method, path, body, raw = false) => {
     const init = { method };
+    const extra = headers();
+    if (Object.keys(extra).length) init.headers = { ...extra };
     if (body !== undefined) {
-      init.headers = { 'Content-Type': 'application/json' };
+      init.headers = { ...init.headers, 'Content-Type': 'application/json' };
       init.body = raw ? body : JSON.stringify(body);
     }
     const res = await fetchFn(base + path, init);
@@ -24,6 +27,11 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
   };
   const id = encodeURIComponent;
   return {
+    base,
+    // Новые разделы (сотрудники, алерты, маркеры, продукты, журнал): пути — design/contract.md.
+    get: path => call('GET', path),
+    post: (path, body) => call('POST', path, body),
+    put: (path, body) => call('PUT', path, body),
     getState: () => call('GET', '/state'),
     postDataset: groupId => call('POST', '/datasets', { group_id: groupId }),
     uploadDataset: file => call('POST', '/datasets/upload', file, true),

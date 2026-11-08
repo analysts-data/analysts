@@ -76,3 +76,13 @@ test('a non-2xx answer throws with the server text', async () => {
   const { fetchFn } = recorder(422, '{"detail": "reason is required"}');
   await assert.rejects(createApi('/api', fetchFn).postDecision('a1', {}), /reason is required/);
 });
+
+test('X-CQA-User of the chosen employee goes with every request', async () => {
+  const seen = [];
+  const api = createApi('/api', async (url, init = {}) => { seen.push(init.headers); return new Response('{}'); }, () => ({ 'X-CQA-User': 'e1' }));
+  await api.getState();
+  await api.postDataset('DEV');
+  assert.equal(seen[0]['X-CQA-User'], 'e1');
+  assert.equal(seen[1]['X-CQA-User'], 'e1');
+  assert.equal(seen[1]['Content-Type'], 'application/json');
+});
