@@ -15,17 +15,51 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from difflib import SequenceMatcher
 
 from cqa.domain.models import Dialog, Fold, Line
 
+
+def _luhn(number: str) -> bool:
+    """Проверка Луна: сумма с удвоением каждой второй цифры справа кратна 10."""
+    total = 0
+    for index, digit in enumerate(reversed(number)):
+        value = int(digit)
+        if index % 2:
+            value = value * 2 - 9 if value > 4 else value * 2
+        total += value
+    return total % 10 == 0
+
+
+def _card_if_luhn(match: re.Match[str]) -> str:
+    """Карта без разделителей — только по Луну; номер заявки без Луна остаётся как есть."""
+    return "[НОМЕР_КАРТЫ]" if _luhn(match.group(0)) else match.group(0)
+
+
+def _phone_after_word(match: re.Match[str]) -> str:
+    """Телефон без + и 8 маскируется, слово-подсказка перед ним сохраняется."""
+    return f"{match.group(1)}[ТЕЛЕФОН]"
+
+
 # Порядок шаблонов — design.md п. 18: почта, IBAN KZ, карта 16 цифр, ИИН 12 цифр, телефон.
-_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+# Дополнения идут после базовых: карта без разделителей по Луну, ИИН с пробелами (6+6 и
+# 4+4+4), телефон KZ без + и 8 — только после слова-подсказки в пределах 20 символов.
+_PATTERNS: tuple[tuple[re.Pattern[str], str | Callable[[re.Match[str]], str]], ...] = (
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[ПОЧТА]"),
     (re.compile(r"(?<![A-Z0-9])KZ\d{2}[A-Z0-9]{16}(?![A-Z0-9])"), "[НОМЕР_СЧЁТА]"),
     (re.compile(r"(?<!\d)\d{4}(?:[ -]\d{4}){3}(?!\d)"), "[НОМЕР_КАРТЫ]"),
+    (re.compile(r"(?<!\d)\d{13,19}(?!\d)"), _card_if_luhn),
     (re.compile(r"(?<!\d)\d{12}(?!\d)"), "[ДАННЫЕ_ИДЕНТИФИКАЦИИ]"),
+    (re.compile(r"(?<!\d)\d{6} \d{6}(?!\d)"), "[ДАННЫЕ_ИДЕНТИФИКАЦИИ]"),
+    (re.compile(r"(?<!\d)\d{4} \d{4} \d{4}(?!\d)"), "[ДАННЫЕ_ИДЕНТИФИКАЦИИ]"),
     (re.compile(r"(?<!\d)(?:\+7|8)(?:[\s() -]*\d){10}(?!\d)"), "[ТЕЛЕФОН]"),
+    (
+        re.compile(
+            r"((?:телефон|номер|тел|звоните)\b\D{0,20})7 \d{3} \d{3} \d{2} \d{2}(?!\d)", re.IGNORECASE
+        ),
+        _phone_after_word,
+    ),
 )
 
 # Участки в квадратных скобках (маски организаторов) не перекрашиваем.

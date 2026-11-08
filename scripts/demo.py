@@ -72,6 +72,7 @@ TELEPHONY = {
         },
     },
 }
+DEMO_EMPLOYEES = ROOT / "tests" / "e2e" / "fixtures" / "employees.csv"  # вымышленные сотрудники
 BASE = "http://127.0.0.1:8000"
 
 # Таблица «Защита»: диалог DEV на случай, если в контрольном наборе нет подходящего.
@@ -284,6 +285,8 @@ def serve(port: int = 8000) -> int:
                 "/api/datasets/upload", content=raw, headers={"Content-Type": "application/json"}
             )
             print(f"набор защиты: {added.raise_for_status().json()}")
+            staff = api.post("/api/employees/import", content=DEMO_EMPLOYEES.read_bytes())
+            print(f"сотрудники: {staff.raise_for_status().json()}")
             run_id = (
                 api.post("/api/runs", json={"dialogs": defence_ids(raw), "criteria": None})
                 .raise_for_status()
