@@ -26,6 +26,8 @@ test('web/js/scoring.js is frontend/src/lib/scoring.js verbatim (defence imports
   assert.equal(read('web/js/scoring.js'), read('frontend/src/lib/scoring.js'));
 });
 
-test('frontend tokens keep the prototype :root verbatim', () => {
-  assert.equal(rootBlock(read('frontend/src/index.css')), rootBlock(read('design/cqa-v3/index.html')));
+// Цвета — палитра Freedom, имена токенов — прототипа: экраны и тёмная тема опираются на те же переменные.
+const names = block => [...block.matchAll(/--([a-z0-9-]+):/g)].map(m => m[1]).sort();
+test('frontend :root defines exactly the prototype token names', () => {
+  assert.deepEqual(names(rootBlock(read('frontend/src/index.css'))), names(rootBlock(read('design/cqa-v3/index.html'))));
 });

@@ -231,12 +231,12 @@ export function App() {
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
         <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
-            <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent not-italic text-on-accent">
+            <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-brand not-italic text-white">
               <Logo />
             </i>
             <div>
               <b className="block text-[15px]">{NAME}</b>
-              <span className="text-xs text-muted">Качество диалогов</span>
+              <span className="text-xs text-muted">Freedom · качество диалогов</span>
             </div>
           </div>
           <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Работа</div>
