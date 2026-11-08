@@ -1,4 +1,9 @@
-.PHONY: check e2e eval eval-holdout record run fmt backup demo results
+.PHONY: web check e2e eval eval-holdout record run fmt backup demo results
+
+web:
+	# интерфейс: frontend/ (React) собирается в web/, собранный web/ коммитится
+	npm --prefix frontend ci
+	npm --prefix frontend run build
 
 check:
 	uv run ruff check --no-cache src tests

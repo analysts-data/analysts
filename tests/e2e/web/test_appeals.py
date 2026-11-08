@@ -72,7 +72,7 @@ def test_appeal_from_card_posts_answer_comment_and_line(page: Page, web_url: str
     page.goto(f"{web_url}/#/d/p1-ru-003")
     open_criterion(page, "04")
     page.locator('[data-act="appeal"][data-cid="04"]').click()
-    form = page.locator("#dlg")
+    form = page.get_by_role("dialog")
     expect(form).to_be_visible()
     expect(form.get_by_label("Критерий")).to_have_value("04")
     form.get_by_label("Какой ответ вы считаете верным").select_option("10")
@@ -109,7 +109,7 @@ def test_appeal_comment_typed_key_by_key_keeps_text_focus_and_enables_send(page:
     page.goto(f"{web_url}/#/d/p1-ru-003")
     open_criterion(page, "04")
     page.locator('[data-act="appeal"][data-cid="04"]').click()
-    form = page.locator("#dlg")
+    form = page.get_by_role("dialog")
     comment = form.get_by_label("Комментарий, обязательно")
     typed = "Срок вывода назван, это существенная часть ответа."
     comment.press_sequentially(typed)
@@ -136,7 +136,7 @@ def test_appeal_form_offers_criteria_without_pending_appeal_and_other_answers(
     page.goto(f"{web_url}/#/d/call-024")
     open_criterion(page, "06")
     page.locator('[data-act="appeal"][data-cid="06"]').click()
-    form = page.locator("#dlg")
+    form = page.get_by_role("dialog")
     cids = form.get_by_label("Критерий").locator("option").evaluate_all("os => os.map(o => o.value)")
     assert "04" not in cids  # по 04 уже есть апелляция a1 на рассмотрении
     assert "08" in cids  # флаг тоже оспаривается
@@ -242,7 +242,7 @@ def test_flag_appeal_from_card_sends_toggle_for_every_question(page: Page, web_u
     page.goto(f"{web_url}/#/d/p1-ru-022")
     open_criterion(page, "08")
     page.locator('[data-act="appeal"][data-cid="08"]').click()
-    form = page.locator("#dlg")
+    form = page.get_by_role("dialog")
     expect(form.get_by_label("Критерий")).to_have_value("08")
     paid = form.get_by_label("Платная услуга в обход компании")
     expect(paid).to_be_checked()
