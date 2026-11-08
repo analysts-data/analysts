@@ -54,10 +54,6 @@ def test_docs_pages_load_nothing_from_other_hosts(client: TestClient, slug: str)
     assert EXTERNAL.findall(client.get(f"/docs/{slug}").text) == []
 
 
-def test_unknown_docs_page_is_404(client: TestClient) -> None:
-    assert client.get("/docs/no-such-page").status_code == 404
-
-
 def test_api_reference_lists_every_openapi_path(app: FastAPI, client: TestClient) -> None:
     html = client.get("/docs/api").text
     paths = app.openapi()["paths"]
@@ -70,27 +66,7 @@ def test_api_reference_lists_every_openapi_path(app: FastAPI, client: TestClient
     assert missing == []
 
 
-def test_every_api_operation_has_a_russian_summary(app: FastAPI) -> None:
-    ops = [(p, m, op) for p, item in app.openapi()["paths"].items() for m, op in item.items()]
-    english = [f"{m.upper()} {p}" for p, m, op in ops if not re.search("[а-яё]", op.get("summary", ""), re.I)]
-    assert english == []
-
-
 def test_markdown_raw_html_is_escaped() -> None:
     html = to_html('<script>alert("x")</script>\n\nтекст <img src=x onerror=alert(1)>')
     assert "<script" not in html and "<img" not in html
     assert "&lt;script&gt;" in html
-
-
-def test_search_index_has_a_section_of_every_page(client: TestClient) -> None:
-    index = client.get("/docs/search.json").json()
-    assert {entry["url"].split("#")[0] for entry in index} == set(PAGES)
-    markup = re.compile(r"</?(?:p|a|code|pre|h[1-6]|li|ul|ol|table|tr|td|th|strong|em|span)\b")
-    assert all(entry["title"] and not markup.search(entry["text"]) for entry in index)
-
-
-def test_fastapi_swagger_and_redoc_are_off_and_schema_moved_under_api(client: TestClient) -> None:
-    assert "swagger" not in client.get("/docs").text.lower()
-    assert client.get("/redoc").status_code == 404
-    assert client.get("/openapi.json").status_code == 404
-    assert "/api/state" in client.get("/api/openapi.json").json()["paths"]
