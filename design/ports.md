@@ -227,3 +227,24 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `byJev` | `web/js/queue.js` | `byJev(resultOrMode)`: `model` начинается с `jev`; карточка и очередь пишут «Jev не уверен в ответе» вместо «Цитата не нашлась» и не называют проверенный участок |
 
 Settings: `CQA_EVALUATOR` → `evaluator: Literal["llm", "jev"] = "llm"`, читают llm-evaluation, review-workflow (`mode`), eval-and-delivery (`make eval`, `scenario.evaluator` в `eval/baseline.json`). Правило канала: на диалоге другого канала `na` с `why: "Критерий для другого канала"` даёт и `JevEvaluator`, без вопроса Jev.
+
+## Интонация звонка (dialog-ingest, prosody)
+
+```python
+# src/cqa/services/ports.py
+class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapters/voice.py)
+    async def tracks(self, link: str) -> Tracks | None: ...  # None — запись не скачалась или не разобралась
+```
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `Tracks` | `src/cqa/domain/prosody.py` | кадры по 10 мс: `pitch_t`, `f0` (Гц, 0 — тона нет), `int_t`, `db` |
+| `analyse` | там же | `analyse(lines: Sequence[Line \| Fold], tracks: Tracks) -> dict` — тело ответа `/prosody`, чистая функция |
+| `utterance_s` | `src/cqa/domain/audio_timeline.py` | `utterance_s(text) -> float`: оценка длительности реплики, общая для `s` и интонации |
+| `dialog_prosody` | `src/cqa/services/prosody.py` | `async dialog_prosody(store, source, voice, dialog_id) -> dict`; `NotFound`, `Upstream`; база — только в потоке цикла событий, разбор звука — в `asyncio.to_thread` внутри `PraatVoice` |
+| `Store.prosody`, `Store.set_prosody` | `src/cqa/adapters/store.py` | `prosody(dialog_id) -> dict \| None`, `set_prosody(dialog_id, body)` |
+| `app.state.voice` | `create_app` | `PraatVoice(httpx.AsyncClient())`; тесты подменяют подделкой с синтетическими кадрами |
+| Таблица `prosody` | `data/cqa.db` | `dialog_id TEXT PK REFERENCES dialogs(id)`, `body TEXT` (JSON ответа) |
+| `ffmpeg` | системная зависимость сервера | в `PATH`; без него `/prosody` отвечает 502, остальное работает |
+
+Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
