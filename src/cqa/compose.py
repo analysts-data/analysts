@@ -1,20 +1,22 @@
 """Сборка реализаций портов из `Settings`; без запросов наружу."""
 
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JEV_MODEL, JevVerifier
-from cqa.adapters.llm import ChatClient
+from cqa.adapters.llm import ChatClient, ping
 from cqa.adapters.org_api import OrgApi
-from cqa.services.evaluation import JevEvaluator, LlmEvaluator
+from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Verifier
 from cqa.services.ingest import OrgDialogSource
-from cqa.services.llm_config import config_error
+from cqa.services.llm_config import as_llm, config_error
 from cqa.services.ports import Evaluator
-from cqa.settings import Settings
+from cqa.settings import Provider, Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
+CHECK_TIMEOUT_S = 20
 
 
 def build_source(settings: Settings) -> OrgDialogSource:
@@ -34,6 +36,21 @@ def _jev(settings: Settings) -> JevVerifier:
     return JevVerifier(key, _http(settings, "jev"))
 
 
+def _verifier(settings: Settings) -> Verifier | None:
+    if settings.verifier == "jev":
+        return _jev(settings)
+    second = settings.providers.get(settings.verifier or "")
+    if second is None:
+        return None
+    return ChatVerifier(ChatClient(settings.model_copy(update=as_llm(second)), _http(settings, "llm")))
+
+
+async def check_provider(provider: Provider) -> dict[str, Any]:
+    """Проверка связи мимо записей: синтетический запрос сразу в сеть, реальные данные не уходят."""
+    async with httpx.AsyncClient(timeout=CHECK_TIMEOUT_S) as http:
+        return await ping(http, provider)
+
+
 def build_evaluator(settings: Settings) -> Evaluator:
     """Не бросает и не ходит в сеть: replay и record читают записи, record и live — сеть только при вызове."""
     if settings.evaluator == "jev":
@@ -50,7 +67,7 @@ def build_evaluator(settings: Settings) -> Evaluator:
         model_name=settings.llm_model,
         reasoning=settings.llm_reasoning,
         anonymize=settings.anonymize,
-        verifier=_jev(settings) if settings.verifier == "jev" else None,
+        verifier=_verifier(settings),
         sends_real_data=settings.llm_mode == "live",
         allow_real_data=settings.allow_real_data,
         config_error=config_error(settings),

@@ -158,7 +158,7 @@ class Mode(BaseModel):  # mode in GET /api/state
     where: Literal["kz", "local", "external"]
     anonymized: bool
     model: str
-    verifier: Literal["jev", "self"] | None  # contract.md allows "self"; Settings.verifier never sets it
+    verifier: str | None  # "jev", "self" (contract.md, never set) or a provider id
 
 
 @dataclass(frozen=True)

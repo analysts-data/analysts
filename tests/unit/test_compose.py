@@ -15,6 +15,7 @@ from cqa.domain.models import Checklist, Dialog
 from cqa.domain.prompt import build_messages, render_dialog
 from cqa.http.app import create_app
 from cqa.services.errors import ConfigError
+from cqa.services.llm_config import effective
 from cqa.settings import Settings
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -125,6 +126,37 @@ async def test_scenario_5_calls_deepseek_with_thinking_and_jev_once(
     assert json.loads(llm.calls.last.request.content)["thinking"] == {"type": "enabled"}
     assert jev.calls.last.request.headers["authorization"] == "Bearer j"
     assert not list(tmp_path.rglob("*.json"))  # live пишет записи только в record
+
+
+async def test_second_opinion_from_a_provider_asks_its_own_model_with_its_own_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(compose, "CASSETTES", tmp_path)
+    s = effective(
+        settings(llm_mode="live", llm_api_key=SecretStr("k")),
+        {
+            "providers": {
+                "ds": {"label": "DS", "base_url": "https://ds.test", "model": "ds-pro", "profile": "plain",
+                       "where": "external", "key": "sk-ds"},
+            },
+            "verifier": "ds",
+        },
+    )  # fmt: skip
+    main = {"reason_ru": "Поздоровался и представился.", "answer": "yes"}
+    second = {"reason_ru": "Не представился.", "answer": "no"}
+    usage = {"prompt_tokens": 1000, "completion_tokens": 100}
+    with respx.mock(assert_all_called=True) as net:
+        net.post("https://llm.test/v1/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(main)}}], "usage": usage}
+        )
+        ds = net.post("https://ds.test/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(second)}}], "usage": usage}
+        )
+        out = await build_evaluator(s).evaluate(CHAT, CHECKLIST, [FIRST])
+    [e] = out.results
+    assert (e.result.a, e.result.alt, out.verifier_calls) == ("yes", "no", 1)
+    assert json.loads(ds.calls.last.request.content)["model"] == "ds-pro"
+    assert ds.calls.last.request.headers["authorization"] == "Bearer sk-ds"
 
 
 def test_jev_only_evaluator_is_built_without_llm_key_and_needs_jev_key_in_live() -> None:
