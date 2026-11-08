@@ -1123,5 +1123,7 @@
   "№ {id}": "#{id}",
   "↑ тон": "↑ pitch",
   "↑ тон: громче и выше обычного · быстро: темп выше обычного · перебивание · пауза N с перед ответом": "↑ pitch: louder and higher than usual · fast: faster pace than usual · interruption · pause N s before answering",
-  "−5 с": "−5 s"
+  "−5 с": "−5 s",
+  "Ещё": "More",
+  "Разделы": "Sections"
 }

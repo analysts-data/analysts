@@ -2,7 +2,7 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { Bell, ExternalLink, BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Scale, Search, Settings2 } from 'lucide-react';
+import { Bell, ExternalLink, MoreHorizontal, BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Scale, Search, Settings2 } from 'lucide-react';
 import { TERMS } from './terms';
 import { t } from './i18n';
 import { LangMenu, ThemeMenu } from './menus';
@@ -28,7 +28,7 @@ import { PasteHost } from './views/PasteDialog';
 const Analytics = lazy(() => import('./views/Analytics').then(m => ({ default: m.Analytics })));
 
 export const NAME = 'CQA';
-const NAMES: Record<string, string> = { d: 'Карточка разговора', ...Object.fromEntries(PAGES.map(p => [p.page, p.label])) };
+const NAMES: Record<string, string> = { d: 'Диалог', ...Object.fromEntries(PAGES.map(p => [p.page, p.label])) };
 
 function Logo() {
   return (
@@ -52,7 +52,7 @@ function NavLink({ page, current, icon, children, badge, badgeId }: { page: stri
       <span className="flex-none [&>svg]:h-[18px] [&>svg]:w-[18px]">{icon}</span>
       {children}
       {badgeId && (
-        <span id={badgeId} className={cn('ml-auto min-w-[22px] rounded-full bg-risk px-1.5 text-center text-xs font-semibold text-white', !badge && 'hidden')}>
+        <span id={badgeId} className={cn('ml-auto min-w-[22px] rounded-full bg-risk px-1.5 text-center text-xs font-semibold text-on-risk', !badge && 'hidden')}>
           {badge || ''}
         </span>
       )}
@@ -246,6 +246,45 @@ function View({ page, id }: { page: string; id: string | null }) {
   }
 }
 
+/** Ширина не меньше md: сайдбар и подвал с темой; иначе нижняя панель вкладок. Один экземпляр элементов в DOM. */
+function useWide() {
+  const q = '(min-width: 768px)';
+  const [wide, setWide] = useState(() => globalThis.matchMedia?.(q).matches ?? true);
+  useEffect(() => {
+    const m = globalThis.matchMedia?.(q);
+    const on = () => setWide(m.matches);
+    m?.addEventListener('change', on);
+    return () => m?.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+// Телефон: четыре главных раздела роли внизу экрана и «Ещё» — палитра со всеми разделами.
+const TABS: Record<string, string[]> = { qa: ['queue', 'appeals', 'analytics', 'checklist'], operator: ['coaching', 'queue', 'appeals', 'analytics'], reviewer: ['appeals', 'queue', 'analytics', 'coaching'] };
+function TabBar({ role, current, features, queueBadge, appealsBadge, onMore }: { role: string; current: string; features: string[]; queueBadge: number; appealsBadge: number; onMore: () => void }) {
+  const items = (TABS[role] ?? TABS.qa).map(k => PAGES.find(p => p.page === k)!).filter(p => available(p, features));
+  const cell = 'relative flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium no-underline [&>svg]:h-5 [&>svg]:w-5';
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]" aria-label={t('Разделы')}>
+      {items.map(p => {
+        const on = p.page === current;
+        const badge = p.page === 'queue' ? queueBadge : p.page === 'appeals' ? appealsBadge : 0;
+        return (
+          <a key={p.page} href={`#/${p.page}`} aria-current={on ? 'page' : undefined} className={cn(cell, on ? 'text-accent' : 'text-muted hover:text-ink')}>
+            {p.icon}
+            <span className="max-w-full truncate">{t(p.label)}</span>
+            {badge > 0 && <span className="absolute right-[calc(50%-20px)] top-1.5 min-w-[16px] rounded-full bg-risk px-1 text-center text-[10px] font-semibold leading-4 text-on-risk">{badge}</span>}
+          </a>
+        );
+      })}
+      <button type="button" onClick={onMore} className={cn(cell, 'text-muted hover:text-ink')}>
+        <MoreHorizontal />
+        <span>{t('Ещё')}</span>
+      </button>
+    </nav>
+  );
+}
+
 export function App() {
   const S = useS();
   const r = useRoute();
@@ -288,6 +327,28 @@ export function App() {
     main.current?.focus({ preventScroll: true });
   }, [r.page, r.id]);
 
+  const wide = useWide();
+  const helpBtn = (
+              <Tip content={t('Показать подсказки к этому экрану')}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const k = hintKey(S.role, r.page) ?? S.role;
+                    try {
+                      localStorage.removeItem(`cqa.hint.${k}`);
+                    } catch {
+                      /* без хранилища подсказка и так видна */
+                    }
+                    if (!hintKey(S.role, r.page)) location.hash = `#/${HINTS[S.role].page}`;
+                    rerender();
+                  }}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
+                  aria-label={t('Подсказки')}
+                >
+                  <CircleHelp size={17} />
+                </button>
+              </Tip>
+  );
   const navPage = r.page === 'd' ? 'queue' : r.page;
   const queueBadge = S.checklist ? S.dialogs.filter((d: any) => groupOf(d, S.checklist, S.appeals) !== 'other').length : 0;
   const appealsBadge = S.appeals.filter((a: any) => a.status === 'pending').length;
@@ -304,7 +365,8 @@ export function App() {
         {t('Перейти к содержимому')}
       </button>
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
-        <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
+        {wide ? (
+        <aside className="sticky top-0 z-10 flex h-screen flex-col items-stretch gap-0.5 overflow-y-auto border-r border-line bg-surface px-3 py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
             <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-brand not-italic text-white">
               <Logo />
@@ -363,6 +425,10 @@ export function App() {
                 </select>
               </label>
             )}
+            <div className="flex items-center gap-2">
+              {helpBtn}
+              <ThemeMenu />
+            </div>
             <span id="clVer">{S.checklist ? t('Чек-лист v{v}', { v: S.checklist.version }) : ''}</span>
             <span>
               {t('Команды:')} <kbd className="rounded border border-line px-1">Ctrl K</kbd>
@@ -374,6 +440,9 @@ export function App() {
             )}
           </div>
         </aside>
+        ) : (
+          <TabBar role={S.role} current={navPage} features={S.features} queueBadge={queueBadge} appealsBadge={appealsBadge} onMore={() => setPalette(true)} />
+        )}
         <div className="min-w-0">
           <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap md:flex-nowrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
             <div className="order-1 min-w-0 flex-1 truncate text-[13px] text-muted" id="crumb">
@@ -415,7 +484,7 @@ export function App() {
               <span className="sr-only 2xl:not-sr-only 2xl:whitespace-nowrap 2xl:text-[13px] 2xl:text-muted" id="roleLbl">
                 {t('Смотреть как:')}
               </span>
-              <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
+              <div className="inline-flex gap-0.5 rounded-lg bg-sunken p-0.5 ring-1 ring-inset ring-line" role="group" aria-labelledby="roleLbl">
                 {(Object.keys(ROLES) as Role[]).map((k, i) => (
                   <Tip key={k} content={k === 'qa' ? t(TERMS.qa) : null}>
                   <button
@@ -424,7 +493,7 @@ export function App() {
                     data-role={k}
                     aria-pressed={S.role === k}
                     onClick={() => setRole(k)}
-                    className={cn('min-h-9 px-3 text-[13px] font-medium', i && 'border-l border-line', S.role === k ? 'bg-ink text-bg' : 'text-ink2 hover:bg-hover')}
+                    className={cn('min-h-8 rounded-md px-3 text-[13px] font-medium transition-colors', S.role === k ? 'bg-surface text-ink shadow-card ring-1 ring-line' : 'text-muted hover:text-ink')}
                   >
                     {t(ROLES[k])}
                   </button>
@@ -443,37 +512,19 @@ export function App() {
                   >
                     <Bell size={17} />
                     {S.alertsNew > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-risk px-1 text-center text-[11px] font-semibold leading-[18px] text-white">{S.alertsNew}</span>
+                      <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-risk px-1 text-center text-[11px] font-semibold leading-[18px] text-on-risk">{S.alertsNew}</span>
                     )}
                   </a>
                 </Tip>
               )}
-              <Tip content={t('Показать подсказки к этому экрану')}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const k = hintKey(S.role, r.page) ?? S.role;
-                    try {
-                      localStorage.removeItem(`cqa.hint.${k}`);
-                    } catch {
-                      /* без хранилища подсказка и так видна */
-                    }
-                    if (!hintKey(S.role, r.page)) location.hash = `#/${HINTS[S.role].page}`;
-                    rerender();
-                  }}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
-                  aria-label={t('Подсказки')}
-                >
-                  <CircleHelp size={17} />
-                </button>
-              </Tip>
+              {!wide && helpBtn}
               <LangMenu />
-              <ThemeMenu />
+              {!wide && <ThemeMenu />}
             </div>
           </header>
-          <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
-            {!S.loading && !S.error && hintKey(S.role, r.page) && <RoleHint key={hintKey(S.role, r.page)} k={hintKey(S.role, r.page)} />}
+          <main id="view" ref={main} data-view={r.page} tabIndex={-1} className={cn("mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pt-4 outline-none md:px-7 md:pt-[22px]", wide ? "pb-14" : "pb-24")}>
             <motion.div key={r.page + (r.id ?? '') + S.lang} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }} className="flex flex-col gap-4">
+              {!S.loading && !S.error && hintKey(S.role, r.page) && <RoleHint key={hintKey(S.role, r.page)} k={hintKey(S.role, r.page)} />}
               <ScreenBoundary key={r.page + (r.id ?? '')}>
                 <View page={r.page} id={r.id} />
               </ScreenBoundary>
