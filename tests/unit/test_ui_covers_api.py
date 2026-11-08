@@ -22,8 +22,6 @@ EXEMPT = {
     # текущий сотрудник: интерфейс знает его по выбору «Вы вошли как» (X-CQA-User), отдельный запрос не нужен
     "/me",
 }
-# UI в работе: правила алертов и «Проверить сейчас» (ветка feat/react-frontend-reasons-alerts)
-EXEMPT |= {"/alerts/evaluate", "/alerts/rules"}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 # интеграционный API, не для интерфейса: CRM, Dynamics 365 и контакт-центр
