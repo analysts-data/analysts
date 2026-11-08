@@ -10,6 +10,11 @@ CHARS_PER_S: Final = 14.5
 MIN_UTTERANCE_S: Final = 0.6
 
 
+def utterance_s(text: str) -> float:
+    """Оценка длительности реплики по тексту: `s` + она = метка конца реплики в записи."""
+    return max(MIN_UTTERANCE_S, len(text) / CHARS_PER_S)
+
+
 def audio_starts(
     ends: Sequence[float],
     texts: Sequence[str],
@@ -41,6 +46,6 @@ def audio_starts(
             starts.append(None)
             continue
         a = w - rec_start - sum(r - p for p, r in pauses if r <= w) + shift
-        d = 0.0 if role == "system" else max(MIN_UTTERANCE_S, len(text) / CHARS_PER_S)
+        d = 0.0 if role == "system" else utterance_s(text)
         starts.append(round(max(0.0, a - d), 1))
     return starts

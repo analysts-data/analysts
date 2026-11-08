@@ -6,12 +6,14 @@ import sqlite3
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
+from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api
@@ -90,6 +92,7 @@ def create_app(
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
     app.state.syncer = Syncer(store, app.state.source)
+    app.state.voice = PraatVoice(httpx.AsyncClient())  # интонация: запись скачивается и разбирается локально
     evaluator = evaluator if evaluator is not None else build_evaluator(settings)  # llm-evaluation, ports.md
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)

@@ -14,7 +14,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     if (!res.ok) {
       let detail = text;
       try { detail = JSON.parse(text).detail ?? text; } catch { /* тело не JSON */ }
-      throw new Error(`${res.status}: ${detail}`);
+      throw Object.assign(new Error(`${res.status}: ${detail}`), { status: res.status });
     }
     return text;
   };
@@ -44,6 +44,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     diffVersions: (from, to) => send('GET', `/checklist/diff?from=${id(from)}&to=${id(to)}&format=md`),
     diffDraft: draft => send('POST', '/checklist/diff?format=md', draft),
     exportUrl: (v, fmt) => `${base}/checklist/export?v=${id(v)}&format=${id(fmt)}`,
+    getProsody: did => call('GET', `/dialogs/${id(did)}/prosody`),
     audioUrl: did => `${base}/dialogs/${id(did)}/audio`,
     playerUrl: did => `${base}/dialogs/${id(did)}/player`,
   };
