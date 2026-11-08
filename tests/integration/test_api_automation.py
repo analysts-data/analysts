@@ -37,5 +37,7 @@ def test_enabled_scheduler_evaluates_the_queue_through_the_runner(client: TestCl
         cycle = client.get("/api/automation/cycles").json()[0]
         assert (cycle["trigger"], cycle["queued"], cycle["evaluated"]) == ("schedule", 2, 2)
         assert client.get("/api/automation/status").json()["queue_length"] == 0
+        actions = {e["action"] for e in client.get("/api/audit", params={"actor": "Автоматизация"}).json()}
+        assert "automation.evaluate" in actions
         csv = client.get("/api/automation/cycles?format=csv")
         assert csv.headers["content-type"].startswith("text/csv") and "schedule" in csv.text

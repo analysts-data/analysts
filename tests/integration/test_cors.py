@@ -26,3 +26,14 @@ def test_preflight_from_dynamics_tenant_is_allowed(client: TestClient) -> None:
 def test_preflight_from_foreign_origin_is_rejected(client: TestClient) -> None:
     response = preflight(client, "https://evil.example")
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_preflight_allows_the_current_user_header(client: TestClient) -> None:
+    headers = {
+        "Origin": "https://org.crm4.dynamics.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,x-cqa-user",
+    }
+    response = client.options("/api/appeals", headers=headers)
+    assert response.status_code == 200
+    assert "x-cqa-user" in response.headers["access-control-allow-headers"].lower()

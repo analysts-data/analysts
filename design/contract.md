@@ -128,8 +128,14 @@
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
 | `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
-| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data}` — режим оценки без ключей; провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
+| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
+| `GET /api/employees` | — | `[{id, name, role, team, active}]` по имени; раздел «Сотрудники и журнал действий» |
+| `PUT /api/employees/{id}` | `{name, role: "operator" \| "qa" \| "reviewer" \| "manager" \| "admin", team, active}` | сотрудник после записи: создан или изменён; пустое имя или другая роль — 422 |
+| `POST /api/employees/import` | CSV `id;name;role;team`, UTF-8 (BOM можно), первая строка `id;…` — заголовок | `{added, updated}`; ошибка в строке — 422 «Строка N: …», ничего не сохранено |
+| `GET /api/me` | — | `{id, name, role}` сотрудника из `X-CQA-User`; без входа `{id: null, name: "без входа", role: ""}` |
+| `GET /api/audit?actor=&action=&since=&limit=&format=json\|csv` | — | журнал новыми первыми: `[{id, at, actor_id, actor_name, role, action, target_type, target_id, details}]`; без `limit` json — 500 последних, csv — весь отбор (`attachment; filename="cqa-audit.csv"`) |
+| `GET /api/overview` | — | обзор работы: `{at, employees, teams, unattributed, workload}` |
 
 Ссылки организаторов на записи подписаны и живут около часа, поэтому в браузер они не уходят: интерфейс ходит только в `/audio` и `/player`. Сервер хранит `audio_url` в колонке таблицы `dialogs` и не отдаёт её ни в одном ответе. Если ссылку получить не удалось, `/audio` отвечает 502.
 
@@ -212,3 +218,76 @@ JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {di
 ## Доступ по токену (eval-and-delivery)
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
+
+## Сотрудники и журнал действий (eval-and-delivery)
+
+Текущий сотрудник — заголовок `X-CQA-User: <id>`, его шлёт интерфейс («Вы вошли как»). Пароля нет: в продукте личность даёт SSO / Dynamics 365 (Entra ID), заголовок ставит шлюз или встраивание, сервер ему доверяет. Нет заголовка, сотрудник неизвестен или `active: false` — без входа, всё как раньше: `by` и `reviewer` берутся из тела, в журнал пишется эта подпись (`actor_id: null`). Известный сотрудник: `by` апелляции и ручного ответа, `reviewer` решения — его `name`, подпись из тела не важна. Ролей и прав заголовок пока не проверяет.
+
+`Dialog.operator` — `name` сотрудника с ролью `operator`. Демо (`make demo`) загружает вымышленных сотрудников из `tests/e2e/fixtures/employees.csv`.
+
+Журнал (`audit`) только дополняется. Каждое удачное изменение и выгрузка пишет строку `{at: ISO +05:00, actor_id, actor_name, role, action, target_type, target_id, details}`; поля `details`, в имени которых есть key, token, secret или password, отбрасываются на любой глубине, ссылка API организаторов не пишется.
+
+| `action` | Путь | `target_type`, `target_id` | `details` |
+| --- | --- | --- | --- |
+| `dataset.load`, `dataset.source`, `dataset.upload`, `dataset.paste` | `POST /api/datasets`, `PUT /api/source`, `POST /api/datasets/upload`, `POST /api/dialogs/text` | `dataset`, `group_id` (у upload пусто); у paste — `dialog`, id | `{added, skipped}`; у paste `{ch}` |
+| `run.start`, `run.cancel` | `POST /api/runs`, `/cancel` | `run`, id | `{dialogs: число \| null, criteria}` |
+| `checklist.save` | `PUT /api/checklist` | `checklist`, версия | `{pending: число}` |
+| `appeal.file`, `appeal.decide`, `review.decide` | `POST /api/appeals`, `/decision`, `POST /api/decisions` | `appeal`, id | `{dlg, cid}`; у decide `{status}` |
+| `answer.manual` | `PUT /api/dialogs/{id}/answers/{cid}` | `dialog`, id | `{cid}` |
+| `dialog.reviewed`, `dialog.unreviewed` | `POST /api/dialogs/{id}/reviewed` | `dialog`, id | — |
+| `owners.save`, `config.save`, `provider.save`, `provider.delete` | `PUT /api/owners`, `PUT /api/config`, `PUT`, `DELETE /api/providers/{id}` | `owners`, `config`, `provider` и id | тело без ключей |
+| `employee.save`, `employee.import` | `PUT /api/employees/{id}`, `POST /api/employees/import` | `employee`, id | тело; у import `{added, updated}` |
+| `export` | `GET /api/report`, `/api/checklist/export`, `/api/scores/export`, `/api/audit?format=csv` | `report`, `checklist`, `scores`, `audit` и формат или версия | параметры выгрузки |
+
+Фильтры `GET /api/audit`: `actor` — `actor_id` или подпись без входа, `action` — точное имя, `since` — начало ISO-даты (`2026-11-08` или `2026-11-08T09:00`). CSV — UTF-8 с BOM и `;`, колонки как в json, `details` — JSON, ячейки с `= + - @` в начале — текстом.
+
+`GET /api/overview`: `employees` — `[{id, name, role, team, active, today: {"<action>": n}, week: {"<action>": n}, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed, median_decision_min}]`; `today` — с полуночи по Астане, `week` — 7 календарных дней с сегодняшним, счётчики — за всё время журнала (`decisions` — `appeal.decide` и `review.decide`), `median_decision_min` — медиана минут от `at` до `decidedAt` апелляций, решённых сотрудником, или `null`. `teams` — `[{team, employees, today, week, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed}]` по имени команды, суммы её сотрудников. `unattributed` — `{today, week}` действий без входа. `workload` — `{pending_appeals, needs_review, unreviewed}`: апелляции на рассмотрении и диалоги «нужна проверка» как в отчёте для руководства, диалоги без отметки «проверен».
+
+## Автоматизация (eval-and-delivery)
+
+Автосинхронизация источников и автооценка новых диалогов по расписанию, без ожидания человека. По умолчанию выключена: пока `enabled: false`, поведение прежнее (ручные запуски, Syncer раз в 5 минут, защита, `make results`).
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/automation` | — | настройки (ниже) |
+| `PUT /api/automation` | настройки целиком или частью: тело сливается с сохранёнными | настройки после сохранения; ошибки — 422 `{"detail": [{"loc": ["body", "sync", "every_min"], "msg": "<по-русски>"}]}`, по одной на поле, ничего не сохраняется |
+| `GET /api/automation/status` | — | `{state: "off" \| "idle" \| "syncing" \| "evaluating" \| "paused" \| "budget_reached" \| "quiet_hours", next_run_at: ISO \| null, last_cycle: Cycle \| null, today: {dialogs_evaluated, cost_usd, budget_left}, queue_length}` |
+| `POST /api/automation/run-now` | — | статус; цикл сразу, вне тихих часов и `on_new_dialogs`, но в пределах бюджета и лимита в час. Выключена, на паузе или цикл уже идёт — 409 |
+| `POST /api/automation/pause`, `/resume` | — | статус; пауза останавливает плановые циклы и синхронизацию, идущая пачка отменяется (диалоги в полёте дописываются) |
+| `GET /api/automation/cycles?limit=50&format=json\|csv` | — | циклы новыми первыми; `csv` — UTF-8 с BOM и `;` |
+
+Настройки (значения — по умолчанию):
+
+```json
+{"enabled": false,
+ "sync": {"enabled": true, "every_min": 5, "sources": "all"},
+ "evaluate": {"enabled": true, "on_new_dialogs": true, "sources": "all", "ch": "all", "lang": "all",
+              "batch_size": 20, "priority": "normal", "max_per_hour": 60, "daily_budget_usd": 1.0,
+              "quiet_hours": null, "only_unscored": true},
+ "after": {"classify_products": false, "evaluate_alerts": true, "prosody_for_calls": false}}
+```
+
+| Поле | Допустимо | Зачем (`why`) |
+| --- | --- | --- |
+| `enabled` | bool | Главный выключатель: без него планировщик только читает настройки |
+| `sync.enabled` | bool | Забирать новые диалоги самим; при `true` прежний 5-минутный цикл Syncer уступает расписанию автоматизации |
+| `sync.every_min` | целое ≥ 1 | Период цикла (синхронизация и оценка): чаще — меньше ждать, реже — меньше запросов к источнику |
+| `sync.sources` | `"all"` или список кодов | Какие источники синхронизировать; до реестра источников есть один — `org` (ссылка организаторов) |
+| `evaluate.enabled` | bool | Отдавать новые диалоги модели без кнопки |
+| `evaluate.on_new_dialogs` | bool | `false` — плановые циклы только синхронизируют, оценка — по «Запустить сейчас» |
+| `evaluate.sources`, `ch`, `lang` | `"all"` или список (`ch`: `chat`, `call`) | Оценивать только нужное: например, только звонки на казахском |
+| `evaluate.batch_size` | 1–500 | Диалогов за цикл: ограничивает перерасход бюджета одной пачкой |
+| `evaluate.priority` | `low`, `normal`, `high` | Место пачки в очереди батч-задач; при обычном запуске не влияет |
+| `evaluate.max_per_hour` | целое ≥ 1 | Скользящий лимит диалогов за 60 минут: нагрузка на модель и провайдера |
+| `evaluate.daily_budget_usd` | > 0 | Потолок трат за сутки по Алматы; на нём пачка отменяется, новые не начинаются, создаётся алерт |
+| `evaluate.quiet_hours` | `null` или `{"from": "ЧЧ:ММ", "to": "ЧЧ:ММ"}` | Время Алматы без обращений к модели (через полночь можно); синхронизация идёт |
+| `evaluate.only_unscored` | bool | `true` — только диалоги без оценок; `false` — и частично оценённые (после правки чек-листа) |
+| `after.classify_products` | bool | Классификация продуктов после оценки (когда классификация в main; до этого — «недоступно») |
+| `after.evaluate_alerts` | bool | Проверить правила алертов после цикла (когда алерты в main) |
+| `after.prosody_for_calls` | bool | Заранее посчитать интонацию звонков с записью: карточка открывается без ожидания |
+
+Цикл: синхронизировать источники, которым пора → посчитать новые диалоги → очередь: пары без ответа, без `block` по достаточности, под фильтры, новые первыми → пачка `min(batch_size, остаток лимита в час)` модели (бюджет, тихие часы) → шаги `after`. Два цикла одновременно не идут; сбой цикла пишется в журнал сервера и цикл, создаёт алерт и сервер не останавливает. Запрет реальных данных (`CQA_ALLOW_REAL_DATA`) и обезличивание действуют, как у ручного запуска: оценку ведёт тот же оценщик.
+
+Cycle: `{id, trigger: "schedule" | "manual", started, finished, synced (источников), sources: [{id, added, skipped, error}], new_dialogs, queued, evaluated, errors: [строка], cost, skipped: null | "budget_reached" | "quiet_hours" | "hour_limit" | "busy", after: {"<шаг>": "ok" | "недоступно" | "ошибка: …"}, alerts: [hit]}`. Время — ISO с поясом Алматы.
+
+Алерты (`hit` в форме правил алертов: `{rule_id, severity: "warning", title, target_type, target_id, basis}`): `automation.budget` (раз в сутки, `basis: {day, budget_usd, spent_usd}`), `automation.cycle_failed` (`{started, error}`), `automation.source_down` (раз в сутки на источник, `{source, error, at}`). Каждое автоматическое действие (`automation.sync`, `automation.evaluate`, `automation.after`, `automation.alert`) пишется в журнал действий от имени «Автоматизация»; изменения настроек, пауза и запуск вручную — от имени пользователя.

@@ -28,12 +28,14 @@ from cqa.domain.automation import (
 from cqa.domain.checklist_export import excel_csv
 from cqa.domain.models import Dialog
 from cqa.domain.review import ASTANA
+from cqa.services.audit import Actor, record
 from cqa.services.errors import Conflict, NotFound, Upstream
 from cqa.services.runs import Runner, plan_run
 from cqa.services.state import current_results
 from cqa.services.sync import Syncer
 
 ACTOR = "Автоматизация"
+AUTOMATION = Actor(None, ACTOR)  # журнал действий: автоматические действия от имени «Автоматизация»
 TICK_S = 15.0  # планировщик просыпается раз в 15 с и решает, пора ли цикл
 POLL_S = 0.5
 Trigger = Literal["schedule", "manual"]
@@ -110,7 +112,7 @@ def wire(store: Store, syncer: Syncer, runner: Runner, prosody: Callable[[str], 
         evaluate=lambda ids, priority, stop: runner_evaluate(runner, store, ids, stop),  # → батч с priority
         source_of=source_of,
         # blocked → lambda d: sufficiency(d).level == "block"; notify → lambda h: store.add_alerts([h], now)
-        # audit → lambda *a: record(store, Actor(None, ACTOR, "system"), *a)
+        audit=lambda action, kind, target, details: record(store, AUTOMATION, action, kind, target, details),
         steps={"prosody_for_calls": prosody_for_calls},  # → + classify_products, evaluate_alerts
     )
 
