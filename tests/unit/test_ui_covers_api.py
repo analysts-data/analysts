@@ -11,9 +11,17 @@ ROOT = Path(__file__).resolve().parents[2]
 HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
-EXEMPT = {"/health", "/login"}
-# UI в работе: история оценок, возврат прежней оценки, сравнение и принятие запусков (review-workflow-history)
-EXEMPT |= {
+EXEMPT = {
+    "/health",
+    "/login",
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
+    # UI в работе: история оценок, возврат оценки, сравнение и принятие запусков (review-workflow-history)
     "/dialogs/{dialog_id}/history",
     "/results/{result_id}/restore",
     "/runs/compare",

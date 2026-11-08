@@ -210,6 +210,7 @@ def test_compare_run_answers_in_the_shadow_then_adopt_makes_them_current(api: Te
     assert after == 0
     replace = api.post(f"/api/runs/{first['id']}/adopt")
     assert replace.status_code == 409 and "сразу" in replace.json()["detail"]
+    assert {"run.start", "run.recheck", "run.adopt"} <= {r["action"] for r in api.get("/api/audit").json()}
 
 
 def test_re_check_with_another_model_records_its_settings(api: TestClient) -> None:
