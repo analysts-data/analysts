@@ -4,21 +4,25 @@ import asyncio
 import contextlib
 import sqlite3
 from collections.abc import AsyncIterator
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
+from cqa.adapters.webhook import send_event
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
-from cqa.http import api
+from cqa.http import api, integration
 from cqa.http.audio import router as audio_router
+from cqa.http.validation import validation_error
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
@@ -32,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
 # ponytail: seed is the test fixture; a separate product file if the two ever diverge
 SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
+WEBHOOK_TIMEOUT_S = 10
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -55,7 +60,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 async def _detail(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
-        {"detail": str(exc)}, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t))
+        {"detail": str(exc), **getattr(exc, "extra", {})},
+        status_code=next(c for t, c in STATUS.items() if isinstance(exc, t)),
     )
 
 
@@ -79,6 +85,8 @@ def create_app(
     app.state.settings = settings
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
+    app.add_exception_handler(RequestValidationError, validation_error)
+    app.state.idempotency, app.state.idempotency_pending = {}, set()  # Idempotency-Key интеграции
 
     @app.get("/api/health")
     def health() -> dict[str, bool]:
@@ -102,10 +110,17 @@ def create_app(
 
     app.state.prosody = prosody
     evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    secret = settings.webhook_secret.get_secret_value() if settings.webhook_secret else None
+    webhook = (
+        partial(send_event, httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT_S), settings.webhook_url, secret)
+        if settings.webhook_url
+        else None
+    )
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=webhook)
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
+    app.include_router(integration.router)
     app.include_router(audio_router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path

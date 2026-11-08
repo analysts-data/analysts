@@ -360,3 +360,74 @@ async def test_use_during_a_run_is_a_conflict(store: Store) -> None:
     with pytest.raises(Conflict, match="идёт"):
         runner.use(FakeEvaluator())
     runner.cancel(runner._active or 0)
+
+
+def _announced() -> tuple[list[dict[str, Any]], Callable[[dict[str, Any]], Any]]:
+    events: list[dict[str, Any]] = []
+
+    async def on_finish(event: dict[str, Any]) -> None:
+        events.append(event)
+
+    return events, on_finish
+
+
+async def test_finished_run_is_announced_with_counts_and_requested_dialogs(store: Store) -> None:
+    events, on_finish = _announced()
+    runner = Runner(store, FakeEvaluator(fail_on={"p1-ru-003"}), parallel=1, on_finish=on_finish)
+    run_id = runner.start(["call-024", "p1-ru-003"], None)
+    await _drain(runner)
+    assert events == [
+        {
+            "event": "run.finished",
+            "run_id": run_id,
+            "status": "done",
+            "done": 16,
+            "total": 16,
+            "errors": ["p1-ru-003: timeout"],
+            "dialog_ids": ["call-024", "p1-ru-003"],
+        }
+    ]
+
+
+async def test_run_with_nothing_to_do_is_announced_too(store: Store) -> None:
+    events, on_finish = _announced()
+    runner = Runner(store, FakeEvaluator(), parallel=1, on_finish=on_finish)
+    runner.start(["call-024"], None)
+    await _drain(runner)
+    run_id = runner.start(["call-024"], None)
+    await _drain(runner)
+    assert [(e["run_id"], e["total"], e["dialog_ids"]) for e in events][-1] == (run_id, 0, ["call-024"])
+
+
+async def test_ensure_idle_refuses_while_a_run_is_active(store: Store) -> None:
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(gate=gate), parallel=1)
+    runner.ensure_idle()
+    run_id = runner.start(None, None)
+    with pytest.raises(Conflict, match=f"^Запуск {run_id} ещё идёт$"):
+        runner.ensure_idle()
+    gate.set()
+    await _drain(runner)
+
+
+async def test_conflict_names_the_active_run_with_its_progress(store: Store) -> None:
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(gate=gate), parallel=1, clock=_clock())
+    run_id = runner.start(None, None)
+    with pytest.raises(Conflict) as err:
+        runner.ensure_idle()
+    assert err.value.extra == {"run_id": run_id, "done": 0, "total": 16, "eta_s": None}
+    gate.set()
+    await _drain(runner)
+
+
+async def test_runner_tells_the_dialogs_of_a_run_and_the_ones_in_flight(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(["p1-ru-003", "call-024"], None)
+    await _first_in_flight(evaluator)
+    assert (runner.dialog_ids(run_id), runner.in_flight()) == (["p1-ru-003", "call-024"], {"p1-ru-003"})
+    gate.set()
+    await _drain(runner)
+    assert (runner.in_flight(), runner.dialog_ids(run_id + 1)) == (set(), None)

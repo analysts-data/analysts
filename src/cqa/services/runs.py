@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from cqa.adapters.store import RunRow, Store
@@ -43,19 +43,32 @@ def plan_run(
 
 
 class Runner:
-    """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди."""
+    """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди.
+
+    `on_finish` получает событие `run.finished` по каждому запуску из `start` (вебхук интеграции).
+    """
 
     def __init__(
-        self, store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time
+        self,
+        store: Store,
+        evaluator: Evaluator,
+        *,
+        parallel: int,
+        clock: Callable[[], float] = time.time,
+        on_finish: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._store = store
         self._evaluator = evaluator
         self._parallel = parallel
         self._clock = clock
+        self._on_finish = on_finish
         self._cancel = asyncio.Event()
         self._active: int | None = None
         self._failed = 0  # пары упавших диалогов активного запуска: «done» за 0 с, ETA их не считает
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
+        # ponytail: в памяти процесса — после перезапуска состав старого запуска неизвестен (None)
+        self._ids: dict[int, list[str]] = {}
+        self._in_flight: set[str] = set()
 
     def use(self, evaluator: Evaluator) -> None:
         """Новый оценщик для следующих запусков (смена режима из интерфейса); во время запуска — Conflict."""
@@ -63,10 +76,23 @@ class Runner:
             raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
         self._evaluator = evaluator
 
+    def ensure_idle(self) -> None:
+        """Conflict с номером, ходом и ETA активного запуска: клиент API видит, сколько ждать."""
+        if self._active is not None:
+            p = self.progress(self._active)
+            extra = {"run_id": self._active, **{k: p[k] for k in ("done", "total", "eta_s")}}
+            raise Conflict(f"Запуск {self._active} ещё идёт", **extra)
+
+    def dialog_ids(self, run_id: int) -> list[str] | None:
+        """Диалоги запуска из `start` этого процесса; None — запуск начат до перезапуска или не здесь."""
+        return self._ids.get(run_id)
+
+    def in_flight(self) -> set[str]:
+        return set(self._in_flight)
+
     def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
-        if self._active is not None:
-            raise Conflict(f"Запуск {self._active} ещё идёт")
+        self.ensure_idle()
         if dialogs is not None:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
@@ -79,17 +105,42 @@ class Runner:
             if unknown:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
         plan = plan_run(self._store, checklist, dialogs, criteria)
+        ids = list(dict.fromkeys(dialogs)) if dialogs is not None else [d.id for d, _ in plan]
         run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
+        self._ids[run_id] = ids
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
+            if self._on_finish is not None:
+                self._spawn(self._announce(run_id, ids))
             return run_id
         self._active = run_id
         self._failed = 0
         self._cancel = asyncio.Event()
-        task = asyncio.create_task(self.execute(run_id, checklist, plan))
+        self._spawn(self._execute_and_announce(run_id, checklist, plan, ids))
+        return run_id
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.create_task(coro)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-        return run_id
+
+    async def _execute_and_announce(
+        self, run_id: int, checklist: Checklist, plan: list[tuple[Dialog, list[Criterion]]], ids: list[str]
+    ) -> None:
+        try:
+            await self.execute(run_id, checklist, plan)
+        finally:
+            await self._announce(run_id, ids)
+
+    async def _announce(self, run_id: int, ids: list[str]) -> None:
+        """Событие без текста диалогов: счётчики, ошибки и id запрошенных диалогов."""
+        if self._on_finish is None:
+            return
+        p = self.progress(run_id)
+        keys = ("status", "done", "total", "errors")
+        await self._on_finish(
+            {"event": "run.finished", "run_id": run_id, **{k: p[k] for k in keys}, "dialog_ids": ids}
+        )
 
     def progress(self, run_id: int) -> dict[str, Any]:
         row = self._run(run_id)
@@ -153,6 +204,7 @@ class Runner:
         criteria: list[Criterion],
     ) -> None:
         started = self._clock()
+        self._in_flight.add(dialog.id)
         try:
             out = await self._evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
@@ -161,6 +213,8 @@ class Runner:
                 run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {str(exc) or type(exc).__name__}"]
             )
             return
+        finally:
+            self._in_flight.discard(dialog.id)
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
             self._store.add_result(dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result)
