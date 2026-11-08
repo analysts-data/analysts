@@ -76,10 +76,21 @@ export function setRole(role: Role) {
 export const homeOf = (role: string) => (role === 'reviewer' ? '#/appeals' : role === 'operator' ? '#/coaching' : '#/queue');
 
 export type Theme = 'light' | 'dark';
-export const systemTheme = (): Theme => (matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-export function applyTheme(theme: Theme, remember = false) {
-  document.documentElement.dataset.theme = theme;
-  if (remember) save('cqa.theme', theme);
+export type ThemeMode = Theme | 'system';
+export const systemTheme = (): Theme => (globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+/** Режим темы: светлая, тёмная или системная (по умолчанию; следует настройке ОС на лету). */
+export const themeMode = (): ThemeMode => {
+  const m = load('cqa.theme');
+  return m === 'light' || m === 'dark' ? m : 'system';
+};
+export function paintTheme() {
+  const m = themeMode();
+  document.documentElement.dataset.theme = m === 'system' ? systemTheme() : m;
   rerender();
 }
+export function setThemeMode(mode: ThemeMode) {
+  save('cqa.theme', mode);
+  paintTheme();
+}
+globalThis.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => themeMode() === 'system' && paintTheme());
 export const currentTheme = (): Theme => (document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');

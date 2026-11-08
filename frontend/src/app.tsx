@@ -2,14 +2,16 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Scale, Search, Settings2 } from 'lucide-react';
 import { TERMS } from './terms';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { t } from './i18n';
+import { LangMenu, ThemeMenu } from './menus';
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { modeText } from './lib/config.js';
 import { reload } from './lib/state.js';
 import { groupOf } from './lib/queue.js';
-import { applyTheme, currentTheme, load, rerender, ROLES, save, setRole, useRoute, useS, type Role } from './store';
-import { Card, cn, Skeleton, Tip, TipProvider } from './ui';
+import { load, rerender, ROLES, save, setRole, useRoute, useS, type Role } from './store';
+import { Button, Card, cn, LinkButton, Skeleton, Tip, TipProvider } from './ui';
 import { Queue } from './views/Queue';
 import { CardView } from './views/Card';
 import { Appeals } from './views/Appeals';
@@ -126,7 +128,7 @@ function RoleHint({ k }: { k: string }) {
   return (
     <Card className="px-4 py-3.5">
       <div className="flex items-start justify-between gap-4">
-        <h2 className="text-[15px] font-semibold">{h.title}</h2>
+        <h2 className="text-[15px] font-semibold">{t(h.title)}</h2>
         <button
           type="button"
           className="-my-1 rounded-lg px-2.5 py-1 text-[13px] font-semibold text-ink2 hover:bg-hover"
@@ -135,14 +137,14 @@ function RoleHint({ k }: { k: string }) {
             force(x => x + 1);
           }}
         >
-          Понятно
+          {t('Понятно')}
         </button>
       </div>
       <ol className="mt-2 grid gap-3 text-[13px] text-ink2 md:grid-cols-3">
-        {h.steps.map((t, i) => (
+        {h.steps.map((step, i) => (
           <li key={i} className="flex gap-2.5">
             <span className="mt-px grid h-5 w-5 flex-none place-items-center rounded-full border border-line-strong text-[11px] font-semibold text-muted">{i + 1}</span>
-            <span>{t}</span>
+            <span>{t(step)}</span>
           </li>
         ))}
       </ol>
@@ -150,19 +152,56 @@ function RoleHint({ k }: { k: string }) {
   );
 }
 
+// Ошибка внутри одного экрана не роняет всё приложение: сообщение, «Открыть заново» и переход к диалогам.
+class ScreenBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Card className="flex flex-col items-start gap-3 px-5 py-4">
+        <h1 className="text-lg font-semibold">{t('Экран не открылся')}</h1>
+        <p className="text-[13px] text-muted">{t('Данные не изменены. Попробуйте открыть экран заново; если ошибка повторится, перейдите к списку диалогов.')}</p>
+        <p className="font-mono text-xs text-muted">{this.state.error.message}</p>
+        <div className="flex gap-2">
+          <Button variant="primary" onClick={() => this.setState({ error: null })}>
+            {t('Открыть заново')}
+          </Button>
+          <LinkButton href="#/queue">{t('К диалогам')}</LinkButton>
+        </div>
+      </Card>
+    );
+  }
+}
+
 function View({ page, id }: { page: string; id: string | null }) {
   const S = useS();
+  const [busy, setBusy] = useState(false);
   if (S.error)
     return (
-      <div className="box risk" role="alert">
-        Не удалось загрузить данные: {S.error}
+      <div className="flex flex-col items-start gap-3">
+        <div className="box risk" role="alert">
+          {t('Не удалось загрузить данные: {error}', { error: S.error })}
+        </div>
+        <Button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await reload();
+            setBusy(false);
+          }}
+        >
+          {busy ? t('Загружаю…') : t('Повторить')}
+        </Button>
       </div>
     );
   if (S.loading)
     return (
       <div className="flex flex-col gap-4" aria-busy="true">
-        <h1 className="sr">{NAMES[page]}</h1>
-        <p className="sr">Загрузка данных…</p>
+        <h1 className="sr">{t(NAMES[page])}</h1>
+        <p className="sr">{t('Загрузка данных…')}</p>
         <Skeleton className="h-9 w-64" />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {[0, 1, 2, 3, 4].map(i => (
@@ -220,7 +259,6 @@ export function App() {
   }, [r.page, r.id]);
 
   const navPage = r.page === 'd' ? 'queue' : r.page;
-  const theme = currentTheme();
   const queueBadge = S.checklist ? S.dialogs.filter((d: any) => groupOf(d, S.checklist, S.appeals) !== 'other').length : 0;
   const appealsBadge = S.appeals.filter((a: any) => a.status === 'pending').length;
   const warn = S.mode && (S.mode.where === 'external' || (S.mode.where !== 'local' && !S.mode.anonymized));
@@ -228,6 +266,13 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <TipProvider delayDuration={250} skipDelayDuration={100}>
+      <button
+        type="button"
+        onClick={() => main.current?.focus()}
+        className="sr focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[80] focus:rounded-lg focus:bg-surface focus:px-3 focus:py-2 focus:shadow-pop"
+      >
+        {t('Перейти к содержимому')}
+      </button>
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
         <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
@@ -239,57 +284,57 @@ export function App() {
               <span className="text-xs text-muted">Freedom Broker</span>
             </div>
           </div>
-          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Работа</div>
-          <nav className="flex gap-0.5 md:flex-col" aria-label="Работа">
+          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">{t('Работа')}</div>
+          <nav className="flex gap-0.5 md:flex-col" aria-label={t('Работа')}>
             <NavLink page="queue" current={navPage} icon={<MessageSquare />} badge={queueBadge} badgeId="bQueue">
-              Диалоги
+              {t('Диалоги')}
             </NavLink>
             <NavLink page="appeals" current={navPage} icon={<Scale />} badge={appealsBadge} badgeId="bAppeals">
-              Апелляции
+              {t('Апелляции')}
             </NavLink>
             <NavLink page="coaching" current={navPage} icon={<BookOpen />}>
-              Обучение
+              {t('Обучение')}
             </NavLink>
           </nav>
-          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Обзор и настройка</div>
-          <nav className="flex gap-0.5 md:flex-col" aria-label="Обзор и настройка">
+          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">{t('Обзор и настройка')}</div>
+          <nav className="flex gap-0.5 md:flex-col" aria-label={t('Обзор и настройка')}>
             <NavLink page="analytics" current={navPage} icon={<BarChart3 />}>
-              Аналитика
+              {t('Аналитика')}
             </NavLink>
             <NavLink page="checklist" current={navPage} icon={<ListChecks />}>
-              Чек-лист
+              {t('Чек-лист')}
             </NavLink>
           </nav>
           <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
-            <span id="clVer">{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
+            <span id="clVer">{S.checklist ? t('Чек-лист v{v}', { v: S.checklist.version }) : ''}</span>
             <span>
-              Команды: <kbd className="rounded border border-line px-1">Ctrl K</kbd>
+              {t('Команды:')} <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
           </div>
         </aside>
         <div className="min-w-0">
           <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
             <div className="text-[13px] text-muted" id="crumb">
-              {NAME} / <b className="font-semibold text-ink">{NAMES[r.page]}</b>
+              {NAME} / <b className="font-semibold text-ink">{t(NAMES[r.page])}</b>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => setPalette(true)}
                 className="hidden min-h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] text-muted hover:bg-hover sm:inline-flex"
-                aria-label="Команды и поиск (Ctrl+K)"
+                aria-label={t('Команды и поиск (Ctrl+K)')}
               >
-                <Search size={15} /> <span className="hidden 2xl:inline">Поиск</span> <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
+                <Search size={15} /> <span className="hidden 2xl:inline">{t('Поиск')}</span> <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
               {S.mode &&
                 (S.role === 'qa' ? (
-                  <Tip content={`${TERMS.mode} Нажмите, чтобы сменить.`}>
+                  <Tip content={`${t(TERMS.mode)} ${t('Нажмите, чтобы сменить.')}`}>
                   <button
                     type="button"
                     id="mode"
                     data-act="cfg"
                     onClick={() => setModeOpen(true)}
-                    aria-label={`Сменить режим оценки. ${modeText(S.mode, S.llmMode)}`}
+                    aria-label={`${t('Сменить режим оценки.')} ${modeText(S.mode, S.llmMode)}`}
                     className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
                   >
                     {modeText(S.mode, S.llmMode)}
@@ -297,18 +342,18 @@ export function App() {
                   </button>
                   </Tip>
                 ) : (
-                  <Tip content={TERMS.mode}>
+                  <Tip content={t(TERMS.mode)}>
                   <span id="mode" tabIndex={0} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
                     {modeText(S.mode, S.llmMode)}
                   </span>
                   </Tip>
                 ))}
               <span className="sr 2xl:not-sr-only 2xl:text-[13px] 2xl:text-muted" id="roleLbl">
-                Смотреть как:
+                {t('Смотреть как:')}
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
                 {(Object.keys(ROLES) as Role[]).map((k, i) => (
-                  <Tip key={k} content={k === 'qa' ? TERMS.qa : null}>
+                  <Tip key={k} content={k === 'qa' ? t(TERMS.qa) : null}>
                   <button
                     type="button"
                     data-act="role"
@@ -317,12 +362,12 @@ export function App() {
                     onClick={() => setRole(k)}
                     className={cn('min-h-9 px-3 text-[13px] font-medium', i && 'border-l border-line', S.role === k ? 'bg-ink text-bg' : 'text-ink2 hover:bg-hover')}
                   >
-                    {ROLES[k]}
+                    {t(ROLES[k])}
                   </button>
                   </Tip>
                 ))}
               </div>
-              <Tip content="Показать подсказки к этому экрану">
+              <Tip content={t('Показать подсказки к этому экрану')}>
                 <button
                   type="button"
                   onClick={() => {
@@ -336,28 +381,21 @@ export function App() {
                     rerender();
                   }}
                   className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
-                  aria-label="Подсказки"
+                  aria-label={t('Подсказки')}
                 >
                   <CircleHelp size={17} />
                 </button>
               </Tip>
-              <Tip content={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
-              <button
-                type="button"
-                data-act="theme"
-                onClick={() => applyTheme(theme === 'dark' ? 'light' : 'dark', true)}
-                className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
-                aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-              >
-                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-              </Tip>
+              <LangMenu />
+              <ThemeMenu />
             </div>
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
             {!S.loading && !S.error && hintKey(S.role, r.page) && <RoleHint key={hintKey(S.role, r.page)} k={hintKey(S.role, r.page)} />}
-            <motion.div key={r.page + (r.id ?? '')} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
-              <View page={r.page} id={r.id} />
+            <motion.div key={r.page + (r.id ?? '') + S.lang} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
+              <ScreenBoundary key={r.page + (r.id ?? '')}>
+                <View page={r.page} id={r.id} />
+              </ScreenBoundary>
             </motion.div>
           </main>
         </div>

@@ -3,14 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import { resolveBase } from './lib/api.js';
 import { api, init, reload, resumeRun } from './lib/state.js';
-import { homeOf, load, S, rerender, systemTheme } from './store';
+import './i18n';
+import { homeOf, paintTheme, S, rerender } from './store';
 
 const root = document.querySelector('cqa-app') as HTMLElement;
 init(resolveBase(location.search, root.dataset.api));
 
-// Тема до первой отрисовки: выбор пользователя, иначе системная.
-const theme = load('cqa.theme');
-document.documentElement.dataset.theme = theme === 'dark' || theme === 'light' ? theme : systemTheme();
+// Тема до первой отрисовки: светлая, тёмная или системная (по умолчанию).
+paintTheme();
 
 if (!location.hash || location.hash === '#/' || location.hash === '#') history.replaceState(null, '', homeOf(S.role));
 
