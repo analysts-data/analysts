@@ -17,7 +17,7 @@ from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
-from cqa.http import api
+from cqa.http import api, docs
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
@@ -75,7 +75,10 @@ def create_app(
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="CQA", lifespan=_lifespan)
+    # свой /docs/ без CDN вместо Swagger и ReDoc; схема OpenAPI рядом с остальным API
+    app = FastAPI(
+        title="CQA", lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url="/api/openapi.json"
+    )
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
     app.add_middleware(
         CORSMiddleware,
@@ -91,7 +94,7 @@ def create_app(
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
 
-    @app.get("/api/health")
+    @app.get("/api/health", summary="Проверка, что сервер работает")
     def health() -> dict[str, bool]:
         return {"ok": True}
 
@@ -115,6 +118,7 @@ def create_app(
 
     app.include_router(api.router)
     app.include_router(audio_router)
+    app.include_router(docs.router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path
     return app

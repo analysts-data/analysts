@@ -248,6 +248,18 @@ class Store:
             out.setdefault(dialog_id, {})[cid] = result
         return out
 
+    def results_between(self, start: float, end: float) -> list[tuple[str, int, CriterionResult]]:
+        """(cid, версия чек-листа, результат), записанные в [start, end] (секунды эпохи), по порядку.
+
+        ponytail: у результата нет run_id, запуск находится по времени; колонка run_id, если окна мало.
+        """
+        rows = self._conn.execute("SELECT cid, version, body, created FROM results ORDER BY id").fetchall()
+        return [
+            (row["cid"], row["version"], CriterionResult.model_validate(json.loads(row["body"])))
+            for row in rows
+            if start <= datetime.fromisoformat(row["created"]).timestamp() <= end
+        ]
+
     # --- запуски ---
 
     def add_run(self, total: int, started: float) -> int:
