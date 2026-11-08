@@ -14,7 +14,8 @@ Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true
 
 # Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
 # call — смысл только для звонков: входит в отпечаток звонка, отпечаток чата не меняет.
-MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel"}
+# jev входит в смысл, только если задан: при jev = null отпечаток прежний.
+MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel", "jev"}
 
 
 def allowed_answers(c: Criterion) -> list[Answer]:
@@ -26,7 +27,10 @@ def allowed_answers(c: Criterion) -> list[Answer]:
 
 def fingerprint(checklist: Checklist, c: Criterion, ch: str) -> str:
     """Отпечаток смысла критерия для канала диалога. Без call у звонка тот же отпечаток, что у чата."""
-    payload: list[object] = [checklist.rules, c.model_dump(mode="json", include=MEANING)]
+    meaning = c.model_dump(mode="json", include=MEANING)
+    if c.jev is None:
+        meaning.pop("jev")
+    payload: list[object] = [checklist.rules, meaning]
     if ch == "call" and c.call:
         payload.append(c.call)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]

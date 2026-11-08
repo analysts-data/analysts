@@ -94,6 +94,11 @@ def test_fingerprint_ignores_light_fields(field: str, value: Any) -> None:
         ("04", "naCond", "Другое условие"),
         ("08", "questions", [{"k": "threat", "label": "Угроза", "text": "Было?"}]),
         ("04", "channel", "chat"),
+        (
+            "06",
+            "jev",
+            {"type": "noul", "instructions": "Да — сделал", "criteria": {"true": "a", "false": "b"}},
+        ),
     ],
 )
 def test_fingerprint_changes_with_meaning(cid: str, field: str, value: Any) -> None:
@@ -116,6 +121,18 @@ def test_without_addendum_call_and_chat_fingerprints_match() -> None:
 
 def test_call_addendum_change_is_pending() -> None:
     assert diff_checklists(draft(), edit("04", call="Уточнение для звонка")).pending == ["04"]
+
+
+def test_fingerprint_without_jev_matches_the_snapshot_before_jev() -> None:
+    # отпечатки до поля jev: при jev = null кэш ответов не сбрасывается
+    before = {
+        "04": "0b5182d318764895",
+        "06": "34aaebdb6fe05be1",
+        "07": "623b5651bca74be8",
+        "08": "0f3c2a9dc7c3aa5d",
+    }
+    for ch in ("chat", "call"):
+        assert {c.id: fingerprint(draft(), c, ch) for c in draft().criteria} == before
 
 
 def test_fingerprint_has_16_chars() -> None:
