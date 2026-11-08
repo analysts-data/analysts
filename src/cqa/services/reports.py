@@ -131,7 +131,7 @@ CATALOGUE: list[dict[str, Any]] = [
         "title": "Итоги по диалогам",
         "description": "Итог и ответы каждого диалога для Excel",
         "formats": ["csv"],
-        "href_template": "/api/scores/export",
+        "href_template": "/api/scores/export?format={format}",
         "route": "/api/scores/export",
     },
     {

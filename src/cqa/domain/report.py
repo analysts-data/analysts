@@ -9,7 +9,7 @@ from html import escape
 from typing import Any
 
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
-from cqa.domain.review import effective_answer, needs_review
+from cqa.domain.review import awaits_review, effective_answer
 from cqa.domain.scoring import frac, r2, total
 from cqa.domain.tables import CSS as TABLE_CSS
 from cqa.domain.tables import Doc, md_cell, page
@@ -82,14 +82,7 @@ def build_report(
     no_next = sum(
         any(c.signal == "resolution" and _lost(c, ans.get(c.id)) for c in scored_cs) for _, ans, _ in rows
     )
-    review = sum(
-        not d.reviewed
-        and any(
-            (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
-            for c in scored_cs
-        )
-        for d, _, _ in rows
-    )
+    review = sum(awaits_review(scored_cs, d, decided) for d, _, _ in rows)
     costs = [d.cost for d, _, _ in rows if d.cost]
 
     criteria: list[dict[str, Any]] = []

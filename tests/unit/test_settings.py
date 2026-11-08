@@ -37,6 +37,7 @@ DEFAULTS = {
     "holdout_dir": None,
     "eval_reports_dir": Path("eval/reports"),
     "results_dir": Path("results"),
+    "access_token": None,
 }
 
 

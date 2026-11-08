@@ -3,13 +3,11 @@
 json отчёта — его данные как есть; эта форма — для людей: Excel, вики и почта, печать.
 """
 
-import csv
-import io
 from dataclasses import dataclass
 from html import escape
 
 from cqa.domain.checklist_export import CSS as MEMO_CSS
-from cqa.domain.checklist_export import excel_cell
+from cqa.domain.checklist_export import excel_csv
 
 EMPTY = "Нет данных"
 
@@ -36,14 +34,11 @@ def _shown(doc: Doc) -> list[Table]:
 
 
 def to_csv(doc: Doc) -> str:
-    """UTF-8 с BOM и «;»: русский Excel открывает сразу. Таблицы — блоками через пустую строку."""
-    buf = io.StringIO()
-    out = csv.writer(buf, delimiter=";")
-    out.writerows([[doc.title], [doc.meta]])
+    """UTF-8 с BOM и «;» (`excel_csv`) для русского Excel; таблицы — блоками через пустую строку."""
+    rows: list[list[str]] = [[doc.title], [doc.meta]]
     for t in _shown(doc):
-        out.writerows([[], [t.title], t.head])
-        out.writerows([excel_cell(x) for x in row] for row in t.rows)
-    return "\ufeff" + buf.getvalue()
+        rows += [[], [t.title], t.head, *t.rows]
+    return excel_csv(rows)
 
 
 def md_cell(s: str) -> str:

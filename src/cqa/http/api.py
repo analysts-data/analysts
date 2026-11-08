@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, StrictBool
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.domain.scores_export import Shape
 from cqa.services import reports
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
@@ -29,7 +30,7 @@ from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report
+from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -171,6 +172,19 @@ async def get_results(which: Literal["dev", "prod"], request: Request) -> FileRe
     """Файл организаторов results/<which>/results.json, собранный make results."""
     path = reports.results_file(request.app.state.settings.results_dir, which)
     return FileResponse(path, media_type="application/json", filename=f"results-{which}.json")
+
+
+@router.get("/scores/export")
+async def get_scores_export(
+    request: Request,
+    fmt: Annotated[Literal["csv"], Query(alias="format")] = "csv",
+    shape: Shape = "wide",
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+) -> Response:
+    """Оценки для Excel: wide — строка на диалог, long — на пару диалог × критерий."""
+    version, body = scores_csv(request.app.state.store, shape, lang=lang, ch=ch)
+    return _file(body, fmt, f"cqa-scores-v{version}")
 
 
 @router.post("/dialogs/text")

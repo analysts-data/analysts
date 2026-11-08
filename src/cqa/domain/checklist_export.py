@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+from collections.abc import Iterable, Sequence
 from html import escape
 from typing import Any
 
@@ -60,26 +61,30 @@ def _na(c: Criterion) -> str:
 # --- CSV для Excel ---
 
 
-def excel_cell(s: str) -> str:
+def _cell(s: str) -> str:
     """Ячейка с = + - @ в начале — формула для Excel: апостроф оставляет её текстом."""
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
 
 
-def to_csv(cl: Checklist) -> str:
-    """UTF-8 с BOM и «;»: русский Excel открывает файл сразу. Строка на критерий, правил нет."""
-    shares = _shares(cl)
+def excel_csv(rows: Iterable[Sequence[str]]) -> str:
+    """UTF-8 с BOM и «;»: русский Excel открывает файл сразу. Каждая ячейка — через `_cell`."""
     buf = io.StringIO()
-    out = csv.writer(buf, delimiter=";")
-    out.writerow(HEADER)
+    csv.writer(buf, delimiter=";").writerows([_cell(x) for x in row] for row in rows)
+    return "﻿" + buf.getvalue()
+
+
+def to_csv(cl: Checklist) -> str:
+    """Строка на критерий, правил нет."""
+    shares = _shares(cl)
+    rows = [HEADER]
     for c in cl.criteria:
-        row = [
+        rows.append([
             c.id, _section(cl, c.sec), c.name, TYPE[c.type],
             _num(c.w) if c.id in shares else "", _num(shares[c.id]) if c.id in shares else "",
             "да" if c.na else "нет", (c.naCond or "") if c.na else "", CHANNEL[c.channel], c.text,
             "; ".join(f"{s} — {t}" for s, t in _steps(c)), c.call or "", "; ".join(_questions(c)),
-        ]  # fmt: skip
-        out.writerow([excel_cell(x) for x in row])
-    return "﻿" + buf.getvalue()
+        ])  # fmt: skip
+    return excel_csv(rows)
 
 
 # --- Markdown ---

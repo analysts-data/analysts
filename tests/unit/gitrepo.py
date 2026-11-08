@@ -13,7 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
 
-_DROPPED = {"GITHUB_ACTIONS", "PROTECTED_ALLOW"}
+_DROPPED = {"GITHUB_ACTIONS", "PROTECTED_ALLOW", "PORT"}  # PORT: PORT=8001 scripts/fresh_clone.sh
 
 
 def base_env(**overrides: str) -> dict[str, str]:
