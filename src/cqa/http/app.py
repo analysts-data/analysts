@@ -18,6 +18,7 @@ from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api
+from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
@@ -77,6 +78,8 @@ def create_app(
     )
     settings = settings or Settings()
     app.state.settings = settings
+    if settings.access_token:
+        protect(app, settings.access_token.get_secret_value())
     for exc_class in STATUS:
         app.add_exception_handler(exc_class, _detail)
 

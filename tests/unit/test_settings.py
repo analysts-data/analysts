@@ -35,6 +35,7 @@ DEFAULTS = {
     "db_path": "data/cqa.db",
     "eval_dataset": Path("data/dev.json"),
     "holdout_dir": None,
+    "access_token": None,
 }
 
 

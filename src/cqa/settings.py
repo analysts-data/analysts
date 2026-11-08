@@ -53,3 +53,4 @@ class Settings(BaseSettings):
     db_path: str = "data/cqa.db"
     eval_dataset: Path = Path("data/dev.json")
     holdout_dir: Path | None = None
+    access_token: SecretStr | None = None  # show over the LAN: cookie from /login?token=, empty — open
