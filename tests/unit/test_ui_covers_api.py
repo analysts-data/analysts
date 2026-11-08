@@ -16,6 +16,13 @@ EXEMPT = {
     "/login",
     "/appeals/reasons",  # UI в работе: выбор «Причина решения» в форме решения
     "/appeals/stats",  # UI в работе: плитка «Изменено людьми» в аналитике
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
 }
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
