@@ -2,7 +2,8 @@
 export const resolveBase = (search, attr) => new URLSearchParams(search).get('data') || attr || '/api';
 
 // headers — заголовки каждого запроса (X-CQA-User выбранного сотрудника), функция: выбор меняется без пересоздания клиента.
-export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), headers = () => ({})) {
+// after(method, path, body) — после успешного ответа (метрики использования).
+export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), headers = () => ({}), after = () => {}) {
   // send — тело ответа текстом (Markdown разницы версий), call — JSON
   const send = async (method, path, body, raw = false) => {
     const init = { method };
@@ -21,6 +22,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), hea
       // body — разобранный ответ ошибки: формы показывают ошибки у полей (fields, detail[].loc)
       throw Object.assign(new Error(`${res.status}: ${detail}`), { status: res.status, body });
     }
+    after(method, path, raw ? undefined : body);
     return text;
   };
   const call = async (...args) => {

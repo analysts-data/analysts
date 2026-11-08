@@ -7,6 +7,7 @@ import { t } from '../lib/i18n.js';
 import { href } from '../lib/router.js';
 import { calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
+import { track } from '../lib/telemetry.js';
 import { setRole, useS } from '../store';
 import { Term } from '../terms';
 import { Button, Card, Chip, cn, Empty, Field, LinkButton, PageHead, Tip, type Tone } from '../ui';
@@ -213,6 +214,7 @@ function Fragment({ d, r, a }: { d: any; r: any; a: any }) {
 }
 
 function Detail({ a, d, c, reasons }: { a: any; d: any; c: any; reasons: Reason[] }) {
+  useEffect(() => track('appeal_open', { id: String(a.id) }), [a.id]); // начало воронки «апелляция → решение»
   const S = useS();
   if (!d || !c)
     return (

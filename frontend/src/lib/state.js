@@ -1,6 +1,7 @@
 // Состояние приложения: данные GET /api/state как есть, состояние интерфейса и действия, вызывающие API.
 import { createApi } from './api.js';
 import { t } from './i18n.js';
+import { sent } from './telemetry.js';
 
 export const S = {
   r: null, loading: true, error: null,
@@ -14,8 +15,8 @@ export const currentUser = () => { try { return globalThis.localStorage?.getItem
 export const setUser = id => { try { id ? globalThis.localStorage?.setItem(USER_KEY, id) : globalThis.localStorage?.removeItem(USER_KEY); } catch { /* без хранилища */ } };
 export const userHeader = () => { const u = currentUser(); return u ? { 'X-CQA-User': u } : {}; };
 
-export let api = createApi('/api', undefined, userHeader);
-export const init = base => { api = createApi(base, undefined, userHeader); };
+export let api = createApi('/api', undefined, userHeader, sent);
+export const init = base => { api = createApi(base, undefined, userHeader, sent); };
 
 export const render = focus => S.app?.render(focus);
 
