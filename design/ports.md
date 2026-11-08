@@ -95,7 +95,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 
 Ошибка проверки тела или параметров FastAPI (`RequestValidationError`) — 422 `{"detail": "Запрос не прошёл проверку: …", "errors": [{path, message, expected}]}` (`src/cqa/http/validation.py`).
 
-`Runner(store, evaluator, *, parallel, clock=time.time, on_finish=None)`: `on_finish(event)` получает `{"event": "run.finished", run_id, status, done, total, errors, dialog_ids}` по каждому запуску из `start`; `ensure_idle()` — Conflict при активном запуске.
+`Runner(store, evaluator, *, parallel, clock=time.time, on_finish=None)`: `on_finish(run)` получает `{run_id, status, done, total, errors, dialog_ids}` по каждому запуску (в `execute` и сразу у запуска без работы); `create_app` проверяет по нему алерты и шлёт `run.finished` на вебхук, сбой пишется в журнал; `ensure_idle()` — Conflict при активном запуске.
 
 Примеры 422 из `save_checklist`: `Критерий 05: для канала chat нужен na: true`, `Повторяется id критерия 04`.
 | `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |

@@ -80,11 +80,12 @@ curl -sS -X POST "$CQA/api/evaluate/batch" -H "$AUTH" -H 'Content-Type: applicat
 # → 202 {"run_id": 43, "dialog_ids": ["crm-2026-000123", "paste-8"]}
 ```
 
-Когда запуск закончится, сервер отправит `POST` на `CQA_WEBHOOK_URL`. Текста диалогов в событии нет:
+Когда запуск закончится, сервер отправит `POST` на `CQA_WEBHOOK_URL`. Текста диалогов в событии нет. На этот же адрес приходят алерты (`alert.created`) в том же формате `{event, data}`:
 
 ```json
-{"event": "run.finished", "run_id": 43, "status": "done", "done": 16, "total": 16,
- "errors": [], "dialog_ids": ["crm-2026-000123", "paste-8"]}
+{"event": "run.finished",
+ "data": {"run_id": 43, "status": "done", "done": 16, "total": 16,
+          "errors": [], "dialog_ids": ["crm-2026-000123", "paste-8"]}}
 ```
 
 Приёмник проверяет подпись `X-CQA-Signature: sha256=<hex>`. Это HMAC-SHA256 сырого тела на ключе `CQA_WEBHOOK_SECRET`:
