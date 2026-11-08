@@ -27,6 +27,8 @@ EXEMPT = {
     "/employees/{employee_id}",
     "/me",
     "/overview",
+    # UI в работе: правила при недостаточности данных (docs/insufficient-data.md)
+    "/sufficiency",
     # UI в работе: экран «Пакеты» (пакетная обработка), спецификация — в PR «пакетная обработка»
     "/batches",
     "/batches/{job_id}",
@@ -58,6 +60,8 @@ EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
 EXEMPT |= {"/recommendations"}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
+# UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
+EXEMPT |= {"/routing", "/routing/explain"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

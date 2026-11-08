@@ -18,7 +18,7 @@ from cqa.adapters import webhook
 from cqa.adapters.batches import BatchStore
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_evaluator, build_source
+from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
 from cqa.domain.review import ASTANA
 from cqa.http import api, batches, docs
@@ -139,6 +139,10 @@ def create_app(
     app.state.alerts = alerts
     evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts)
+    evaluator = (
+        evaluator if evaluator is not None else build_routed(settings, prosody, store)
+    )  # llm-evaluation
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)

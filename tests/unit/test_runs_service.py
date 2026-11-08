@@ -328,6 +328,7 @@ def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store)
         "errors": ["p1-ru-003: timeout"],
         "status": "running",
         "skipped": 0,
+        "insufficient": 0,
         "dialogs": [],
     }
 
@@ -345,6 +346,7 @@ async def test_progress_of_a_finished_run(store: Store) -> None:
         "errors": [],
         "status": "done",
         "skipped": 0,
+        "insufficient": 0,
         "dialogs": [
             {"id": "call-024", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
             {"id": "p1-ru-003", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},

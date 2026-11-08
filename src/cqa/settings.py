@@ -1,7 +1,7 @@
 """All configuration: CQA_* environment variables and .env (table "Settings" in design/ports.md)."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr | None = None  # key of the built-in "openrouter-jev" provider
     verifier: str | None = None  # "jev" or id in providers
     evaluator: Literal["llm", "jev"] = "llm"  # jev: all criteria by Jev alone, no rationale
+    routing: list[dict[str, Any]] | None = None  # JSON rules (GET /api/routing); None — demo rules, off
     jev_api_key: SecretStr | None = None
     anonymize: bool = True
     data_where: Where = "kz"

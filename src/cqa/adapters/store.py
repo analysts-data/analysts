@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS alerts (
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'ack', 'resolved')),
   assignee TEXT, acked_by TEXT, acked_at TEXT, resolved_by TEXT, resolved_at TEXT, note TEXT,
   UNIQUE (rule_id, target_type, target_id));
+CREATE TABLE IF NOT EXISTS sufficiency (
+  id TEXT PRIMARY KEY, outcome TEXT NOT NULL CHECK (outcome IN ('block', 'flag', 'info')));
 CREATE TABLE IF NOT EXISTS telemetry (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, role TEXT,
   event TEXT NOT NULL, page TEXT NOT NULL, props TEXT NOT NULL);
@@ -178,7 +180,9 @@ class Store:
                         (dialog.operator, dialog.id),
                     )
                     continue
-                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost", "operator"})
+                body = dialog.model_dump(
+                    mode="json", exclude={"res", "reviewed", "cost", "operator", "sufficiency"}
+                )
                 self._conn.execute(
                     "INSERT INTO dialogs (id, body, audio_url, operator) VALUES (?, ?, ?, ?)",
                     (dialog.id, _dump(body), audio.get(dialog.id), dialog.operator),
@@ -209,6 +213,10 @@ class Store:
     def audio_url(self, dialog_id: str) -> str | None:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
         return row["audio_url"] if row is not None else None
+
+    def audio_ids(self) -> set[str]:
+        """Диалоги со ссылкой на запись: правило no_audio без запроса на каждый диалог."""
+        return {r["id"] for r in self._conn.execute("SELECT id FROM dialogs WHERE audio_url IS NOT NULL")}
 
     def prosody(self, dialog_id: str) -> dict[str, Any] | None:
         """Интонация звонка, посчитанная раньше (`GET /api/dialogs/{id}/prosody`)."""
@@ -582,6 +590,18 @@ class Store:
                 "INSERT INTO overrides (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 [(k, _dump(v)) for k, v in values.items()],
+            )
+
+    def sufficiency_outcomes(self) -> dict[str, Outcome]:
+        """Исходы правил достаточности, изменённые из интерфейса: id правила → block, flag или info."""
+        return {r["id"]: r["outcome"] for r in self._conn.execute("SELECT id, outcome FROM sufficiency")}
+
+    def set_sufficiency_outcomes(self, outcomes: Mapping[str, Outcome]) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO sufficiency (id, outcome) VALUES (?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET outcome = excluded.outcome",
+                list(outcomes.items()),
             )
 
     def org_source(self) -> tuple[str, str] | None:

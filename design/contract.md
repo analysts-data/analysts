@@ -67,6 +67,7 @@
 - `s`: секунда начала реплики в аудиофайле (только звонок): метка стоит в конце реплики, паузы записи вычтены, сдвиг файла учтён.
 - `seg`: `pre` (до оператора), `conv` (оценивается), `internal` (разговор с коллегой, удержание), `after` (после конца разговора). Свёрнутые участки описывает объект `fold`.
 - `who`: `client`, `operator`, `bot`, `system` (из поля `speaker` организаторов; имя поля как в прототипе).
+- `sufficiency`: `{"status": "ok" | "flag" | "block", "reasons": [{"id": "too_short", "text": "Слишком короткий диалог", "basis": "реплик клиента и оператора — 2, нужно не меньше 3", "outcome": "flag"}]}` — достаточность данных по правилам `docs/insufficient-data.md`. Считается сервером при каждом чтении и не хранится. `block` («Недостаточно данных») — диалог модели не отправляется, в отчёте вне средних, в `results.json` `status: error` с причиной. `flag` («Мало данных») — оценивается, но стоит в «Нужна проверка», пока его не отметят проверенным. `info` — только сведение, статус `ok`. `lines: null` — правила не применяются.
 
 ## CriterionResult
 
@@ -85,6 +86,8 @@
 - `ev`: номера реплик-оснований, можно системное сообщение. Для пропущенного действия пусто, а `seg` называет участок.
 - `tag`: короткая причина снижения для группировки в аналитике. `better`: пример лучшей реплики для обучения.
 - `evFail`: основание не прошло проверку после повтора, ответ помечен «на проверку».
+- `rule_id`, `rule_name`: правило обработки, выбравшее оценщик (раздел «Правила обработки»), и его название на момент оценки; нет полей — общий режим. Карточка пишет «Обработано правилом „<rule_name>“».
+- `reviewWhy`: причина проверки, которую сервер считает при чтении (в базе её нет). Сейчас бывает одна: «ответ без основания при неполных данных». Её получает ответ не N/A без `ev` и `seg` на диалоге `sufficiency.status: "flag"`; флаг и ручной ответ её не получают. Ответ не меняется. Решение проверяющего — `POST /api/decisions`, как при `evFail`.
 
 ## Appeal
 
@@ -118,7 +121,7 @@
 | `POST /api/runs/{id}/adopt` | `{"dialogs": [..] или null, "criteria": [..] или null}` или без тела | `{adopted, skipped}`: теневые ответы запуска `compare` становятся текущими (там же) |
 | `GET /api/runs` | — | последние 50 запусков, новые первыми (раздел «История оценок и повторная проверка») |
 | `GET /api/runs/compare?a=<id>&b=<id>` | — | сравнение двух запусков (там же); неизвестный запуск — 404 |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, dialogs: [RunDialog]}` |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog]}`; `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 | `GET /api/dialogs/{id}/history` | — | история оценок диалога (раздел «История оценок и повторная проверка»); неизвестный диалог — 404 |
 | `POST /api/results/{id}/restore` | — | CriterionResult: прежняя оценка снова текущая; 404, 409 (там же) |
@@ -146,10 +149,12 @@
 | `POST /api/dialogs/{id}/reviewed` | `{"reviewed": true \| false}` | `{ok}`; снятие отметки возвращает диалог в верхние группы очереди |
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
+| `GET /api/sufficiency` | — | `{rules: [{id, text, why, default, outcome}]}`: правила достаточности данных в порядке проверки; `why` — обоснование исхода по умолчанию (`docs/insufficient-data.md`) |
+| `PUT /api/sufficiency` | `{"<id правила>": "block" \| "flag" \| "info"}` | то же, что `GET`: исходы сохранены в базе; неизвестное правило или исход — 422, ничего не меняется |
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
 | `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
-| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
+| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`, `sufficiency`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
 | `GET /api/employees` | — | `[{id, name, role, team, active}]` по имени; раздел «Сотрудники и журнал действий» |
 | `PUT /api/employees/{id}` | `{name, role: "operator" \| "qa" \| "reviewer" \| "manager" \| "admin", team, active}` | сотрудник после записи: создан или изменён; пустое имя или другая роль — 422 |
@@ -281,7 +286,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 ## Отчёт для руководства (eval-and-delivery)
 
-JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], strengths: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, insufficient, low_data, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], strengths: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением, `evFail` или `reviewWhy` без решения или со `sufficiency.status: "flag"`. Диалоги `block` в средние и доли не входят, их число — `insufficient`; `low_data` — оценённые диалоги `flag`. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
 
 ## По сотрудникам (eval-and-delivery)
 
@@ -453,3 +458,20 @@ Job: `{id, status: "queued" | "running" | "paused" | "done" | "cancelled" | "fai
 **Запуски.** `GET /api/runs` → `[{"id": 4, "created": "<ISO>", "status": "done", "model": "qwen3-6" | null, "checklist_version": 3 | null, "total": 16, "done": 16, "cost": 0.016, "errors_count": 0, "force": true, "skipped": 1, "apply": "replace" | "compare", "override": null | {…}}]`, последние 50, новые первыми. `model` — `mode.model` в момент запуска (с `override`); `null` — запуск до появления колонки.
 
 **Сравнение запусков.** `GET /api/runs/compare?a=3&b=4` → `{"a": 3, "b": 4, "pairs": 16, "agree": 0.875, "criteria": [{"cid": "04", "pairs": 2, "agree": 0.5, "mean_step_diff": 1.0}], "diffs": [{"dialog": "call-024", "cid": "04", "a": 15, "b": 10}]}`. Учитываются пары «диалог, критерий», отвеченные в обоих запусках, у пары — последняя строка запуска; ответ сравнивается как есть (флаг — объект целиком), без решений проверяющего. `agree` — доля совпавших, `null` без общих пар. `mean_step_diff` — у шкалы средняя разница в ступенях (`steps` текущего чек-листа), пары с `na` не в счёт; у остальных `null`. `criteria` — в порядке чек-листа. Теневые ответы входят. «Сравнить модели»: запуск `{"force": true}` или прежний и запуск `{"apply": "compare", "override": {"llm_provider": "<другой>"}}` того же набора.
+
+## Правила обработки (llm-evaluation, routing)
+
+Разные модели и настройки по типу взаимодействия. Диалог берёт первое включённое правило, все условия которого выполнены; последнее правило `default` — общий «Режим оценки» (`GET /api/config`), оно подходит любому диалогу. Без включённых правил оценка и запросы к модели те же, что без раздела.
+
+Rule: `{"id": "calls-kz", "name": "Звонки KZ → qwen3-6 + Jev", "enabled": true, "why": "<зачем>" | null, "match": {...}, "use": {...}}`. `id` — строчная латиница, цифры и дефис, до 32 знаков.
+
+- `match` (все заданные условия сразу; null или пустой список — условия нет; неизвестное поле — 422): `ch`: `"chat"` | `"call"`; `lang`: `["KZ", ...]` без учёта регистра; `source_id`, `product`: списки значений полей диалога (пока у диалога поля нет — не подходит); `min_lines`, `max_lines`: число реплик клиента, оператора и бота включительно; `has_audio`: есть ли запись разговора.
+- `use` (поле не задано — как в общем режиме): `evaluator`: `"llm"` | `"jev"`; `llm_provider`: код провайдера основной модели; `verifier`: `"jev"` | код провайдера | `null` (явный `null` — без второго мнения); `anonymize`: только строже — `true` включает обезличивание, `false` при включённом в общем режиме — 422 (иначе имена и номера ушли бы модели без маскировки); `prosody`: `false` — модель не получает разбор интонации звонка; `max_parallel`: одновременные запросы к модели правила.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/routing` | — | `[Rule]` по порядку, `default` последним; пока правила не сохраняли — демонстрационные, выключенные |
+| `PUT /api/routing` | `[Rule]` — весь список по порядку; `default` можно передать как есть, он не хранится | то же, что `GET`, после применения |
+| `POST /api/routing/explain` | `{"dialog_id": "call-024"}` | `{dialog_id, facts: {ch, lang, source_id, product, lines, has_audio}, rule: {id, name}, use: {where, anonymized, model, verifier, evaluator, prosody, max_parallel}, rules: [{id, name, enabled, matched, chosen, conditions: [{field, ok, text}]}]}` |
+
+Ошибки `PUT /api/routing` — 422, `detail` — строки «правило 2 «Звонки» → use.llm_provider: нет провайдера «x»» через перевод строки: неизвестное поле или значение, повтор `id`, `min_lines` больше `max_lines`, у `default` условия или действия, неизвестный провайдер, нет ключа (Jev без ключа вне `replay` и т. п.). Ключи и провайдеры проверяются только у включённых правил: выключенное можно сохранить недоделанным. Во время запуска — 409, как у `PUT /api/config`. `explain` неизвестного диалога — 404. Правило, провайдера которого удалили после сохранения, не мешает остальным: его диалоги падают с ошибкой в `errors` запуска.

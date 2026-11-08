@@ -22,7 +22,7 @@ from pydantic import (
     field_validator,
 )
 
-from cqa.compose import build_evaluator, check_provider
+from cqa.compose import build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
@@ -57,6 +57,8 @@ from cqa.services.llm_config import (
     view,
 )
 from cqa.services.ports import DialogSource
+from cqa.services.routing import explain, put_routing
+from cqa.services.routing import view as routing_view
 from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
 from cqa.services.state import (
     Audience,
@@ -69,6 +71,8 @@ from cqa.services.state import (
     report,
     scores_csv,
 )
+from cqa.services.sufficiency import configure as configure_sufficiency
+from cqa.services.sufficiency import view as sufficiency_view
 from cqa.services.sync import Syncer
 from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
@@ -126,6 +130,10 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ExplainIn(BaseModel):
+    dialog_id: str
 
 
 class OverrideIn(BaseModel):
@@ -372,6 +380,19 @@ async def post_checklist_diff(
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
+@router.get("/sufficiency")
+async def get_sufficiency(request: Request) -> dict[str, Any]:
+    """Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий."""
+    return sufficiency_view(request.app.state.store)
+
+
+@router.put("/sufficiency")
+async def put_sufficiency(body: dict[str, str], request: Request) -> dict[str, Any]:
+    saved = configure_sufficiency(request.app.state.store, body)
+    _log(request, "sufficiency.save", "sufficiency", "", dict(body))
+    return saved
+
+
 @router.put("/owners", summary="Назначить ответственных за причины снижения")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     owners = save_owners(request.app.state.store, body)
@@ -576,7 +597,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings, state.prosody))
+        _runner(request).use(build_routed(settings, state.prosody, state.store))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -595,6 +616,7 @@ FEATURES = {
     "batches": "/api/batches",
     "routing": "/api/routing",
     "automation": "/api/automation",
+    "sufficiency": "/api/sufficiency",
 }
 
 
@@ -646,6 +668,23 @@ async def delete_provider_route(provider_id: str, request: Request) -> dict[str,
 @router.post("/providers/{provider_id}/check", summary="Проверить связь с провайдером модели")
 async def check_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
     return await check_provider(provider(request.app.state.settings, provider_id))
+
+
+@router.get("/routing")
+async def get_routing(request: Request) -> list[dict[str, Any]]:
+    return routing_view(request.app.state.settings)
+
+
+@router.put("/routing")
+async def put_routing_route(request: Request, body: Annotated[Any, Body()]) -> list[dict[str, Any]]:
+    """Правила обработки целиком, по порядку; тело проверяет сервис, ошибки — 422 по-русски с полем."""
+    state = request.app.state
+    return routing_view(put_routing(state.store, state.settings, body, _apply(request)))
+
+
+@router.post("/routing/explain")
+async def post_routing_explain(body: ExplainIn, request: Request) -> dict[str, Any]:
+    return explain(request.app.state.store, request.app.state.settings, body.dialog_id)
 
 
 @router.post("/datasets", summary="Загрузить набор по group_id")
