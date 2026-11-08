@@ -15,8 +15,8 @@ from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
-from cqa.services import alerts
 from cqa.http.actor import actor_from, signed
+from cqa.services import alerts
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
