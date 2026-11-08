@@ -531,3 +531,22 @@ def test_run_dialog_statuses_follow_the_run_and_the_latest_run_wins():
 
     store.cancel_stale_runs()  # restart: the evaluating dialog of the dead run is cancelled too
     assert store.latest_dialog_status()["call-024"]["status"] == "cancelled"
+
+
+def test_shadow_result_stays_out_of_the_current_answer():
+    store = Store(connect(":memory:"))
+    store.add_dialogs([_by_id(_dialogs_fixture(), "call-024")], {})
+    run_id = store.add_run(1, 1.0, apply="compare", override={"llm_provider": "ds"})
+
+    store.add_result("call-024", "04", 3, "f1", _result(a=15))
+    store.add_result("call-024", "04", 3, "f1", _result(a=10), run_id=run_id, shadow=True)
+
+    assert store.current_results({"04": "f1"})["call-024"]["04"].a == 15
+    assert [(r.result.a, r.shadow) for r in store.result_rows(dialog_id="call-024")] == [
+        (15, False),
+        (10, True),
+    ]
+    run = store.get_run(run_id)
+    assert run is not None and (run.apply, run.override) == ("compare", {"llm_provider": "ds"})
+    plain = store.get_run(store.add_run(1, 2.0))
+    assert plain is not None and (plain.apply, plain.override) == ("replace", None)

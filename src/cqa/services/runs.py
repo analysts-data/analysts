@@ -3,9 +3,9 @@
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from cqa.adapters.store import DialogStatus, RunRow, Store
 from cqa.domain.agreement import compare_answers
@@ -26,6 +26,7 @@ def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
 
 
 Plan = list[tuple[Dialog, list[Criterion]]]
+ApplyMode = Literal["replace", "compare"]
 CONFIRM_OVER = 5  # повторная проверка без списка диалогов больше стольких диалогов ждёт confirm: true
 
 
@@ -64,16 +65,23 @@ def plan_rerun(
     или по паре текущего смысла есть апелляция на рассмотрении или решение.
     Второе — диалог → число таких пар (только диалоги, где они есть)."""
     items, chosen = _select(store, checklist, dialogs, criteria)
+    held = held_by_human(store, checklist, items)
+    held_by = {d.id: n for d in items if (n := sum(held(d, c.id) for c in chosen))}
+    return _plan(items, chosen, lambda d, c: held(d, c.id)), held_by
+
+
+def held_by_human(store: Store, checklist: Checklist, dialogs: list[Dialog]) -> Callable[[Dialog, str], bool]:
+    """Пару держит человек: текущий ответ ручной или по паре текущего смысла есть апелляция на
+    рассмотрении или решение. Такую пару модель не перезаписывает. `cid` — из текущего чек-листа."""
     fps = fingerprints(checklist)
-    current = current_results(store, checklist, items)
-    held = {(a.dlg, a.cid, fp) for a, fp in store.list_appeals() if a.status != "closed"}
+    current = current_results(store, checklist, dialogs)
+    appealed = {(a.dlg, a.cid, fp) for a, fp in store.list_appeals() if a.status != "closed"}
 
-    def skip(d: Dialog, c: Criterion) -> bool:
-        result = current.get(d.id, {}).get(c.id)
-        return (result is not None and result.model == MANUAL) or (d.id, c.id, fps[d.ch][c.id]) in held
+    def held(d: Dialog, cid: str) -> bool:
+        result = current.get(d.id, {}).get(cid)
+        return (result is not None and result.model == MANUAL) or (d.id, cid, fps[d.ch][cid]) in appealed
 
-    held_by = {d.id: n for d in items if (n := sum(skip(d, c) for c in chosen))}
-    return _plan(items, chosen, skip), held_by
+    return held
 
 
 def list_runs(store: Store) -> list[dict[str, Any]]:
@@ -91,6 +99,8 @@ def list_runs(store: Store) -> list[dict[str, Any]]:
             "errors_count": len(r.errors),
             "force": r.force,
             "skipped": r.skipped,
+            "apply": r.apply,
+            "override": r.override,
         }
         for r in store.list_runs()
     ]
@@ -137,12 +147,18 @@ class Runner:
         force: bool = False,
         confirm: bool = False,
         model: str | None = None,
+        apply: ApplyMode = "replace",
+        override: Mapping[str, Any] | None = None,
+        evaluator: Evaluator | None = None,
     ) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
 
         `force` — повторная проверка (`plan_rerun`); без списка `dialogs` больше `CONFIRM_OVER` диалогов
-        нужен `confirm`. `model` — подпись модели в списке запусков.
+        нужен `confirm`. `model` — подпись модели в списке запусков. Перепроверка другой моделью:
+        `evaluator` только на этот запуск, `override` — его настройки для истории; `apply: "compare"` —
+        ответы теневые, текущими их делает `adopt` или `restore`. `override` и `compare` — всегда `force`.
         """
+        force = force or apply == "compare" or override is not None
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт")
         if dialogs is not None:
@@ -170,6 +186,8 @@ class Runner:
             checklist_version=checklist.version,
             force=force,
             skipped=sum(held.values()),
+            apply=apply,
+            override=override,
         )
         planned = {d.id for d, _ in plan}
         rows: list[tuple[str, DialogStatus, int, int]] = [
@@ -183,7 +201,9 @@ class Runner:
         self._active = run_id
         self._failed = 0
         self._cancel = asyncio.Event()
-        task = asyncio.create_task(self.execute(run_id, checklist, plan))
+        task = asyncio.create_task(
+            self.execute(run_id, checklist, plan, evaluator=evaluator, shadow=apply == "compare")
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return run_id
@@ -225,15 +245,24 @@ class Runner:
             raise NotFound(f"Запуск {run_id} не найден")
         return row
 
-    async def execute(self, run_id: int, checklist: Checklist, plan: Plan) -> None:
+    async def execute(
+        self,
+        run_id: int,
+        checklist: Checklist,
+        plan: Plan,
+        *,
+        evaluator: Evaluator | None = None,
+        shadow: bool = False,
+    ) -> None:
         fps = fingerprints(checklist)
+        use = evaluator or self._evaluator
         queue = iter(plan)  # общая очередь: next() не уступает цикл событий, порядок плана сохраняется
 
         async def worker() -> None:
             for dialog, criteria in queue:
                 if self._cancel.is_set():
                     return
-                await self._evaluate(run_id, checklist, fps, dialog, criteria)
+                await self._evaluate(run_id, checklist, fps, dialog, criteria, use, shadow)
 
         cancelled = True  # прерванная задача (Ctrl-C, остановка сервера) — не «done»
         try:
@@ -250,11 +279,13 @@ class Runner:
         fps: dict[str, dict[str, str]],  # канал → id критерия → отпечаток
         dialog: Dialog,
         criteria: list[Criterion],
+        evaluator: Evaluator,
+        shadow: bool,
     ) -> None:
         started = self._clock()
         self._store.set_dialog_status(run_id, dialog.id, "evaluating")
         try:
-            out = await self._evaluator.evaluate(dialog, checklist, criteria)
+            out = await evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
             self._failed += len(criteria)
             error = str(exc) or type(exc).__name__
@@ -264,7 +295,7 @@ class Runner:
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
             self._store.add_result(
-                dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result, run_id=run_id
+                dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result, run_id, shadow
             )
         calls = sum(e.result.calls for e in out.results)
         usd = sum(e.result.cost for e in out.results) + out.verifier_usd

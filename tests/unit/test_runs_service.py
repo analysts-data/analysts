@@ -468,10 +468,10 @@ def test_list_runs_shows_recent_runs_newest_first(store: Store) -> None:
     assert list_runs(store) == [
         {"id": second, "created": "1970-01-01T00:01:00+00:00", "status": "running", "model": "jev-latest",
          "checklist_version": 3, "total": 8, "done": 0, "cost": 0.0, "errors_count": 0, "force": True,
-         "skipped": 1},
+         "skipped": 1, "apply": "replace", "override": None},
         {"id": first, "created": "1970-01-01T00:00:00+00:00", "status": "done", "model": "qwen3-6",
          "checklist_version": 3, "total": 16, "done": 16, "cost": pytest.approx(0.016), "errors_count": 1,
-         "force": False, "skipped": 0},
+         "force": False, "skipped": 0, "apply": "replace", "override": None},
     ]  # fmt: skip
 
 
@@ -561,3 +561,47 @@ async def test_forced_run_of_many_dialogs_without_a_list_needs_confirmation(stor
     confirmed = runner.start(None, ["01"], force=True, confirm=True)
     await _drain(runner)
     assert [store.get_run(i).total for i in (listed, confirmed)] == [10, 10]  # type: ignore[union-attr]
+
+
+# --- перепроверка другой моделью: теневые ответы, принятие ---
+
+
+async def test_compare_run_keeps_new_answers_in_the_shadow(store: Store) -> None:
+    _answer_all(store)
+    _appeal(store, "call-024", "04", "pending")
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    other = FakeEvaluator(res={})  # "yes" / max step / no flags everywhere
+
+    run_id = runner.start(
+        ["call-024"], None, apply="compare", override={"llm_provider": "ds"}, evaluator=other, model="ds-pro"
+    )
+    await _drain(runner)
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert (run.apply, run.override, run.model, run.force, run.skipped) == (
+        "compare", {"llm_provider": "ds"}, "ds-pro", True, 1,
+    )  # fmt: skip
+    assert other.order == ["call-024"] and "04" not in other.seen
+    assert {r.a for r in _current(store)["call-024"].values()} == {"na"}  # current answers untouched
+    shadow = store.result_rows(run_id=run_id)
+    assert len(shadow) == 7 and all(r.shadow for r in shadow)
+
+
+async def test_override_evaluator_serves_one_run_only(store: Store) -> None:
+    usual, other = FakeEvaluator(), FakeEvaluator()
+    runner = Runner(store, usual, parallel=1)
+    runner.start(["call-024"], None, evaluator=other)
+    await _drain(runner)
+    runner.start(["p1-ru-003"], None)
+    await _drain(runner)
+    assert (other.order, usual.order) == (["call-024"], ["p1-ru-003"])
+
+
+async def test_override_alone_is_a_forced_re_check(store: Store) -> None:
+    _answer_all(store)
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(["call-024"], ["01"], override={"evaluator": "jev"}, evaluator=FakeEvaluator())
+    await _drain(runner)
+    run = store.get_run(run_id)
+    assert run is not None and (run.force, run.total, run.apply) == (True, 1, "replace")

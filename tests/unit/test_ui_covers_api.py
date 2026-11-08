@@ -12,8 +12,13 @@ HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
 EXEMPT = {"/health", "/login"}
-# UI в работе: история оценок, возврат прежней оценки, сравнение запусков (PR review-workflow-history)
-EXEMPT |= {"/dialogs/{dialog_id}/history", "/results/{result_id}/restore", "/runs/compare"}
+# UI в работе: история оценок, возврат прежней оценки, сравнение и принятие запусков (review-workflow-history)
+EXEMPT |= {
+    "/dialogs/{dialog_id}/history",
+    "/results/{result_id}/restore",
+    "/runs/compare",
+    "/runs/{run_id}/adopt",
+}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

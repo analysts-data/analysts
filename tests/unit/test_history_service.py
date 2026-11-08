@@ -7,9 +7,10 @@ import pytest
 from cqa.adapters.store import Store
 from cqa.domain.models import CriterionResult
 from cqa.domain.review import ASTANA, fingerprint
+from cqa.services.answers import MANUAL, set_answer
 from cqa.services.appeals import file_appeal
 from cqa.services.errors import Conflict, NotFound
-from cqa.services.history import history, restore
+from cqa.services.history import adopt, history, restore
 from fakes import prototype_checklist
 
 CHECKLIST = prototype_checklist()
@@ -102,3 +103,68 @@ def test_restore_of_the_current_answer_is_refused(store: Store) -> None:
 def test_restore_of_an_unknown_result_is_not_found(store: Store) -> None:
     with pytest.raises(NotFound, match="999"):
         restore(store, 999)
+
+
+# --- теневые ответы запуска compare ---
+
+
+def _compare_run(store: Store) -> int:
+    run_id = store.add_run(2, 2.0, apply="compare", override={"llm_provider": "ds"})
+    store.add_result(
+        "p1-ru-003", BOOL.id, 3, FP, CriterionResult(a="no", model="ds-pro"), run_id, shadow=True
+    )
+    other_fp = fingerprint(CHECKLIST, OTHER, "chat")
+    store.add_result(
+        "p1-ru-003", OTHER.id, 3, other_fp, CriterionResult(a="na", model="ds-pro"), run_id, shadow=True
+    )
+    return run_id
+
+
+def test_history_shows_shadow_answers_with_the_settings_of_their_run(store: Store) -> None:
+    _, second = _two_runs(store)
+    run_id = _compare_run(store)
+
+    rows = history(store, "p1-ru-003")[BOOL.id]
+
+    assert [(r["run_id"], r["shadow"], r["current"], r["override"]) for r in rows] == [
+        (run_id, True, False, {"llm_provider": "ds"}),
+        (second, False, True, None),
+        (rows[2]["run_id"], False, False, None),
+    ]  # fmt: skip
+
+
+def test_restore_of_a_shadow_answer_makes_it_current(store: Store) -> None:
+    _two_runs(store)
+    run_id = _compare_run(store)
+    shadow = history(store, "p1-ru-003")[BOOL.id][0]
+
+    assert restore(store, shadow["id"]).a == "no"
+
+    newest = history(store, "p1-ru-003")[BOOL.id][0]
+    assert (newest["a"], newest["run_id"], newest["shadow"], newest["current"]) == ("no", run_id, False, True)
+
+
+def test_adopt_makes_shadow_answers_of_a_run_current_except_held_pairs(store: Store) -> None:
+    _two_runs(store)
+    run_id = _compare_run(store)
+    set_answer(store, dlg="p1-ru-003", cid=OTHER.id, a="yes", reason="", by="Специалист КК")
+
+    assert adopt(store, run_id, None, None) == {"adopted": 1, "skipped": 1}
+
+    current = store.current_results({BOOL.id: FP})["p1-ru-003"][BOOL.id]
+    assert (current.a, current.model) == ("no", "ds-pro")
+    assert history(store, "p1-ru-003")[OTHER.id][0]["model"] == MANUAL
+
+
+def test_adopt_can_take_a_part_of_the_run(store: Store) -> None:
+    run_id = _compare_run(store)
+    assert adopt(store, run_id, ["p1-ru-003"], [OTHER.id]) == {"adopted": 1, "skipped": 0}
+    assert BOOL.id not in store.current_results({BOOL.id: FP}).get("p1-ru-003", {})
+
+
+def test_adopt_of_a_replace_run_or_an_unknown_run_is_refused(store: Store) -> None:
+    first, _ = _two_runs(store)
+    with pytest.raises(Conflict, match="сразу"):
+        adopt(store, first, None, None)
+    with pytest.raises(NotFound, match="999"):
+        adopt(store, 999, None, None)

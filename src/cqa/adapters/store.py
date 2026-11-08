@@ -59,6 +59,9 @@ COLUMNS = [
     ("runs", "checklist_version", "INTEGER"),
     ("runs", "force", "INTEGER NOT NULL DEFAULT 0"),
     ("runs", "skipped", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "apply", "TEXT NOT NULL DEFAULT 'replace'"),  # compare — ответы теневые, итог не меняют
+    ("runs", "override", "TEXT"),  # JSON настроек перепроверки поверх режима; NULL — режим как есть
+    ("results", "shadow", "INTEGER NOT NULL DEFAULT 0"),  # теневой ответ запуска compare: не текущий
 ]
 
 RunStatus = Literal["running", "done", "cancelled"]
@@ -80,6 +83,8 @@ class RunRow:
     checklist_version: int | None
     force: bool
     skipped: int
+    apply: str
+    override: dict[str, Any] | None
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,7 @@ class ResultRow:
     created: str
     run_id: int | None
     result: CriterionResult
+    shadow: bool
 
 
 def _now() -> str:
@@ -224,12 +230,14 @@ class Store:
         fp: str,
         result: CriterionResult,
         run_id: int | None = None,
+        shadow: bool = False,
     ) -> None:
+        body = _dump(result.model_dump(mode="json"))
         with self._conn:
             self._conn.execute(
-                "INSERT INTO results (dialog_id, cid, version, fp, body, created, run_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (dialog_id, cid, version, fp, _dump(result.model_dump(mode="json")), _now(), run_id),
+                "INSERT INTO results (dialog_id, cid, version, fp, body, created, run_id, shadow) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (dialog_id, cid, version, fp, body, _now(), run_id, int(shadow)),
             )
 
     @staticmethod
@@ -243,6 +251,7 @@ class Store:
             created=row["created"],
             run_id=row["run_id"],
             result=CriterionResult.model_validate(json.loads(row["body"])),
+            shadow=bool(row["shadow"]),
         )
 
     def result_rows(self, *, dialog_id: str | None = None, run_id: int | None = None) -> list[ResultRow]:
@@ -259,9 +268,11 @@ class Store:
         return self._result_row(row) if row is not None else None
 
     def current_results(self, fps: Mapping[str, str]) -> dict[str, dict[str, CriterionResult]]:
-        """Для каждой пары — последний по id результат с отпечатком fps[cid]."""
+        """Для каждой пары — последний по id результат с отпечатком fps[cid]; теневые не в счёт."""
         latest: dict[tuple[str, str], CriterionResult] = {}
-        rows = self._conn.execute("SELECT id, dialog_id, cid, fp, body FROM results ORDER BY id").fetchall()
+        rows = self._conn.execute(
+            "SELECT id, dialog_id, cid, fp, body FROM results WHERE shadow = 0 ORDER BY id"
+        ).fetchall()
         for row in rows:
             fp = fps.get(row["cid"])
             if fp is None or row["fp"] != fp:
@@ -283,12 +294,23 @@ class Store:
         checklist_version: int | None = None,
         force: bool = False,
         skipped: int = 0,
+        apply: str = "replace",
+        override: Mapping[str, Any] | None = None,
     ) -> int:
         with self._conn:
             cur = self._conn.execute(
-                "INSERT INTO runs (total, started, model, checklist_version, force, skipped) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (total, started, model, checklist_version, int(force), skipped),
+                "INSERT INTO runs (total, started, model, checklist_version, force, skipped, apply, "
+                "override) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    total,
+                    started,
+                    model,
+                    checklist_version,
+                    int(force),
+                    skipped,
+                    apply,
+                    None if override is None else _dump(override),
+                ),
             )
             if cur.lastrowid is None:
                 raise RuntimeError("sqlite не вернул id запуска")
@@ -380,6 +402,8 @@ class Store:
             checklist_version=row["checklist_version"],
             force=bool(row["force"]),
             skipped=row["skipped"],
+            apply=row["apply"],
+            override=None if row["override"] is None else json.loads(row["override"]),
         )
 
     def get_run(self, run_id: int) -> RunRow | None:

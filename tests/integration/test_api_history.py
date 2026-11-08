@@ -62,6 +62,8 @@ def test_forced_run_re_evaluates_and_history_keeps_both_answers(api: TestClient)
         "ev",
         "current",
         "stale",
+        "shadow",
+        "override",
     }
 
 
@@ -92,7 +94,7 @@ def test_runs_list_and_comparison_of_two_models(api: TestClient) -> None:
         (first["id"], False, "qwen3-6", 8, 8),
     ]
     assert set(runs[0]) == {"id", "created", "status", "model", "checklist_version", "total", "done", "cost",
-                            "errors_count", "force", "skipped"}  # fmt: skip
+                            "errors_count", "force", "skipped", "apply", "override"}  # fmt: skip
 
     got = api.get(f"/api/runs/compare?a={first['id']}&b={second['id']}").json()
 
@@ -180,3 +182,72 @@ def test_big_forced_run_without_a_list_asks_for_confirmation(
         )
         assert client.get("/api/runs").json() == []
         assert _run(client, force=True, confirm=True, criteria=["01"])["total"] == 10
+
+
+def test_compare_run_answers_in_the_shadow_then_adopt_makes_them_current(api: TestClient) -> None:
+    first = _run(api, dialogs=["call-024"])
+    other = {
+        **PROTO,
+        "call-024": {**PROTO["call-024"], "04": PROTO["call-024"]["04"].model_copy(update={"a": 0})},
+    }
+    api.app.state.runner.use(FakeEvaluator(res=other))  # type: ignore[attr-defined]
+    shadow = _run(api, dialogs=["call-024"], apply="compare")
+    assert (shadow["total"], shadow["status"]) == (8, "done")
+
+    before = {d["id"]: d for d in api.get("/api/state").json()["dialogs"]}["call-024"]["res"]["04"]["a"]
+    rows = api.get("/api/dialogs/call-024/history").json()["04"]
+    diffs = api.get(f"/api/runs/compare?a={first['id']}&b={shadow['id']}").json()["diffs"]
+    adopted = api.post(f"/api/runs/{shadow['id']}/adopt", json={"criteria": ["04"]})
+    after = {d["id"]: d for d in api.get("/api/state").json()["dialogs"]}["call-024"]["res"]["04"]["a"]
+
+    assert before == PROTO["call-024"]["04"].a
+    assert [(r["shadow"], r["current"], r["a"]) for r in rows][:2] == [
+        (True, False, 0),
+        (False, True, before),
+    ]
+    assert diffs == [{"dialog": "call-024", "cid": "04", "a": before, "b": 0}]
+    assert (adopted.status_code, adopted.json()) == (200, {"adopted": 1, "skipped": 0})
+    assert after == 0
+    replace = api.post(f"/api/runs/{first['id']}/adopt")
+    assert replace.status_code == 409 and "сразу" in replace.json()["detail"]
+
+
+def test_re_check_with_another_model_records_its_settings(api: TestClient) -> None:
+    run = _run(api, dialogs=["p1-ru-003"], criteria=["01"], override={"evaluator": "jev"})
+    listed = next(r for r in api.get("/api/runs").json() if r["id"] == run["id"])
+    assert (listed["model"], listed["override"], listed["force"], listed["apply"]) == (
+        "jev-latest", {"evaluator": "jev"}, True, "replace",
+    )  # fmt: skip
+    assert api.get("/api/config").json()["evaluator"] == "llm"  # saved mode untouched
+
+
+@pytest.mark.parametrize(
+    ("override", "detail"),
+    [
+        ({"llm_provider": "nope"}, "override.llm_provider: нет провайдера nope"),
+        ({"verifier": "nope"}, "override.verifier: нет провайдера nope"),
+    ],
+)
+def test_re_check_with_an_unknown_provider_is_422(
+    api: TestClient, override: dict[str, Any], detail: str
+) -> None:
+    response = api.post("/api/runs", json={"dialogs": ["call-024"], "override": override})
+    assert (response.status_code, response.json()) == (422, {"detail": detail})
+    assert api.get("/api/runs").json() == []
+
+
+def test_re_check_with_bad_override_fields_is_422(api: TestClient) -> None:
+    for override in ({"evaluator": "gpt"}, {"model": "x"}):
+        assert api.post("/api/runs", json={"dialogs": ["call-024"], "override": override}).status_code == 422
+    assert api.post("/api/runs", json={"dialogs": ["call-024"], "apply": "merge"}).status_code == 422
+
+
+def test_re_check_with_jev_without_a_key_outside_replay_is_422(
+    store: Store, conn: sqlite3.Connection
+) -> None:
+    settings = Settings(_env_file=None, db_path=":memory:", llm_mode="live", jev_api_key=None)
+    with TestClient(
+        create_app(settings, source=FakeSource(), evaluator=FakeEvaluator(), conn=conn)
+    ) as client:
+        response = client.post("/api/runs", json={"dialogs": ["call-024"], "override": {"evaluator": "jev"}})
+    assert response.status_code == 422 and response.json()["detail"].startswith("Перепроверка: Нет ключа Jev")
