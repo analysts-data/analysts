@@ -343,18 +343,92 @@ def import_file(page: Page, body: bytes) -> None:
     )
 
 
+def export_menu(page: Page) -> Locator:
+    page.locator('[data-view="checklist"] summary', has_text="Экспорт").click()
+    return page.locator('[data-view="checklist"] .menu-pop')
+
+
 def test_export_downloads_applied_version(page: Page, web_url: str) -> None:
+    """Файл строит сервер (tests/integration/test_api_checklist_export.py), здесь — что качается и откуда.
+    Скачивание по <a download> мимо page.route, поэтому тело ответа здесь не подменить."""
     open_checklist(page, web_url)
     item(page, "01").click()
     page.locator("#cf-w").fill("20")
     page.locator("#cf-w").press("Tab")
+    export_menu(page)
     with page.expect_download() as d:
         page.locator('[data-act="cexport"]').click()
-    assert d.value.suggested_filename == "checklist-v3.json"
-    assert json.loads(Path(d.value.path()).read_text(encoding="utf-8")) == CHECKLIST  # rules и вес 01 = 10
-    expect(page.locator('[data-act="cexport"]')).to_have_text("Скачать v3 (JSON)")
+    assert d.value.url == f"{web_url}/api/checklist/export?v=3&format=json"  # применяемая версия, не черновик
+    expect(page.locator('[data-act="cexport"]')).to_have_text("JSON")
     page.locator('[data-act="role"][data-role="operator"]').click()
-    expect(page.locator('[data-act="cexport"]')).to_be_visible()
+    expect(page.locator('[data-view="checklist"] summary', has_text="Экспорт")).to_be_visible()
+
+
+def test_export_menu_offers_every_format_for_the_selected_version(page: Page, web_url: str) -> None:
+    open_checklist(page, web_url)
+    menu = export_menu(page)
+    links = {name: menu.get_by_role("link", name=name) for name in ("Excel (CSV)", "Markdown")}
+    for name, fmt in (("Excel (CSV)", "csv"), ("Markdown", "md")):
+        expect(links[name]).to_have_attribute("href", f"/api/checklist/export?v=3&format={fmt}")
+        expect(links[name]).to_have_attribute("download", "")
+    memo = menu.get_by_role("link", name="Памятка для печати")
+    expect(memo).to_have_attribute("target", "_blank")
+    menu.locator("select").select_option("1")
+    expect(menu).to_be_visible()  # смена версии не закрывает меню
+    expect(links["Excel (CSV)"]).to_have_attribute("href", "/api/checklist/export?v=1&format=csv")
+    expect(page.locator('[data-act="cexport"]')).to_have_attribute(
+        "href", "/api/checklist/export?v=1&format=json"
+    )
+    with page.context.expect_page() as popup:
+        memo.click()
+    assert popup.value.url == f"{web_url}/api/checklist/export?v=1&format=html"
+    expect(menu).to_be_hidden()  # пункт меню закрывает его
+
+
+DIFF_MD = f"# Что изменится: v2 → v3\n\n## Изменены\n\n### 04 «{XSS}»\n\n- вес: 15 → 20\n"
+
+
+def test_compare_with_current_shows_server_diff_in_a_dialog(page: Page, web_url: str) -> None:
+    open_checklist(page, web_url)
+    urls: list[str] = []
+    page.route(
+        "**/api/checklist/diff*",
+        lambda route: (
+            urls.append(route.request.url),
+            route.fulfill(body=DIFF_MD, content_type="text/markdown"),
+        ),
+    )
+    view = page.locator('[data-view="checklist"]')
+    expect(view.locator('[data-act="cdiff"][data-v="3"]')).to_have_count(0)  # текущую не с чем сравнивать
+    view.locator('[data-act="cdiff"][data-v="2"]').click()
+    dialog = page.locator("dialog#dlg")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator("pre")).to_have_text(DIFF_MD.rstrip("\n"))
+    expect(dialog.locator("img")).to_have_count(0)
+    assert urls == [f"{web_url}/api/checklist/diff?from=2&to=3&format=md"]
+    dialog.get_by_role("button", name="Закрыть").click()
+    expect(dialog).to_be_hidden()
+
+
+def test_what_changes_posts_the_draft_and_shows_the_diff(page: Page, web_url: str) -> None:
+    open_checklist(page, web_url)
+    posts: list[dict[str, Any]] = []
+
+    def reply(route: Route) -> None:
+        assert route.request.method == "POST"
+        posts.append(route.request.post_data_json)
+        route.fulfill(body="# Что изменится: v3 → v4\n\n- вес: 10 → 20\n", content_type="text/markdown")
+
+    page.route("**/api/checklist/diff*", reply)
+    what = page.locator('[data-act="cwhat"]')
+    expect(what).to_be_disabled()  # черновик совпадает с версией
+    item(page, "01").click()
+    page.locator("#cf-name").fill("Приветствие")  # без перерисовки: кнопку включает syncSave
+    expect(what).to_be_enabled()
+    what.click()
+    expect(page.locator("dialog#dlg pre")).to_contain_text("- вес: 10 → 20")
+    [draft] = posts
+    assert draft["version"] == 3 and draft["criteria"][0]["name"] == "Приветствие"
 
 
 def test_import_fills_draft_and_save_sends_it(page: Page, web_url: str) -> None:

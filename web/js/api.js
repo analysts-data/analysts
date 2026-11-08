@@ -2,7 +2,8 @@
 export const resolveBase = (search, attr) => new URLSearchParams(search).get('data') || attr || '/api';
 
 export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
-  const call = async (method, path, body, raw = false) => {
+  // send — тело ответа текстом (Markdown разницы версий), call — JSON
+  const send = async (method, path, body, raw = false) => {
     const init = { method };
     if (body !== undefined) {
       init.headers = { 'Content-Type': 'application/json' };
@@ -15,6 +16,10 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
       try { detail = JSON.parse(text).detail ?? text; } catch { /* тело не JSON */ }
       throw new Error(`${res.status}: ${detail}`);
     }
+    return text;
+  };
+  const call = async (...args) => {
+    const text = await send(...args);
     return text ? JSON.parse(text) : null;
   };
   const id = encodeURIComponent;
@@ -36,6 +41,9 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     putAnswer: (did, cid, payload) => call('PUT', `/dialogs/${id(did)}/answers/${id(cid)}`, payload),
     getConfig: () => call('GET', '/config'),
     putConfig: cfg => call('PUT', '/config', cfg),
+    diffVersions: (from, to) => send('GET', `/checklist/diff?from=${id(from)}&to=${id(to)}&format=md`),
+    diffDraft: draft => send('POST', '/checklist/diff?format=md', draft),
+    exportUrl: (v, fmt) => `${base}/checklist/export?v=${id(v)}&format=${id(fmt)}`,
     audioUrl: did => `${base}/dialogs/${id(did)}/audio`,
     playerUrl: did => `${base}/dialogs/${id(did)}/player`,
   };
