@@ -230,7 +230,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings))
+        _runner(request).use(build_evaluator(settings, state.prosody))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply

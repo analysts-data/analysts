@@ -9,7 +9,7 @@ from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JEV_MODEL, JevVerifier
 from cqa.adapters.llm import ChatClient, ping
 from cqa.adapters.org_api import OrgApi
-from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Verifier
+from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Prosody, Verifier
 from cqa.services.ingest import OrgDialogSource
 from cqa.services.llm_config import as_llm, config_error
 from cqa.services.ports import Evaluator
@@ -51,8 +51,11 @@ async def check_provider(provider: Provider) -> dict[str, Any]:
         return await ping(http, provider)
 
 
-def build_evaluator(settings: Settings) -> Evaluator:
-    """Не бросает и не ходит в сеть: replay и record читают записи, record и live — сеть только при вызове."""
+def build_evaluator(settings: Settings, prosody: Prosody | None = None) -> Evaluator:
+    """Не бросает и не ходит в сеть: replay и record читают записи, record и live — сеть только при вызове.
+
+    prosody — разбор интонации звонка для блока звука в запросе; None — модель видит только текст.
+    """
     if settings.evaluator == "jev":
         return JevEvaluator(
             _jev(settings),
@@ -61,6 +64,7 @@ def build_evaluator(settings: Settings) -> Evaluator:
             sends_real_data=settings.llm_mode == "live",
             allow_real_data=settings.allow_real_data,
             config_error=config_error(settings),
+            prosody=prosody,
         )
     return LlmEvaluator(
         ChatClient(settings, _http(settings, "llm")),
@@ -71,4 +75,5 @@ def build_evaluator(settings: Settings) -> Evaluator:
         sends_real_data=settings.llm_mode == "live",
         allow_real_data=settings.allow_real_data,
         config_error=config_error(settings),
+        prosody=prosody,
     )

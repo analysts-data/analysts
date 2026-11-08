@@ -9,7 +9,7 @@ import { modeText } from './lib/config.js';
 import { reload } from './lib/state.js';
 import { groupOf } from './lib/queue.js';
 import { applyTheme, currentTheme, load, ROLES, save, setRole, useRoute, useS, type Role } from './store';
-import { cn, Skeleton } from './ui';
+import { cn, Skeleton, Tip, TipProvider } from './ui';
 import { Queue } from './views/Queue';
 import { CardView } from './views/Card';
 import { Appeals } from './views/Appeals';
@@ -182,6 +182,7 @@ export function App() {
 
   return (
     <MotionConfig reducedMotion="user">
+      <TipProvider delayDuration={250} skipDelayDuration={100}>
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
         <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
@@ -237,30 +238,33 @@ export function App() {
               </button>
               {S.mode &&
                 (S.role === 'qa' ? (
+                  <Tip content={`${TERMS.mode} Нажмите, чтобы сменить.`}>
                   <button
                     type="button"
                     id="mode"
                     data-act="cfg"
                     onClick={() => setModeOpen(true)}
                     aria-label={`Сменить режим оценки. ${modeText(S.mode, S.llmMode)}`}
-                    title={`${TERMS.mode} Нажмите, чтобы сменить.`}
                     className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
                   >
                     {modeText(S.mode, S.llmMode)}
                     <Settings2 size={14} aria-hidden="true" />
                   </button>
+                  </Tip>
                 ) : (
-                  <span id="mode" title={TERMS.mode} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
+                  <Tip content={TERMS.mode}>
+                  <span id="mode" tabIndex={0} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
                     {modeText(S.mode, S.llmMode)}
                   </span>
+                  </Tip>
                 ))}
               <span className="hidden text-[13px] text-muted lg:inline" id="roleLbl">
                 Смотреть как:
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
                 {(Object.keys(ROLES) as Role[]).map((k, i) => (
+                  <Tip key={k} content={k === 'qa' ? TERMS.qa : null}>
                   <button
-                    key={k}
                     type="button"
                     data-act="role"
                     data-role={k}
@@ -270,18 +274,20 @@ export function App() {
                   >
                     {ROLES[k]}
                   </button>
+                  </Tip>
                 ))}
               </div>
+              <Tip content={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
               <button
                 type="button"
                 data-act="theme"
                 onClick={() => applyTheme(theme === 'dark' ? 'light' : 'dark', true)}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
                 aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-                title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
               >
                 {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
               </button>
+              </Tip>
             </div>
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
@@ -296,6 +302,7 @@ export function App() {
       <Palette open={palette} onOpenChange={setPalette} />
       <PasteHost />
       <Toast />
+      </TipProvider>
     </MotionConfig>
   );
 }

@@ -1,5 +1,8 @@
 // Общие элементы интерфейса в духе shadcn/ui: Tailwind на токенах прототипа, Radix Dialog для окон.
 import * as D from '@radix-ui/react-dialog';
+import * as T from '@radix-ui/react-tooltip';
+
+export const TipProvider = T.Provider;
 import { X } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { forwardRef } from 'react';
@@ -146,5 +149,28 @@ export function Modal({
         </D.Content>
       </D.Portal>
     </D.Root>
+  );
+}
+
+/**
+ * Всплывающая подсказка (Radix Tooltip). Только там, где без неё непонятно: кнопка-иконка, термин предметной
+ * области, обрезанный текст, код вместо названия. Подсказка не повторяет видимый текст.
+ */
+export function Tip({ content, children, side = 'top' }: { content: ReactNode; children: React.ReactElement; side?: 'top' | 'bottom' | 'left' | 'right' }) {
+  if (!content) return children;
+  return (
+    <T.Root>
+      <T.Trigger asChild>{children}</T.Trigger>
+      <T.Portal>
+        <T.Content
+          side={side}
+          sideOffset={6}
+          collisionPadding={12}
+          className="z-[70] max-w-[320px] rounded-md bg-ink px-2.5 py-1.5 text-xs leading-snug text-bg shadow-pop"
+        >
+          {content}
+        </T.Content>
+      </T.Portal>
+    </T.Root>
   );
 }

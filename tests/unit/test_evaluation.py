@@ -8,8 +8,9 @@ import pytest
 
 from cqa.adapters.llm import ModelUnavailable
 from cqa.domain.models import Checklist, Criterion, Dialog
-from cqa.domain.prompt import Message
-from cqa.services.evaluation import LlmEvaluator, Reply, Verdict
+from cqa.domain.prompt import SYSTEM_PROMPT, Message, render_dialog, sound_block
+from cqa.services.errors import NotFound, Upstream
+from cqa.services.evaluation import JevEvaluator, LlmEvaluator, RealDataBlocked, Reply, Verdict
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
@@ -258,3 +259,100 @@ async def test_unavailable_model_on_every_call_fails_the_dialog() -> None:
 
     with pytest.raises(ModelUnavailable, match="503"):
         await evaluator(Down()).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+
+
+# --- Звук звонка: блок наблюдений после </dialog>, только у звонка с разбором интонации ---
+
+SOUND = {"summary": ["Клиент повысил тон в реплике 3"]}
+
+
+class Prosody:
+    """Разбор интонации по id диалога; исключение — как NotFound или Upstream у dialog_prosody."""
+
+    def __init__(self, body: dict[str, Any] | Exception) -> None:
+        self.body = body
+        self.asked: list[str] = []
+
+    async def __call__(self, dialog_id: str) -> dict[str, Any]:
+        self.asked.append(dialog_id)
+        if isinstance(self.body, Exception):
+            raise self.body
+        return self.body
+
+
+def with_sound(
+    model: FakeModel, prosody: Prosody, verifier: FakeVerifier | None = None, *, sends_real_data: bool = False
+) -> LlmEvaluator:
+    return LlmEvaluator(
+        model,
+        model_name="qwen3-6",
+        reasoning="on",
+        anonymize=False,
+        verifier=verifier,
+        sends_real_data=sends_real_data,
+        allow_real_data=False,
+        prosody=prosody,
+    )
+
+
+class TextVerifier(FakeVerifier):
+    def __init__(self) -> None:
+        super().__init__()
+        self.texts: list[str] = []
+
+    async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict:
+        self.texts.append(dialog_text)
+        return await super().verify(dialog_text, rules, criteria)
+
+
+async def test_chat_request_is_byte_identical_and_never_asks_for_sound() -> None:
+    plain, sounded, prosody = FakeModel(), FakeModel(), Prosody(SOUND)
+    await evaluator(plain).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+    await with_sound(sounded, prosody).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+    assert sounded.calls == plain.calls
+    assert prosody.asked == []
+
+
+async def test_call_without_sound_analysis_is_byte_identical() -> None:
+    plain = FakeModel()
+    await evaluator(plain).evaluate(CALL, CHECKLIST, CHECKLIST.criteria)
+    for missing in (NotFound("нет записи"), Upstream("запись не получена"), OSError("нет ffmpeg")):
+        sounded, prosody = FakeModel(), Prosody(missing)
+        await with_sound(sounded, prosody).evaluate(CALL, CHECKLIST, CHECKLIST.criteria)
+        assert (sounded.calls, prosody.asked) == (plain.calls, [CALL.id])
+
+
+async def test_call_with_sound_analysis_gets_the_block_after_the_dialog() -> None:
+    model, verifier, prosody = FakeModel(), TextVerifier(), Prosody(SOUND)
+    await with_sound(model, prosody, verifier).evaluate(CALL, CHECKLIST, CHECKLIST.criteria)
+    block = sound_block(SOUND)
+    assert model.calls and all(f"</dialog>\n\n{block}\n\n" in m[1]["content"] for m in model.calls)
+    assert all(m[0]["content"].startswith(SYSTEM_PROMPT) for m in model.calls)
+    assert verifier.texts == [f"{render_dialog(CALL)}\n\n{block}"]
+    assert prosody.asked == [CALL.id]
+
+
+async def test_blocked_real_call_never_asks_for_sound() -> None:
+    prosody = Prosody(SOUND)
+    with pytest.raises(RealDataBlocked):
+        await with_sound(FakeModel(), prosody, sends_real_data=True).evaluate(
+            CALL, CHECKLIST, CHECKLIST.criteria
+        )
+    assert prosody.asked == []
+
+
+async def test_jev_only_mode_gets_the_block_on_calls_only() -> None:
+    def jev(verifier: TextVerifier, prosody: Prosody) -> JevEvaluator:
+        return JevEvaluator(
+            verifier,
+            model_name="jev-latest",
+            anonymize=False,
+            sends_real_data=False,
+            allow_real_data=False,
+            prosody=prosody,
+        )
+
+    verifier, prosody = TextVerifier(), Prosody(SOUND)
+    await jev(verifier, prosody).evaluate(CHAT, CHECKLIST, CHECKLIST.criteria)
+    await jev(verifier, prosody).evaluate(CALL, CHECKLIST, CHECKLIST.criteria)
+    assert verifier.texts == [render_dialog(CHAT), f"{render_dialog(CALL)}\n\n{sound_block(SOUND)}"]
