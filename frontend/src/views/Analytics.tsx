@@ -327,7 +327,7 @@ export function Analytics() {
                 <tr>
                   <th>{t('Критерий')}</th>
                   {LANGS.map(l => (
-                    <th key={l} className="num">
+                    <th key={l} className="!text-center">
                       {l}
                     </th>
                   ))}
