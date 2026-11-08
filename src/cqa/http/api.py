@@ -707,6 +707,7 @@ FEATURES = {
     "batches": "/api/batches",
     "routing": "/api/routing",
     "automation": "/api/automation",
+    "products": "/api/products",
     "sufficiency": "/api/sufficiency",
 }
 
