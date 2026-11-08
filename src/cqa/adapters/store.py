@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS automation (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS automation_cycles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, started TEXT NOT NULL, body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS bands (
   id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL, saved TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS markers (
@@ -1031,3 +1034,36 @@ class Store:
             {"since": since},
         ).fetchall()
         return [(row["actor_id"], row["action"], row["n"]) for row in rows]
+
+    # --- автоматизация ---
+
+    def automation(self, key: str) -> Any:
+        """Сохранённое значение автоматизации: `settings` (JSON настроек), `paused` (bool); None — нет."""
+        row = self._conn.execute("SELECT value FROM automation WHERE key = ?", (key,)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def set_automation(self, key: str, value: Any) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO automation (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, _dump(value)),
+            )
+
+    def add_cycle(self, cycle: Mapping[str, Any]) -> int:
+        with self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO automation_cycles (started, body) VALUES (?, ?)",
+                (cycle["started"], _dump(cycle)),
+            )
+            if cur.lastrowid is None:
+                raise RuntimeError("sqlite не вернул id цикла")
+            return cur.lastrowid
+
+    def cycles(self, *, limit: int | None = None, since: str | None = None) -> list[dict[str, Any]]:
+        """Циклы автоматизации новыми первыми; `since` — ISO-время начала (все в одном поясе)."""
+        rows = self._conn.execute(
+            "SELECT id, body FROM automation_cycles WHERE started >= ? ORDER BY id DESC LIMIT ?",
+            (since or "", -1 if limit is None else limit),
+        ).fetchall()
+        return [{**json.loads(r["body"]), "id": r["id"]} for r in rows]

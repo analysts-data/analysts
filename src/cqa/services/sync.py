@@ -167,7 +167,9 @@ class Syncer:
             "error": error,
         }
 
-    async def run(self, interval_s: float = TICK_S) -> None:
+    async def run(self, interval_s: float = TICK_S, skip: Callable[[], bool] = lambda: False) -> None:
+        """skip() — синхронизацию ведёт автоматизация по своему расписанию, этот проход пропускается."""
         while True:
-            await self.sync()
+            if not skip():
+                await self.sync()
             await asyncio.sleep(interval_s)

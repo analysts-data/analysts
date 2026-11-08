@@ -35,6 +35,7 @@ from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
+from cqa.services.automation import Automation, cycles_csv
 from cqa.services.bands import bands_view, save_bands
 from cqa.services.checklists import (
     DiffFormat,
@@ -997,3 +998,63 @@ async def get_audit(
 @router.get("/overview")
 async def get_overview(request: Request) -> dict[str, Any]:
     return overview(request.app.state.store, datetime.now(ASTANA))
+
+
+def _automation(request: Request) -> Automation:
+    automation: Automation = request.app.state.automation
+    return automation
+
+
+@router.get("/automation")
+async def get_automation(request: Request) -> dict[str, Any]:
+    return _automation(request).settings().model_dump(mode="json", by_alias=True)
+
+
+@router.put("/automation")
+async def put_automation(raw: Annotated[Any, Body()], request: Request) -> Response:
+    """Тело сливается с сохранёнными настройками; ошибки по полям — 422 {detail: [{loc, msg}]}."""
+    saved, errors = _automation(request).put(raw)
+    if saved is None:
+        return JSONResponse({"detail": errors}, status_code=422)
+    out = saved.model_dump(mode="json", by_alias=True)
+    _log(request, "automation.settings", "automation", "settings", out)
+    return JSONResponse(out)
+
+
+@router.get("/automation/status")
+async def get_automation_status(request: Request) -> dict[str, Any]:
+    return _automation(request).status()
+
+
+@router.post("/automation/run-now")
+async def post_automation_run_now(request: Request) -> dict[str, Any]:
+    out = _automation(request).run_now()
+    _log(request, "automation.run-now", "automation", "")
+    return out
+
+
+@router.post("/automation/pause")
+async def post_automation_pause(request: Request) -> dict[str, Any]:
+    out = _automation(request).pause()
+    _log(request, "automation.pause", "automation", "")
+    return out
+
+
+@router.post("/automation/resume")
+async def post_automation_resume(request: Request) -> dict[str, Any]:
+    out = _automation(request).resume()
+    _log(request, "automation.resume", "automation", "")
+    return out
+
+
+@router.get("/automation/cycles")
+async def get_automation_cycles(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    fmt: Annotated[Literal["json", "csv"], Query(alias="format")] = "json",
+) -> Response:
+    rows = _automation(request).cycles(limit)
+    if fmt == "json":
+        return JSONResponse(rows)
+    disposition = 'attachment; filename="cqa-automation-cycles.csv"'
+    return Response(cycles_csv(rows), media_type=MEDIA["csv"], headers={"Content-Disposition": disposition})
