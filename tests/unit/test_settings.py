@@ -37,6 +37,8 @@ DEFAULTS = {
     "holdout_dir": None,
     "webhook_url": None,
     "webhook_secret": None,
+    "eval_reports_dir": Path("eval/reports"),
+    "results_dir": Path("results"),
     "access_token": None,
 }
 

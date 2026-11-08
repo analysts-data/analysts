@@ -305,33 +305,22 @@ def test_repeat_of_a_key_still_in_progress_is_409(
     assert first[0].status_code == 200
 
 
-def test_run_status_shows_each_dialogue(store: Store, conn: sqlite3.Connection) -> None:
+def test_async_client_polls_per_dialogue_status_in_the_run(store: Store, conn: sqlite3.Connection) -> None:
     gate = asyncio.Event()
     one = Settings(_env_file=None, db_path=":memory:", llm_max_parallel=1)
     with _client(one, conn, FakeEvaluator(gate=gate, fail_on={"syn-chat-kz"})) as client:
-        run_id = client.post("/api/evaluate/batch", json={"dialogs": [CHAT, RECORDS["syn-chat-kz"]]}).json()[
-            "run_id"
-        ]
-        _until(
-            lambda: client.get(f"/api/runs/{run_id}/dialogs").json()["dialogs"][0]["status"] == "evaluating"
-        )
-        status = client.get(f"/api/runs/{run_id}/dialogs").json()
-        assert (status["run_id"], status["status"], status["total"]) == (run_id, "running", 16)
-        assert [(d["dialog_id"], d["status"], d["done"], d["total"]) for d in status["dialogs"]] == [
-            ("syn-chat-ru", "evaluating", 0, 8),
-            ("syn-chat-kz", "queued", 0, 8),
+        batch = {"dialogs": [CHAT, RECORDS["syn-chat-kz"]]}
+        run_id = client.post("/api/evaluate/batch", json=batch).json()["run_id"]
+        _until(lambda: client.get(f"/api/runs/{run_id}").json()["dialogs"][0]["status"] == "evaluating")
+        status = client.get(f"/api/runs/{run_id}").json()
+        assert [(d["id"], d["status"]) for d in status["dialogs"]] == [
+            ("syn-chat-ru", "evaluating"),
+            ("syn-chat-kz", "queued"),
         ]
         client.portal.call(gate.set)  # type: ignore[union-attr]
         _until(lambda: client.get(f"/api/runs/{run_id}").json()["status"] == "done")
-        status = client.get(f"/api/runs/{run_id}/dialogs").json()
-    assert [(d["status"], d["done"], d["error"]) for d in status["dialogs"]] == [
-        ("done", 8, None),
-        ("error", 0, "syn-chat-kz: timeout"),
-    ]
-
-
-def test_status_of_an_unknown_run_is_404(api: TestClient) -> None:
-    assert api.get("/api/runs/999/dialogs").status_code == 404
+        status = client.get(f"/api/runs/{run_id}").json()
+    assert [(d["status"], d["error"]) for d in status["dialogs"]] == [("done", None), ("error", "timeout")]
 
 
 def test_results_export_is_the_organisers_json_1_0_for_the_chosen_dialogues(api: TestClient) -> None:

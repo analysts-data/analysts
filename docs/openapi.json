@@ -123,7 +123,8 @@
               "enum": [
                 "html",
                 "json",
-                "md"
+                "md",
+                "csv"
               ],
               "type": "string",
               "default": "html",
@@ -290,6 +291,1006 @@
                   "unavailable": {
                     "value": {
                       "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/recommendations": {
+      "get": {
+        "summary": "Рекомендации",
+        "description": "Оператору (`id` — имя), проверяющему, руководителю и автору чек-листа; из чисел, без модели.",
+        "operationId": "get_recommendations_api_recommendations_get",
+        "parameters": [
+          {
+            "name": "for",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "operator",
+                "qa",
+                "manager",
+                "checklist"
+              ],
+              "type": "string",
+              "title": "For"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Recommendations Api Recommendations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/analytics/{name}": {
+      "get": {
+        "summary": "Расширенная аналитика",
+        "description": "Тренд, тепловая карта, драйверы, распределение, срезы, апелляции, качество модели; в каждом ответе `n`, `low_n` и формулы; фильтры `lang`, `ch`, `operator`, `product`, `since`, `until`.",
+        "operationId": "get_analytics_api_analytics__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "trend",
+                "heatmap",
+                "drivers",
+                "distribution",
+                "crosstab",
+                "appeals",
+                "model"
+              ],
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "day",
+                    "week",
+                    "operator",
+                    "product",
+                    "lang",
+                    "ch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "By"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lang"
+            }
+          },
+          {
+            "name": "ch",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "chat",
+                    "call"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ch"
+            }
+          },
+          {
+            "name": "operator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operator"
+            }
+          },
+          {
+            "name": "product",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Analytics Api Analytics  Name  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "summary": "Каталог отчётов",
+        "description": "Отчёты страницы «Отчёты» со ссылками и форматами.",
+        "operationId": "get_reports_api_reports_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Reports Api Reports Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/quality": {
+      "get": {
+        "summary": "Прогоны качества",
+        "operationId": "get_quality_runs_api_quality_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Quality Runs Api Quality Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Отчёты `make eval` на эталоне: дата, модель, метрики."
+      }
+    },
+    "/api/quality/{report_id}": {
+      "get": {
+        "summary": "Отчёт о качестве модели",
+        "operationId": "get_quality_api_quality__report_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "html",
+                "json",
+                "md",
+                "csv"
+              ],
+              "type": "string",
+              "default": "html",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Один прогон `make eval`: html, json или md."
+      }
+    },
+    "/api/runs/{run_id}/report": {
+      "get": {
+        "summary": "Отчёт по запуску",
+        "operationId": "get_run_report_api_runs__run_id__report_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "html",
+                "json",
+                "md",
+                "csv"
+              ],
+              "type": "string",
+              "default": "html",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Итоги одного запуска оценки: html, json, csv или md."
+      }
+    },
+    "/api/results/{which}": {
+      "get": {
+        "summary": "Файл результатов набора",
+        "description": "`results/dev` или `results/prod`, собранный `make results`.",
+        "operationId": "get_results_api_results__which__get",
+        "parameters": [
+          {
+            "name": "which",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "dev",
+                "prod"
+              ],
+              "type": "string",
+              "title": "Which"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
                     }
                   }
                 }
@@ -2886,6 +3887,349 @@
         "description": "Новый результат пары с `model: \"вручную\"`; ответ модели остаётся в базе. Открытая апелляция или решение по паре — 409."
       }
     },
+    "/api/dialogs/{dialog_id}/history": {
+      "get": {
+        "summary": "История ответов диалога",
+        "operationId": "get_history_api_dialogs__dialog_id__history_get",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dialog Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "title": "Response Get History Api Dialogs  Dialog Id  History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Диалоги"
+        ],
+        "description": "Все ответы по критериям: запуски, ручные ответы, восстановления."
+      }
+    },
+    "/api/results/{result_id}/restore": {
+      "post": {
+        "summary": "Восстановить прежний ответ",
+        "operationId": "post_restore_api_results__result_id__restore_post",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Result Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Post Restore Api Results  Result Id  Restore Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт: идёт другой запуск (номер, ход и ETA в теле), повтор Idempotency-Key ещё выполняется, решение по паре уже есть",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "run_id": {
+                      "type": "integer"
+                    },
+                    "done": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "eta_s": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 41 ещё идёт",
+                      "run_id": 41,
+                      "done": 24,
+                      "total": 80,
+                      "eta_s": 95
+                    }
+                  },
+                  "idempotency": {
+                    "value": {
+                      "detail": "Запрос с Idempotency-Key crm-42 ещё выполняется: повторите позже"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Прежний результат пары снова становится текущим."
+      }
+    },
     "/api/config": {
       "get": {
         "summary": "Режим оценки",
@@ -4101,6 +5445,56 @@
       }
     },
     "/api/runs": {
+      "get": {
+        "summary": "Список запусков",
+        "operationId": "get_runs_api_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Runs Api Runs Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Последние запуски: модель, версия чек-листа, ход, ошибки."
+      },
       "post": {
         "summary": "Запустить оценку",
         "operationId": "post_run_api_runs_post",
@@ -4328,6 +5722,371 @@
         "description": "Пары диалог × критерий без ответа текущего чек-листа, в порядке `dialogs`; `null` — все. Один запуск за раз: второй — 409 с номером, ходом и ETA активного."
       }
     },
+    "/api/runs/{run_id}/adopt": {
+      "post": {
+        "summary": "Принять ответы перепроверки",
+        "description": "Теневые ответы запуска `compare` становятся текущими: все или часть по `dialogs` и `criteria`.",
+        "operationId": "post_adopt_api_runs__run_id__adopt_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AdoptIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Post Adopt Api Runs  Run Id  Adopt Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт: идёт другой запуск (номер, ход и ETA в теле), повтор Idempotency-Key ещё выполняется, решение по паре уже есть",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "run_id": {
+                      "type": "integer"
+                    },
+                    "done": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "eta_s": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 41 ещё идёт",
+                      "run_id": 41,
+                      "done": 24,
+                      "total": 80,
+                      "eta_s": 95
+                    }
+                  },
+                  "idempotency": {
+                    "value": {
+                      "detail": "Запрос с Idempotency-Key crm-42 ещё выполняется: повторите позже"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ]
+      }
+    },
+    "/api/runs/compare": {
+      "get": {
+        "summary": "Сравнить два запуска",
+        "operationId": "get_runs_compare_api_runs_compare_get",
+        "parameters": [
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "A"
+            }
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "B"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Runs Compare Api Runs Compare Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Согласие ответов запусков `a` и `b` по общим парам и расхождения."
+      }
+    },
     "/api/runs/{run_id}": {
       "get": {
         "summary": "Ход запуска",
@@ -4503,7 +6262,7 @@
         "tags": [
           "Оценка"
         ],
-        "description": "Готово и всего пар, цена, вызовы, ETA в секундах, ошибки строками, статус."
+        "description": "Готово и всего пар, цена, вызовы, ETA в секундах, ошибки строками, статус и `dialogs` — статус диалога (`queued`, `evaluating`, `done`, `error`, `skipped`, `cancelled`) с ходом и ошибкой."
       }
     },
     "/api/runs/{run_id}/cancel": {
@@ -5319,6 +7078,648 @@
         "description": "Сводка работы команды КК: оценено, проверено, апелляции, действия."
       }
     },
+    "/api/batches": {
+      "get": {
+        "summary": "Пакетные задания",
+        "operationId": "get_batches_api_batches_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Batches Api Batches Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Задания с ходом, приоритетом и лимитом запросов."
+      },
+      "post": {
+        "summary": "Создать пакетное задание",
+        "operationId": "post_batch_api_batches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Batch Api Batches Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Большой объём частями: батчи по `batch_size` уходят в обычные запуски по приоритету."
+      }
+    },
+    "/api/batches/{job_id}": {
+      "get": {
+        "summary": "Пакетное задание",
+        "operationId": "get_batch_api_batches__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Batch Api Batches  Job Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Ход задания по батчам."
+      }
+    },
+    "/api/batches/{job_id}/{action}": {
+      "post": {
+        "summary": "Управлять заданием",
+        "operationId": "post_batch_action_api_batches__job_id___action__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "retry"
+              ],
+              "type": "string",
+              "title": "Action"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Post Batch Action Api Batches  Job Id   Action  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Конфликт: идёт другой запуск (номер, ход и ETA в теле), повтор Idempotency-Key ещё выполняется, решение по паре уже есть",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "run_id": {
+                      "type": "integer"
+                    },
+                    "done": {
+                      "type": "integer"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "eta_s": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 41 ещё идёт",
+                      "run_id": 41,
+                      "done": 24,
+                      "total": 80,
+                      "eta_s": 95
+                    }
+                  },
+                  "idempotency": {
+                    "value": {
+                      "detail": "Запрос с Idempotency-Key crm-42 ещё выполняется: повторите позже"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Оценка"
+        ],
+        "description": "Пауза, продолжение, отмена или повтор упавших батчей задания."
+      }
+    },
     "/api/evaluate": {
       "post": {
         "summary": "Оценить один диалог",
@@ -5568,7 +7969,7 @@
         "tags": [
           "Интеграция"
         ],
-        "description": "Тело — запись организаторов (`conversation_id`, `channel`, `language`, `transcript`, необязательные `audio_url`, `operator`) или текст как во вставке (`text`, `ch`, `title`). Диалог сохраняется (повтор `conversation_id` не заменяет и не оценивает заново), оценивается текущим чек-листом тем же запуском, что «Оценить» в интерфейсе: реальный звонок уходит модели только с CQA_ALLOW_REAL_DATA=1, текст обезличивается. `wait=true` (по умолчанию) — ответ 200 с итогом, ответами и записью JSON 1.0; если оценка дольше 120 с или `wait=false` — 202 `{dialog_id, run_id}`, дальше опрос `GET /api/runs/{run_id}/dialogs` и `GET /api/dialogs/{dialog_id}`. `Idempotency-Key` — повтор с тем же ключом и телом вернёт тот же ответ без новой оценки."
+        "description": "Тело — запись организаторов (`conversation_id`, `channel`, `language`, `transcript`, необязательные `audio_url`, `operator`) или текст как во вставке (`text`, `ch`, `title`). Диалог сохраняется (повтор `conversation_id` не заменяет и не оценивает заново), оценивается текущим чек-листом тем же запуском, что «Оценить» в интерфейсе: реальный звонок уходит модели только с CQA_ALLOW_REAL_DATA=1, текст обезличивается. `wait=true` (по умолчанию) — ответ 200 с итогом, ответами и записью JSON 1.0; если оценка дольше 120 с или `wait=false` — 202 `{dialog_id, run_id}`, дальше опрос `GET /api/runs/{run_id}` и `GET /api/dialogs/{dialog_id}`. `Idempotency-Key` — повтор с тем же ключом и телом вернёт тот же ответ без новой оценки."
       }
     },
     "/api/evaluate/batch": {
@@ -5601,7 +8002,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BatchIn"
+                "$ref": "#/components/schemas/EvaluateBatchIn"
               }
             }
           }
@@ -5781,7 +8182,7 @@
         "tags": [
           "Интеграция"
         ],
-        "description": "Каждый элемент — в любом из двух форматов `POST /api/evaluate`. Все диалоги сохраняются, запускается один запуск; ответ 202 сразу. Конец запуска — опрос `GET /api/runs/{run_id}/dialogs` или вебхук `run.finished` на CQA_WEBHOOK_URL (подпись `X-CQA-Signature: sha256=<HMAC тела>`, без текста диалогов). `Idempotency-Key` — как у одного диалога."
+        "description": "Каждый элемент — в любом из двух форматов `POST /api/evaluate`. Все диалоги сохраняются, запускается один запуск; ответ 202 сразу. Конец запуска — опрос `GET /api/runs/{run_id}` или вебхук `run.finished` на CQA_WEBHOOK_URL (подпись `X-CQA-Signature: sha256=<HMAC тела>`, без текста диалогов). `Idempotency-Key` — как у одного диалога."
       }
     },
     "/api/dialogs/{dialog_id}": {
@@ -5924,173 +8325,6 @@
           "Интеграция"
         ],
         "description": "Диалог по контракту с текущими `res`, итог и грубая ошибка с учётом решений по апелляциям, ответы по критериям и запись JSON 1.0 организаторов."
-      }
-    },
-    "/api/runs/{run_id}/dialogs": {
-      "get": {
-        "summary": "Ход запуска по каждому диалогу",
-        "operationId": "get_run_dialogs_api_runs__run_id__dialogs_get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunStatusOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    },
-                    "errors": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "path": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "expected": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "required": [
-                    "detail"
-                  ]
-                },
-                "examples": {
-                  "field": {
-                    "value": {
-                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
-                      "errors": [
-                        {
-                          "path": "language",
-                          "message": "обязательное поле",
-                          "expected": "\"ru\", \"kz\" или \"en\""
-                        }
-                      ]
-                    }
-                  },
-                  "rule": {
-                    "value": {
-                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "detail"
-                  ]
-                },
-                "examples": {
-                  "token": {
-                    "value": {
-                      "detail": "Нужен вход по ссылке с токеном"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "detail"
-                  ]
-                },
-                "examples": {
-                  "dialog": {
-                    "value": {
-                      "detail": "Диалог crm-2026-000123 не найден"
-                    }
-                  },
-                  "run": {
-                    "value": {
-                      "detail": "Запуск 42 не найден"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Источник наборов или оценщик не подключён",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "detail": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "detail"
-                  ]
-                },
-                "examples": {
-                  "unavailable": {
-                    "value": {
-                      "detail": "Оценка моделью не подключена"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Интеграция"
-        ],
-        "description": "Ход запуска как `GET /api/runs/{run_id}` и статус каждого диалога: `queued`, `evaluating`, `done`, `error` (с текстом ошибки), `cancelled`; `done`/`total` — критерии с ответом из всех. Состав запуска помнит процесс сервера: после перезапуска `dialogs` пуст."
       }
     },
     "/api/results": {
@@ -6794,10 +9028,262 @@
           "Диалоги"
         ]
       }
+    },
+    "/api/dialogs/{id}/talkstats": {
+      "get": {
+        "summary": "Статистика разговора",
+        "description": "Доли речи, паузы, перебивания с нормами команды; 502 — запись звонка не получена.",
+        "operationId": "talkstats_api_dialogs__id__talkstats_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Talkstats Api Dialogs  Id  Talkstats Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "API организаторов не ответил или запись звонка не получена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "upstream": {
+                    "value": {
+                      "detail": "набор DEV: API организаторов ответил 500"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Диалоги"
+        ]
+      }
+    },
+    "/api/talkstats/norms": {
+      "get": {
+        "summary": "Нормы разговора",
+        "description": "Медиана, квартили и границы Тьюки по звонкам с разбором и по чатам.",
+        "operationId": "talkstats_norms_api_talkstats_norms_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Talkstats Norms Api Talkstats Norms Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdoptIn": {
+        "properties": {
+          "dialogs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dialogs"
+          },
+          "criteria": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criteria"
+          }
+        },
+        "type": "object",
+        "title": "AdoptIn"
+      },
       "AnswerIn": {
         "properties": {
           "a": {
@@ -6893,70 +9379,129 @@
         ],
         "title": "AppealIn"
       },
-      "BatchIn": {
+      "BatchFilter": {
         "properties": {
-          "dialogs": {
-            "items": {
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RecordIn"
-                },
-                {
-                  "$ref": "#/components/schemas/TextIn"
-                }
-              ]
-            },
-            "type": "array",
-            "maxItems": 100,
-            "minItems": 1,
-            "title": "Dialogs",
-            "description": "от 1 до 100 диалогов в любом из двух форматов"
-          }
-        },
-        "type": "object",
-        "required": [
-          "dialogs"
-        ],
-        "title": "BatchIn",
-        "examples": [
-          {
-            "dialogs": [
+          "source_id": {
+            "anyOf": [
               {
-                "channel": "agent chat",
-                "conversation_id": "crm-2026-000123",
-                "language": "ru",
-                "operator": "Айгерим С.",
-                "transcript": [
-                  {
-                    "speaker": "client",
-                    "text": "Здравствуйте, не проходит пополнение счёта.",
-                    "timestamp": "00:00"
-                  },
-                  {
-                    "speaker": "operator",
-                    "text": "Здравствуйте! Меня зовут Айгерим, проверю.",
-                    "timestamp": "00:20"
-                  },
-                  {
-                    "speaker": "operator",
-                    "text": "Платёж зачислен, обновите приложение.",
-                    "timestamp": "01:40"
-                  },
-                  {
-                    "speaker": "client",
-                    "text": "Вижу, спасибо.",
-                    "timestamp": "02:00"
-                  }
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "ch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "chat",
+                  "call"
                 ]
               },
               {
-                "ch": "chat",
-                "text": "Клиент: Почему списали комиссию?\nОператор: Здравствуйте! Проверю операцию.",
-                "title": "Жалоба на комиссию"
+                "type": "null"
+              }
+            ],
+            "title": "Ch"
+          },
+          "lang": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lang"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "unscored_only": {
+            "type": "boolean",
+            "title": "Unscored Only",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BatchFilter"
+      },
+      "BatchIn": {
+        "properties": {
+          "dialogs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dialogs"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatchFilter"
+              },
+              {
+                "type": "null"
               }
             ]
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "default": 20
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "normal",
+              "low"
+            ],
+            "title": "Priority",
+            "default": "normal"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
           }
-        ]
+        },
+        "type": "object",
+        "title": "BatchIn"
       },
       "BatchOut": {
         "properties": {
@@ -7767,55 +10312,6 @@
         ],
         "title": "DialogOut"
       },
-      "DialogStatus": {
-        "properties": {
-          "dialog_id": {
-            "type": "string",
-            "title": "Dialog Id"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "evaluating",
-              "done",
-              "error",
-              "cancelled"
-            ],
-            "title": "Status"
-          },
-          "done": {
-            "type": "integer",
-            "title": "Done",
-            "description": "критериев с ответом текущего чек-листа"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total",
-            "description": "критериев в чек-листе"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": [
-          "dialog_id",
-          "status",
-          "done",
-          "total",
-          "error"
-        ],
-        "title": "DialogStatus"
-      },
       "EmployeeIn": {
         "properties": {
           "name": {
@@ -7850,6 +10346,71 @@
           "role"
         ],
         "title": "EmployeeIn"
+      },
+      "EvaluateBatchIn": {
+        "properties": {
+          "dialogs": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RecordIn"
+                },
+                {
+                  "$ref": "#/components/schemas/TextIn"
+                }
+              ]
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Dialogs",
+            "description": "от 1 до 100 диалогов в любом из двух форматов"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dialogs"
+        ],
+        "title": "EvaluateBatchIn",
+        "examples": [
+          {
+            "dialogs": [
+              {
+                "channel": "agent chat",
+                "conversation_id": "crm-2026-000123",
+                "language": "ru",
+                "operator": "Айгерим С.",
+                "transcript": [
+                  {
+                    "speaker": "client",
+                    "text": "Здравствуйте, не проходит пополнение счёта.",
+                    "timestamp": "00:00"
+                  },
+                  {
+                    "speaker": "operator",
+                    "text": "Здравствуйте! Меня зовут Айгерим, проверю.",
+                    "timestamp": "00:20"
+                  },
+                  {
+                    "speaker": "operator",
+                    "text": "Платёж зачислен, обновите приложение.",
+                    "timestamp": "01:40"
+                  },
+                  {
+                    "speaker": "client",
+                    "text": "Вижу, спасибо.",
+                    "timestamp": "02:00"
+                  }
+                ]
+              },
+              {
+                "ch": "chat",
+                "text": "Клиент: Почему списали комиссию?\nОператор: Здравствуйте! Проверю операцию.",
+                "title": "Жалоба на комиссию"
+              }
+            ]
+          }
+        ]
       },
       "EvaluateOut": {
         "properties": {
@@ -8147,6 +10708,51 @@
           "operator"
         ],
         "title": "OperatorIn"
+      },
+      "OverrideIn": {
+        "properties": {
+          "evaluator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "jev"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluator"
+          },
+          "llm_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Provider"
+          },
+          "verifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verifier"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "OverrideIn",
+        "description": "Перепроверка другой моделью: поля поверх текущего режима, неуказанное — как в режиме."
       },
       "PasteIn": {
         "properties": {
@@ -8446,81 +11052,39 @@
               }
             ],
             "title": "Criteria"
-          }
-        },
-        "type": "object",
-        "title": "RunIn"
-      },
-      "RunStatusOut": {
-        "properties": {
-          "run_id": {
-            "type": "integer",
-            "title": "Run Id"
           },
-          "status": {
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          },
+          "apply": {
             "type": "string",
             "enum": [
-              "running",
-              "done",
-              "cancelled"
+              "replace",
+              "compare"
             ],
-            "title": "Status"
+            "title": "Apply",
+            "default": "replace"
           },
-          "done": {
-            "type": "integer",
-            "title": "Done"
-          },
-          "total": {
-            "type": "integer",
-            "title": "Total"
-          },
-          "cost": {
-            "type": "number",
-            "title": "Cost"
-          },
-          "calls": {
-            "type": "integer",
-            "title": "Calls"
-          },
-          "eta_s": {
+          "override": {
             "anyOf": [
               {
-                "type": "integer"
+                "$ref": "#/components/schemas/OverrideIn"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Eta S"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Errors"
-          },
-          "dialogs": {
-            "items": {
-              "$ref": "#/components/schemas/DialogStatus"
-            },
-            "type": "array",
-            "title": "Dialogs"
+            ]
           }
         },
         "type": "object",
-        "required": [
-          "run_id",
-          "status",
-          "done",
-          "total",
-          "cost",
-          "calls",
-          "eta_s",
-          "errors",
-          "dialogs"
-        ],
-        "title": "RunStatusOut"
+        "title": "RunIn"
       },
       "SourceIn": {
         "properties": {

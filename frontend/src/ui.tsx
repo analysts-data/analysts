@@ -6,6 +6,7 @@ export const TipProvider = T.Provider;
 import { X } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { forwardRef } from 'react';
+import { t } from './lib/i18n.js';
 
 export const cn = (...a: unknown[]) => a.filter(Boolean).join(' ');
 
@@ -141,7 +142,7 @@ export function Modal({
               <D.Title className="text-base font-semibold">{title}</D.Title>
               <D.Description className={description ? 'mt-0.5 text-[13px] text-muted' : 'sr'}>{description ?? title}</D.Description>
             </div>
-            <D.Close className="rounded-md p-1 text-muted hover:bg-hover hover:text-ink" aria-label="Закрыть">
+            <D.Close className="rounded-md p-1 text-muted hover:bg-hover hover:text-ink" aria-label={t('Закрыть')}>
               <X size={18} />
             </D.Close>
           </div>

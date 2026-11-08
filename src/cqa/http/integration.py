@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 from cqa.domain.models import CriterionResult, Dialog
 from cqa.http.api import _runner, _source
 from cqa.services.errors import Conflict, Invalid
-from cqa.services.integration import dialog_result, finished, results_doc, run_status, save
+from cqa.services.integration import dialog_result, finished, results_doc, save
 
 router = APIRouter(prefix="/api")
 
@@ -87,7 +87,7 @@ Item = Annotated[
 ]
 
 
-class BatchIn(BaseModel):
+class EvaluateBatchIn(BaseModel):
     model_config = ConfigDict(json_schema_extra={"examples": [{"dialogs": [RECORD_EXAMPLE, PASTE_EXAMPLE]}]})
     dialogs: list[Item] = Field(
         min_length=1, max_length=100, description="от 1 до 100 диалогов в любом из двух форматов"
@@ -130,26 +130,6 @@ class AcceptedOut(BaseModel):
 class BatchOut(BaseModel):
     run_id: int
     dialog_ids: list[str]
-
-
-class DialogStatus(BaseModel):
-    dialog_id: str
-    status: Literal["queued", "evaluating", "done", "error", "cancelled"]
-    done: int = Field(description="критериев с ответом текущего чек-листа")
-    total: int = Field(description="критериев в чек-листе")
-    error: str | None
-
-
-class RunStatusOut(BaseModel):
-    run_id: int
-    status: Literal["running", "done", "cancelled"]
-    done: int
-    total: int
-    cost: float
-    calls: int
-    eta_s: int | None
-    errors: list[str]
-    dialogs: list[DialogStatus]
 
 
 IdempotencyKey = Annotated[
@@ -209,7 +189,9 @@ async def post_evaluate(
 
 
 @router.post("/evaluate/batch", status_code=202, response_model=BatchOut)
-async def post_batch(body: BatchIn, request: Request, idempotency_key: IdempotencyKey = None) -> JSONResponse:
+async def post_batch(
+    body: EvaluateBatchIn, request: Request, idempotency_key: IdempotencyKey = None
+) -> JSONResponse:
     async def make() -> Made:
         runner = _runner(request)
         runner.ensure_idle()
@@ -224,11 +206,6 @@ async def get_dialog(dialog_id: str, request: Request) -> JSONResponse:
     return JSONResponse(
         dialog_result(request.app.state.store, dialog_id)
     )  # диалог без пустых полей, как в /state
-
-
-@router.get("/runs/{run_id}/dialogs", response_model=RunStatusOut)
-async def get_run_dialogs(run_id: int, request: Request) -> dict[str, Any]:
-    return run_status(request.app.state.store, _runner(request), run_id)
 
 
 @router.get("/results")

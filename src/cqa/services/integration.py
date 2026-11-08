@@ -19,7 +19,7 @@ from cqa.services.dialogs import paste_text
 from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import current_results, current_state
+from cqa.services.state import current_state
 
 CODES = Path(__file__).resolve().parents[3] / "results" / "criteria_map.json"  # как у scripts/results.py
 TEAM = "analysts"  # team_name файла результатов, как у scripts/results.py
@@ -83,33 +83,6 @@ def dialog_result(store: Store, dialog_id: str) -> dict[str, Any]:
         "results_v1": record["results"][0] if record else None,
         "dialog": dialog.model_dump(mode="json", exclude_none=True),
     }
-
-
-def run_status(store: Store, runner: Runner, run_id: int) -> dict[str, Any]:
-    """Ход запуска и каждого диалога: queued, evaluating, done, error, cancelled."""
-    progress = runner.progress(run_id)
-    ids = runner.dialog_ids(run_id) or []
-    checklist = store.current_checklist()
-    assert checklist is not None, "create_app сеет чек-лист на пустой базе"
-    found = [d for d in map(store.get_dialog, ids) if d is not None]
-    current = current_results(store, checklist, found)
-    flying = runner.in_flight() if progress["status"] == "running" else set()
-    dialogs = []
-    for i in ids:
-        error = next((e for e in progress["errors"] if e.startswith((f"{i}:", f"{i}/"))), None)
-        done = len(current.get(i, {}))
-        if done >= len(checklist.criteria):
-            status = "done"
-        elif i in flying:
-            status = "evaluating"
-        elif error:
-            status = "error"
-        else:
-            status = {"running": "queued", "cancelled": "cancelled"}.get(progress["status"], "error")
-        dialogs.append(
-            {"dialog_id": i, "status": status, "done": done, "total": len(checklist.criteria), "error": error}
-        )
-    return {"run_id": run_id, **progress, "dialogs": dialogs}
 
 
 def results_doc(store: Store, ids: Sequence[str] | None, model: Mapping[str, str]) -> dict[str, Any]:

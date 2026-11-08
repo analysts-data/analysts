@@ -249,3 +249,15 @@ def test_short_interjection_inside_a_long_line_is_not_an_overlap() -> None:
     result = analyse([*lines[:2], uh, long, *lines[4:]], tracks(talk([*lines[:2], long, uh, *lines[4:]])))
 
     assert all("overlap" not in x["flags"] for x in result["lines"])
+
+
+def test_talk_stats_come_from_the_same_speech_spans() -> None:
+    lines = dialogue(8, gaps={4: -2.5, 5: 8.0})  # клиент перебил в 4, оператор ответил после паузы в 5
+    result = analyse(lines, tracks(talk(lines)))
+
+    stats = result["talk"]
+    assert stats["interrupt_client"] == 1
+    assert stats["interrupt_operator"] == 0
+    assert stats["pause_max_s"] == pytest.approx(by_n(result, 5)["pause"], abs=0.1)
+    assert stats["operator_share"] == pytest.approx(50.0, abs=2.0)
+    assert stats["wps_operator"] == pytest.approx(2.5, abs=0.1)

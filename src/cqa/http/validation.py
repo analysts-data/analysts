@@ -10,7 +10,7 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from cqa.http.integration import FORMATS, BatchIn, RecordIn, TextIn, TurnIn
+from cqa.http.integration import FORMATS, EvaluateBatchIn, RecordIn, TextIn, TurnIn
 
 MESSAGES = {
     "missing": "обязательное поле",
@@ -45,7 +45,7 @@ BOTH_FORMATS = (
 # описания полей интеграционных тел — они же в OpenAPI
 HINTS: Mapping[str, str] = {
     name: f.description
-    for m in (TurnIn, RecordIn, TextIn, BatchIn)
+    for m in (TurnIn, RecordIn, TextIn, EvaluateBatchIn)
     for name, f in m.model_fields.items()
     if f.description
 }

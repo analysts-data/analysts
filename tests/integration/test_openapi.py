@@ -56,7 +56,9 @@ def test_every_error_response_has_an_example_and_validation_errors_name_the_fiel
 def test_integration_bodies_carry_examples(spec: dict[str, Any]) -> None:
     schemas = spec["components"]["schemas"]
     assert (
-        schemas["RecordIn"]["examples"] and schemas["TextIn"]["examples"] and schemas["BatchIn"]["examples"]
+        schemas["RecordIn"]["examples"]
+        and schemas["TextIn"]["examples"]
+        and schemas["EvaluateBatchIn"]["examples"]
     )
     assert (
         "Idempotency-Key"

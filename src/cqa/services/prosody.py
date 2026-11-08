@@ -8,12 +8,16 @@ from cqa.services.errors import NotFound, Upstream
 from cqa.services.ports import DialogSource, Voice
 
 
-async def dialog_prosody(store: Store, source: DialogSource, voice: Voice, dialog_id: str) -> dict[str, Any]:
-    """404 — чат, неизвестный id или звонок без записи; 502 — запись не получена, в базу не пишется."""
+async def dialog_prosody(
+    store: Store, source: DialogSource, voice: Voice, dialog_id: str, *, fresh: bool = False
+) -> dict[str, Any]:
+    """404 — чат, неизвестный id или звонок без записи; 502 — запись не получена, в базу не пишется.
+
+    `fresh` — посчитать заново, даже если разбор сохранён (сохранён до появления `talk`)."""
     dialog, audio_url = store.get_dialog(dialog_id), store.audio_url(dialog_id)
     if dialog is None or dialog.ch != "call" or audio_url is None:
         raise NotFound(f"У диалога {dialog_id} нет записи")
-    cached = store.prosody(dialog_id)
+    cached = None if fresh else store.prosody(dialog_id)
     if cached is not None:
         return cached
     link = await source.audio_link(audio_url)

@@ -53,7 +53,7 @@ else:                                    # 202: оценка дольше 120 с
 ```bash
 curl -sS -X POST "$CQA/api/evaluate?wait=false" -H "$AUTH" -H 'Content-Type: application/json' \
   -d @dialog.json                                   # → 202 {"dialog_id": "...", "run_id": 42}
-curl -sS "$CQA/api/runs/42/dialogs" -H "$AUTH"      # статус каждого диалога
+curl -sS "$CQA/api/runs/42" -H "$AUTH"      # статус каждого диалога
 curl -sS "$CQA/api/dialogs/crm-2026-000123" -H "$AUTH"
 ```
 
@@ -61,13 +61,13 @@ curl -sS "$CQA/api/dialogs/crm-2026-000123" -H "$AUTH"
 import time
 
 acc = cqa.post("/api/evaluate", params={"wait": "false"}, json=dialog).json()
-while (st := cqa.get(f"/api/runs/{acc['run_id']}/dialogs").json())["status"] == "running":
+while (st := cqa.get(f"/api/runs/{acc['run_id']}").json())["status"] == "running":
     print(st["done"], "/", st["total"], "ETA", st["eta_s"], [d["status"] for d in st["dialogs"]])
     time.sleep(2)
 result = cqa.get(f"/api/dialogs/{acc['dialog_id']}").json()   # итог, ответы, results_v1, dialog
 ```
 
-Статус диалога принимает значения `queued`, `evaluating`, `done`, `error` (текст ошибки в поле `error`) и `cancelled`.
+Статус диалога в `dialogs[]` — `queued`, `evaluating`, `done`, `error` (текст в `error`), `skipped` или `cancelled` (раздел «Статусы диалогов» контракта).
 
 ## 3. Пакет и вебхук
 
@@ -97,7 +97,7 @@ def verify(body: bytes, header: str, secret: str) -> bool:
     return hmac.compare_digest(expected, header)
 ```
 
-Если доставка не удалась, сервер пишет строку в журнал и не повторяет отправку. На такой случай есть опрос `GET /api/runs/{run_id}/dialogs`.
+Если доставка не удалась, сервер пишет строку в журнал и не повторяет отправку. На такой случай есть опрос `GET /api/runs/{run_id}`.
 
 ## 4. Результаты в формате JSON 1.0
 
