@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { configBody, modeText, presetOf, risks } from '../../../web/js/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
-const FIELDS = { llm_base_url: ' https://kz.test/v1 ', llm_model: ' qwen ', llm_profile: 'plain', llm_api_key: '', jev: false, jev_api_key: '', allow_real_data: false };
+const FIELDS = { llm_base_url: ' https://kz.test/v1 ', llm_model: ' qwen ', llm_profile: 'plain', llm_api_key: '', evaluator: 'llm', jev: false, jev_api_key: '', allow_real_data: false };
 
 test('presetOf names the mode of a config', () => {
   assert.equal(presetOf({ data_where: 'local', anonymize: false }), 'local');
@@ -14,8 +14,9 @@ test('presetOf names the mode of a config', () => {
 test('configBody maps a preset and the form to the PUT /api/config body', () => {
   assert.deepEqual(configBody('local', 'external', FIELDS), {
     llm_base_url: 'https://kz.test/v1', llm_model: 'qwen', llm_profile: 'plain', llm_api_key: '',
-    data_where: 'local', anonymize: false, verifier: null, jev_api_key: '', allow_real_data: false,
+    data_where: 'local', anonymize: false, verifier: null, evaluator: 'llm', jev_api_key: '', allow_real_data: false,
   });
+  assert.equal(configBody('anon', 'kz', { ...FIELDS, evaluator: 'jev' }).evaluator, 'jev');
   const anon = configBody('anon', 'kz', { ...FIELDS, jev: true, jev_api_key: ' j ' });
   assert.deepEqual([anon.data_where, anon.anonymize, anon.verifier, anon.jev_api_key], ['kz', true, 'jev', 'j']);
   assert.equal(configBody('raw', 'external', FIELDS).anonymize, false);

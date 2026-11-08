@@ -203,6 +203,18 @@ def test_add_checklist_rejects_duplicate_version():
     assert store.list_versions() == [{"v": _checklist_fixture().version, "note": "начальная версия"}]
 
 
+def test_checklist_reads_any_stored_version_and_none_for_unknown():
+    store = Store(connect(":memory:"))
+    v3 = _checklist_fixture()
+    v4 = v3.model_copy(update={"version": 4, "rules": "Новые правила"})
+    store.add_checklist(v3, "начальная версия")
+    store.add_checklist(v4, "изменены общие правила")
+
+    assert store.checklist(3) == v3
+    assert store.checklist(4) == v4
+    assert store.checklist(5) is None
+
+
 def test_current_checklist_returns_max_version():
     store = Store(connect(":memory:"))
     assert store.current_checklist() is None

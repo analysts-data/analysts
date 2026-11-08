@@ -171,6 +171,10 @@ class Store:
         row = self._conn.execute("SELECT body FROM checklists ORDER BY version DESC LIMIT 1").fetchone()
         return Checklist.model_validate(json.loads(row["body"])) if row is not None else None
 
+    def checklist(self, version: int) -> Checklist | None:
+        row = self._conn.execute("SELECT body FROM checklists WHERE version = ?", (version,)).fetchone()
+        return Checklist.model_validate(json.loads(row["body"])) if row is not None else None
+
     def list_versions(self) -> list[dict[str, object]]:
         rows = self._conn.execute("SELECT version, note FROM checklists ORDER BY version").fetchall()
         return [{"v": row["version"], "note": row["note"]} for row in rows]

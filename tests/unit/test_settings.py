@@ -20,6 +20,7 @@ DEFAULTS = {
     "llm_price_in": 0.0,
     "llm_price_out": 0.0,
     "verifier": None,
+    "evaluator": "llm",
     "jev_api_key": None,
     "anonymize": True,
     "data_where": "kz",
