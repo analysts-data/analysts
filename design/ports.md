@@ -111,6 +111,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.docs.router)` — документация `/docs/` из `docs/site/*.md` и справочник по `app.openapi()`; Swagger и ReDoc выключены, схема — `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
 
@@ -138,6 +139,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
+| `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.

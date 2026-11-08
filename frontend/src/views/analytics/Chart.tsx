@@ -1,5 +1,5 @@
-// Столбчатый график ECharts (echarts/core: только BarChart, сетка и подсказка) и те же числа текстом под ним:
-// холст скрыт от чтения с экрана, числа остаются читаемыми и без графика. Цвета — токены темы.
+// Столбчатый график ECharts (echarts/core: только BarChart, сетка и подсказка). Холст скрыт от чтения с экрана,
+// те же числа — списком .sr только для экранного диктора: на экране дубль не нужен. Цвета — токены темы.
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent } from 'echarts/components';
@@ -42,7 +42,8 @@ export function Chart({
     inverse: !vertical,
     axisTick: { show: false },
     axisLine: { lineStyle: { color: css('line-strong'), width: 1 } },
-    axisLabel: { color: muted, fontSize: 12, width: vertical ? undefined : Math.min(190, innerWidth * 0.35), overflow: 'truncate', interval: 0 },
+    // длинное название критерия переносится, а не обрезается
+    axisLabel: { color: muted, fontSize: 12, lineHeight: 14, width: vertical ? undefined : Math.min(200, innerWidth * 0.4), overflow: 'break', interval: 0 },
   };
   const val = { type: 'value', show: false, max: (v: { max: number }) => Math.max(1, v.max) };
   // Без анимации загрузки, градиентов и легенд: подписи прямо на столбцах.
@@ -73,7 +74,7 @@ export function Chart({
       },
     ],
   };
-  const height = vertical ? 200 : rows.length * 30 + 12;
+  const height = vertical ? 200 : rows.length * 38 + 12;
   return (
     <Card className="flex min-w-0 flex-col gap-3 p-4" aria-label={title}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -94,18 +95,10 @@ export function Chart({
           />
         </div>
       ) : null}
-      <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-xs text-muted">
+      <ul className="sr">
         {rows.map(r => (
           <li key={r.name}>
-            {r.href ? (
-              <a href={r.href} className="text-muted no-underline hover:underline">
-                {r.name}: <b className="text-ink">{r.label}</b>
-              </a>
-            ) : (
-              <>
-                {r.name}: <b className="text-ink">{r.label}</b>
-              </>
-            )}
+            {r.name}: {r.label}
           </li>
         ))}
       </ul>

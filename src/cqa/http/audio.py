@@ -12,7 +12,7 @@ from cqa.services.talkstats import dialog_talkstats, team_norms
 router = APIRouter()
 
 
-@router.get("/api/dialogs/{id}/audio")
+@router.get("/api/dialogs/{id}/audio", summary="Свежая ссылка на запись звонка (302)")
 async def fresh_audio(id: str, request: Request) -> Response:
     """302 на свежий MP3 из плеера организаторов; 404 — чат и неизвестный id, 502 — не вышло."""
     audio_url = request.app.state.store.audio_url(id)
@@ -24,7 +24,7 @@ async def fresh_audio(id: str, request: Request) -> Response:
     return Response(status_code=302, headers={"Location": link, "Cache-Control": "no-store"})
 
 
-@router.get("/api/dialogs/{id}/player")
+@router.get("/api/dialogs/{id}/player", summary="Плеер записи у источника (302)")
 async def org_player(id: str, request: Request) -> Response:
     """302 на плеер организаторов, без запросов наружу; запасной путь для реплик без `s`."""
     audio_url = request.app.state.store.audio_url(id)
@@ -33,7 +33,7 @@ async def org_player(id: str, request: Request) -> Response:
     return Response(status_code=302, headers={"Location": audio_url})
 
 
-@router.get("/api/dialogs/{id}/prosody")
+@router.get("/api/dialogs/{id}/prosody", summary="Интонация звонка по записи")
 async def prosody(id: str, request: Request) -> dict[str, Any]:
     """Интонация звонка по звуку; 404 — чат и неизвестный id, 502 — запись не получена."""
     state = request.app.state

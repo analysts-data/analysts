@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -207,6 +208,20 @@ def test_run_with_errors_is_reported_on_the_checklist(page: Page, web_url: str) 
     page.locator('[data-act="csave"]').click()
     expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 5 применяется")
     expect(view).not_to_contain_text("с ошибками")
+
+
+def test_replay_without_recording_is_one_plain_line_without_paths(page: Page, web_url: str) -> None:
+    page.route("**/api/config", lambda r: r.fulfill(json={"llm_mode": "replay", "features": []}))
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
+    save_text_change(page)
+    api.finish = True
+    api.errors = ["p1-ru-003: Нет записи /Users/x/tests/cassettes/llm/1345bf.json: запустите make record"]
+    page.locator('[data-act="crun"]').click()
+    view = page.locator('[data-view="checklist"]')
+    expect(view).to_contain_text("В демо-режиме нет записанных ответов для критериев 04")
+    expect(view.locator(".box.risk")).to_have_count(0)
+    expect(view).not_to_contain_text("/Users/")
+    expect(page.locator('[data-act="crun"]')).not_to_have_class(re.compile("bg-accent"))
 
 
 def test_deleted_pending_criterion_leaves_the_banner(page: Page, web_url: str) -> None:
