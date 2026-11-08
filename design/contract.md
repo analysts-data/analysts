@@ -95,6 +95,7 @@
 - Флаг тоже оспаривается и решается: для критерия `type: "flag"` поля `from`, `ask` и `to` — объекты `{"<k>": true | false}` по всем вопросам флага. Итог флаг не меняет. Очередь, фильтр «Грубые ошибки» и аналитика берут флаг с учётом последнего решения.
 - `status`: `pending`, `confirmed` (оценка оставлена), `changed` (оценка изменена на `to`), `closed` (критерий изменён или удалён новой версией чек-листа).
 - `reason` обязателен при решении. Исходный `res` не меняется никогда: итог считается с учётом последнего решения.
+- `reason_code`: код причины решения из каталога `GET /api/appeals/reasons` или `null` (нет кода, записи до каталога). Необязателен, текст `reason` по-прежнему обязателен.
 
 ## Итог
 
@@ -120,8 +121,10 @@
 | `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
 | `GET /api/scores/export?format=csv&shape=wide\|long&lang=RU&ch=chat\|call` | — | оценки для Excel: CSV UTF-8 с BOM, `;`, ячейка с `= + - @` в начале — текстом; `attachment; filename="cqa-scores-v<n>.csv"`. `wide` (по умолчанию) — строка на диалог: ID, название, канал, язык, дата, итог, грубое нарушение и виды, нужна проверка, проверен, ответ по каждому критерию (заголовок — название из чек-листа); `long` — строка на оценённую пару диалог × критерий: ответ, доля, `why`, `ev`, `tag`, `better`, модель, решение проверяющего. Ответы и итог с учётом решений; другой формат, форма или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
-| `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
-| `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
+| `POST /api/appeals/{id}/decision` | `{to, reason, reviewer, reason_code?}` | Appeal |
+| `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer, reason_code?}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
+| `GET /api/appeals/reasons`; `PUT` с каталогом | — или `[{code, label, applies}]` | каталог кодов причин решений (раздел «Коды причин решений») |
+| `GET /api/appeals/stats` | — | решения по кодам причин и доля ответов, изменённых людьми (раздел «Коды причин решений») |
 | `POST /api/dialogs/{id}/reviewed` | `{"reviewed": true \| false}` | `{ok}`; снятие отметки возвращает диалог в верхние группы очереди |
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
@@ -208,6 +211,26 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Коды причин решений (eval-and-delivery, reason-codes)
+
+- Каталог — данные: `[{"code": "misread", "label": "Модель неверно поняла реплику", "applies": "changed"}]`, `applies` — `confirmed`, `changed` или `both`: к какому исходу решения подходит причина. Пока каталог не сохраняли, `GET` отдаёт набор по умолчанию: `misread` «Модель неверно поняла реплику», `context` «Не учтён контекст диалога», `asr` «Ошибка распознавания речи» (`changed`); `violation` «Нарушение подтверждено», `by_rules` «Оценка верна по регламенту» (`confirmed`); `ambiguous` «Критерий сформулирован неоднозначно», `other` «Другое» (`both`).
+- `PUT /api/appeals/reasons` заменяет каталог целиком и отдаёт сохранённый. 422: пустой список, `code` не `[a-z0-9_-]{1,32}`, пустой `label`, повтор `code`, неизвестный `applies`. Записи с удалённым кодом остаются как есть.
+- `reason_code` в решении (`POST /api/appeals/{id}/decision`, `POST /api/decisions`) необязателен, пустая строка — как `null`. Код не из каталога — 422 «Неизвестный код причины <code>: допустимы …»; код не подходит к исходу (`confirmed`, если `to` совпадает с `from`, иначе `changed`) — 422 «Причина «<label>» не подходит к решению «оценка оставлена» | «оценка изменена»». Решение при отказе не записывается.
+- `GET /api/appeals/stats` из того же состояния, что `GET /api/state` (решения прежнего смысла критерия не в счёт):
+
+```json
+{"decisions": 2,
+ "reasons": [{"code": "misread", "label": "Модель неверно поняла реплику", "cid": "04", "name": "…",
+              "status": "changed", "n": 1, "share": 0.5}],
+ "modified": {"pairs": 5, "changed": 2, "share": 0.4,
+              "criteria": [{"id": "01", "name": "…", "pairs": 2, "changed": 1, "share": 0.5}],
+              "langs": [{"key": "RU", "pairs": 4, "changed": 1, "share": 0.25}]}}
+```
+
+- `reasons`: решения `confirmed` и `changed` по `reason_code` × критерий × исход, больше — выше; `share` — от `decisions`. Без кода — `code: null`, `label: "Без кода"`; код, удалённый из каталога, — `label` равен коду.
+- `modified` («Изменено людьми», Modified AutoQA): пары диалог × критерий с текущим результатом; пара изменена людьми, если её ответ ручной (`model: "вручную"`) или последнее решение заменило ответ модели (`to` ≠ `res.a`). `criteria` — худшие для модели первыми (доля по убыванию, затем `id`), `langs` — по числу пар. Доли до 4 знаков, без пар — `null`.
+- Интерфейс: в форме решения — выбор «Причина решения» из каталога, отфильтрованный по исходу; в аналитике — плитка «Изменено людьми» с долей и разбивкой по критериям и языкам.
 
 ## Доступ по токену (eval-and-delivery)
 

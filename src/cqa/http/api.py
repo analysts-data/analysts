@@ -9,11 +9,11 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
 from cqa.compose import build_evaluator, check_provider
-from cqa.domain.models import Answer, Appeal, Checklist
+from cqa.domain.models import Answer, Appeal, Checklist, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.services.answers import set_answer
-from cqa.services.appeals import decide, file_appeal, record_review
+from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
@@ -210,6 +210,7 @@ class DecisionIn(BaseModel):
     to: AppealValue
     reason: str
     reviewer: str
+    reason_code: str | None = None  # код из GET /api/appeals/reasons; пусто — без кода
 
 
 class ReviewIn(BaseModel):
@@ -219,10 +220,27 @@ class ReviewIn(BaseModel):
     to: AppealValue
     reason: str
     reviewer: str
+    reason_code: str | None = None
 
 
 def _appeal_out(appeal: Appeal) -> dict[str, Any]:
     return appeal.model_dump(mode="json", by_alias=True, exclude={"ask"} if appeal.kind == "review" else None)
+
+
+@router.get("/appeals/reasons")
+async def get_reasons(request: Request) -> list[ReasonCode]:
+    return reasons(request.app.state.store)
+
+
+@router.put("/appeals/reasons")
+async def put_reasons(body: list[ReasonCode], request: Request) -> list[ReasonCode]:
+    return save_reasons(request.app.state.store, body)
+
+
+@router.get("/appeals/stats")
+async def get_appeal_stats(request: Request) -> dict[str, Any]:
+    """Решения по кодам причин × критерий × исход и доля пар, изменённых людьми, по критериям и языкам."""
+    return stats(request.app.state.store)
 
 
 @router.post("/appeals")
