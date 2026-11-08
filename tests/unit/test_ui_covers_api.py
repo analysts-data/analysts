@@ -19,6 +19,7 @@ EXEMPT = {
     "/evaluate/batch",
     "/dialogs/{dialog_id}",
     "/runs/{run_id}/dialogs",
+    "/results",
 }
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')

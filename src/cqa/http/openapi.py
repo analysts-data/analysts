@@ -234,6 +234,32 @@ DOCS: dict[str, dict[str, Any]] = {
         404,
         503,
     ),
+    "GET /api/results": op(
+        INTEGRATION,
+        "Результаты в формате JSON 1.0",
+        'Файл результатов организаторов (`schema_version: "1.0"`) по `ids` в их порядке, без `ids` — по всем '
+        "диалогам. Ответы с учётом решений по апелляциям; не оценённый или неизвестный диалог — запись "
+        '`status: "error"` с причиной. `model.name` — модель текущего режима.',
+        401,
+        409,
+        422,
+        503,
+        example={
+            "schema_version": "1.0",
+            "team_name": "analysts",
+            "model": {"mode": "external_api", "name": "qwen3-6"},
+            "results": [
+                {
+                    "conversation_id": "crm-2026-000123",
+                    "status": "ok",
+                    "criteria": [
+                        {"criterion_id": "<код>", "value": True, "rationale": "…", "evidence_turns": [2]}
+                    ],
+                    "score": {"final_score": 87.5, "critical_flag": False},
+                }
+            ],
+        },
+    ),
     "GET /api/state": op(
         DIALOGS,
         "Всё состояние интерфейса",

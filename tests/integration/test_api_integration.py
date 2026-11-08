@@ -332,3 +332,16 @@ def test_run_status_shows_each_dialogue(store: Store, conn: sqlite3.Connection) 
 
 def test_status_of_an_unknown_run_is_404(api: TestClient) -> None:
     assert api.get("/api/runs/999/dialogs").status_code == 404
+
+
+def test_results_export_is_the_organisers_json_1_0_for_the_chosen_dialogues(api: TestClient) -> None:
+    api.post("/api/evaluate", json=CHAT)
+    doc = api.get("/api/results", params=[("ids", "syn-chat-ru"), ("ids", "nope")]).json()
+    assert (doc["schema_version"], doc["team_name"]) == ("1.0", "analysts")
+    assert doc["model"] == {"mode": "external_api", "name": "qwen3-6"}
+    assert [(r["conversation_id"], r["status"]) for r in doc["results"]] == [
+        ("syn-chat-ru", "ok"),
+        ("nope", "error"),
+    ]
+    every = api.get("/api/results").json()["results"]
+    assert {r["conversation_id"] for r in every} == {"call-024", "p1-ru-003", "syn-chat-ru"}

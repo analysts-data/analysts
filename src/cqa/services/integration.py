@@ -16,12 +16,13 @@ from cqa.domain.results import to_results
 from cqa.domain.review import effective_answer
 from cqa.domain.scoring import total
 from cqa.services.dialogs import paste_text
-from cqa.services.errors import Invalid, NotFound
+from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import current_results, current_state
 
 CODES = Path(__file__).resolve().parents[3] / "results" / "criteria_map.json"  # как у scripts/results.py
+TEAM = "analysts"  # team_name файла результатов, как у scripts/results.py
 WAIT_S = 120.0
 POLL_S = 0.1
 
@@ -109,3 +110,16 @@ def run_status(store: Store, runner: Runner, run_id: int) -> dict[str, Any]:
             {"dialog_id": i, "status": status, "done": done, "total": len(checklist.criteria), "error": error}
         )
     return {"run_id": run_id, **progress, "dialogs": dialogs}
+
+
+def results_doc(store: Store, ids: Sequence[str] | None, model: Mapping[str, str]) -> dict[str, Any]:
+    """Файл результатов JSON 1.0 по `ids` в их порядке (None — все диалоги); не оценённый — `error`."""
+    checklist, dialogs, appeals = current_state(store)
+    codes = json.loads(CODES.read_text(encoding="utf-8"))
+    chosen = list(dict.fromkeys(ids)) if ids else [d.id for d in dialogs]
+    try:
+        return to_results(
+            chosen, {d.id: d for d in dialogs}, checklist, appeals, codes, team=TEAM, model=model
+        )
+    except ValueError as exc:  # карта кодов организаторов не подходит к изменённому чек-листу
+        raise Conflict(str(exc)) from None

@@ -5,14 +5,14 @@ import hashlib
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 
 from cqa.domain.models import CriterionResult, Dialog
 from cqa.http.api import _runner, _source
 from cqa.services.errors import Conflict, Invalid
-from cqa.services.integration import dialog_result, finished, run_status, save
+from cqa.services.integration import dialog_result, finished, results_doc, run_status, save
 
 router = APIRouter(prefix="/api")
 
@@ -229,3 +229,16 @@ async def get_dialog(dialog_id: str, request: Request) -> JSONResponse:
 @router.get("/runs/{run_id}/dialogs", response_model=RunStatusOut)
 async def get_run_dialogs(run_id: int, request: Request) -> dict[str, Any]:
     return run_status(request.app.state.store, _runner(request), run_id)
+
+
+@router.get("/results")
+async def get_results(
+    request: Request,
+    ids: Annotated[list[str] | None, Query(description="id диалогов по порядку; без ids — все")] = None,
+) -> dict[str, Any]:
+    state = request.app.state
+    model = {
+        "mode": "local" if state.settings.data_where == "local" else "external_api",
+        "name": state.mode.model,
+    }
+    return results_doc(state.store, ids, model)
