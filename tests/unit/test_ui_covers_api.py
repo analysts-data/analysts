@@ -16,6 +16,17 @@ EXEMPT = {"/health", "/login"} | {
     "/bands", "/checklist/simulate", "/checklist/normalize", "/checklist/presets", "/criteria/templates",
     "/checklist/trial",
 }  # fmt: skip
+EXEMPT = {
+    "/health",
+    "/login",
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
+}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
