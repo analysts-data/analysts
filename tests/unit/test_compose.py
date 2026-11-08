@@ -10,7 +10,8 @@ from cqa import compose
 from cqa.adapters.cassette import CassetteMissing, _key
 from cqa.adapters.jev import JEV_URL, JevVerifier
 from cqa.adapters.llm import PROFILES
-from cqa.compose import build_evaluator
+from cqa.adapters.store import Store, connect
+from cqa.compose import build_evaluator, build_routed
 from cqa.domain.models import Checklist, Dialog
 from cqa.domain.prompt import build_messages, render_dialog
 from cqa.http.app import create_app
@@ -228,3 +229,28 @@ def test_evaluator_gets_the_sound_analysis_port(mode: str) -> None:
 
     assert build_evaluator(settings(evaluator=mode), prosody).prosody is prosody
     assert build_evaluator(settings(evaluator=mode)).prosody is None
+
+
+def _cassette(tmp_path: Path, model: str, profile: str = "plain") -> None:
+    """Запись ответа «yes» на первый критерий CHAT для модели `model`."""
+    messages = build_messages(render_dialog(CHAT), CHECKLIST.rules, FIRST, CHAT.ch)[0]
+    body = {"model": model, "messages": messages} | PROFILES[profile]["on"]
+    response = {"choices": [{"message": {"content": json.dumps({"reason_ru": "Да.", "answer": "yes"})}}]}
+    (tmp_path / "llm").mkdir(exist_ok=True)
+    record = {"request": body, "status": 200, "response": response | {"usage": {}}}
+    (tmp_path / "llm" / f"{_key(body)}.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+async def test_without_enabled_rules_routing_is_the_plain_evaluator_with_the_same_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(compose, "CASSETTES", tmp_path)
+    _cassette(tmp_path, settings().llm_model)
+    store = Store(connect(":memory:"))
+    for s in (settings(), settings(routing=[{"id": "calls", "name": "Звонки", "enabled": False}])):
+        evaluator = build_routed(s, None, store)  # демонстрационные правила выключены
+        assert type(evaluator) is type(build_evaluator(s))
+        with respx.mock(assert_all_called=False) as net:
+            out = await evaluator.evaluate(CHAT, CHECKLIST, [FIRST])
+        assert net.calls.call_count == 0
+        assert [(e.result.a, e.result.rule_id) for e in out.results] == [("yes", None)]

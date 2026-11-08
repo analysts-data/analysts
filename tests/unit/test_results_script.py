@@ -169,7 +169,7 @@ def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> lis
     """Подменяет оценщик; список — порты интонации, с которыми его собрали."""
     ports: list[object] = []
     monkeypatch.setattr(
-        results, "build_evaluator", lambda settings, prosody: ports.append(prosody) or evaluator
+        results, "build_routed", lambda settings, prosody, store: ports.append(prosody) or evaluator
     )
     return ports
 

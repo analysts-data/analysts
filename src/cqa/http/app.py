@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from cqa.adapters.batches import BatchStore
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_classifier, build_evaluator, build_source
+from cqa.compose import build_classifier, build_routed, build_source
 from cqa.domain.models import Checklist, Product
 from cqa.http import api, batches, docs
 from cqa.http.access import protect
@@ -133,7 +133,7 @@ def create_app(
 
     app.state.prosody = prosody
     if evaluator is None:  # llm-evaluation; подставленный оценщик (тесты) — без своего классификатора тем
-        evaluator = build_evaluator(settings, prosody)
+        evaluator = build_routed(settings, prosody, store)
         classifier = classifier if classifier is not None else build_classifier(settings)
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, classifier=classifier)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)

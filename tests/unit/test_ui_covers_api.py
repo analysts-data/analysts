@@ -49,6 +49,8 @@ EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
 EXEMPT |= {"/recommendations"}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
+# UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
+EXEMPT |= {"/routing", "/routing/explain"}
 # UI в работе: темы обращений (PR #95)
 EXEMPT |= {"/products", "/products/stats", "/dialogs/{dialog_id}/product"}
 
