@@ -113,6 +113,8 @@ class CriterionResult(BaseModel):
     better: str | None = None
     evFail: bool = False
     model: str | None = None
+    rule_id: str | None = None  # правило обработки, выбравшее оценщик; None — общий режим
+    rule_name: str | None = None  # название правила на момент оценки
     calls: int = 0
     cost: float = 0.0
     ms: int = 0

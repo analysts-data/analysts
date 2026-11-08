@@ -20,7 +20,7 @@ from cqa.adapters.batches import BatchStore
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
 from cqa.adapters.webhook import send_event
-from cqa.compose import build_evaluator, build_source
+from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
 from cqa.http import api, batches, docs, integration
 from cqa.http.access import protect
@@ -131,7 +131,9 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
+    evaluator = (
+        evaluator if evaluator is not None else build_routed(settings, prosody, store)
+    )  # llm-evaluation
     secret = settings.webhook_secret.get_secret_value() if settings.webhook_secret else None
     webhook = (
         partial(send_event, httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT_S), settings.webhook_url, secret)
