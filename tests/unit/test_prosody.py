@@ -221,3 +221,14 @@ def test_system_lines_and_lines_without_start_are_skipped() -> None:
     result = analyse([sys, *lines, paused], tracks(talk(lines)))
 
     assert [x["n"] for x in result["lines"]] == [1, 2, 3, 4]
+
+
+def test_previous_speaker_running_past_the_mark_does_not_hide_the_pause() -> None:
+    lines = dialogue(8, gaps={5: 8.0})
+    speech = talk(lines)
+    a, b, hz, db = speech[3]
+    speech[3] = (a, b + 0.4, hz, db)  # клиент договорил на 0,4 с позже метки конца
+    result = analyse(lines, tracks(speech))
+
+    assert by_n(result, 5)["flags"] == ["long_pause"]
+    assert by_n(result, 5)["pause"] == pytest.approx(9.0, abs=0.1)

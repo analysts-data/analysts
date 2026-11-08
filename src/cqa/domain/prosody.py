@@ -28,6 +28,7 @@ FAST_MIN_WPS: Final = 3.5  # и не меньше, слов в секунду
 LONG_PAUSE_S: Final = 5.0  # тишина перед ответом оператора клиенту
 OVERLAP_MIN_S: Final = 1.0  # реплика началась раньше конца чужой
 SPEECH_RANGE_DB: Final = 25.0  # речь — кадры не тише 95-го процентиля записи минус столько
+GAP_IN_LINE_S: Final = 0.5  # тишина короче — пауза внутри реплики, длиннее — граница с предыдущей
 MIN_BASELINE_LINES: Final = 3  # меньше реплик — обычной манеры нет, относительных отклонений тоже
 MIN_VOICED: Final = 10  # кадров с тоном для медианы и размаха
 
@@ -86,6 +87,19 @@ def _st(hi: float, lo: float) -> float:
     return 12 * log2(hi / lo)
 
 
+def _speech(t: Array, loud: npt.NDArray[np.bool_], s: float) -> tuple[float, float] | None:
+    """Речь реплики среди громких кадров окна: всё от оценки начала `s` до конца окна и то, что
+    примыкает к этому слева короче `GAP_IN_LINE_S`. Хвост предыдущего говорящего за его меткой
+    отделён тишиной и в реплику не попадает."""
+    times = t[loud]
+    if not len(times):
+        return None
+    inside = np.flatnonzero(times >= s)
+    k = int(inside[0]) if len(inside) else len(times) - 1
+    gaps = np.flatnonzero(np.diff(times[: k + 1]) > GAP_IN_LINE_S)
+    return float(times[gaps[-1] + 1] if len(gaps) else times[0]), float(times[-1])
+
+
 def _features(lines: Sequence[Line | Fold], tr: Tracks) -> list[_Feat]:
     loud = float(np.percentile(tr.db, 95)) - SPEECH_RANGE_DB if len(tr.db) else 0.0
     out: list[_Feat] = []
@@ -99,10 +113,10 @@ def _features(lines: Sequence[Line | Fold], tr: Tracks) -> list[_Feat]:
         prev_end, prev_who = mark, ln.who
         if ln.who not in NAME:
             continue
-        speech = (tr.int_t >= lo) & (tr.int_t <= mark) & (tr.db >= loud)
-        start, end = (float(tr.int_t[speech][0]), float(tr.int_t[speech][-1])) if speech.any() else (s, mark)
+        found = _speech(tr.int_t, (tr.int_t >= lo) & (tr.int_t <= mark) & (tr.db >= loud), s)
+        start, end = found or (s, mark)
         hi = min(end, starts[k + 1]) if k + 1 < len(starts) else end  # тон и громкость — без хвоста
-        own = speech & (tr.int_t <= hi)  # под следующей репликой: там звучат оба
+        own = (tr.int_t >= start) & (tr.int_t <= hi) & (tr.db >= loud)  # под следующей: там звучат оба
         voiced = tr.f0[(tr.pitch_t >= start) & (tr.pitch_t <= hi) & (tr.f0 > 0)]
         f0 = rng = None
         if len(voiced) >= MIN_VOICED:
