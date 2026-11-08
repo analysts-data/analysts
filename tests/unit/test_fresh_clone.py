@@ -36,7 +36,10 @@ def stubs(tmp_path: Path) -> Path:
         f'#!/bin/sh\necho "curl $*" >> {DIR_LOG}\n'
         'if [ "${CURL_FAIL:-0}" = "1" ]; then exit 1; fi\n'
         'case "$*" in\n'
-        "  */api/health) echo '{\"ok\": true}' ;;\n"
+        # до make run порт свободен (BUSY=1 — там уже чужой сервер)
+        "  */api/health)\n"
+        f'    if [ "${{BUSY:-0}}" != "1" ] && ! grep -q "^make run" {DIR_LOG}; then exit 7; fi\n'
+        "    echo '{\"ok\": true}' ;;\n"
         "  *) echo '<cqa-app></cqa-app>' ;;\n"
         "esac\n",
     )
@@ -82,17 +85,9 @@ def test_fresh_clone_runs_readme_steps_and_keeps_dir(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     logged = calls(bin_dir)
-    order = [
-        logged.index(line)
-        for line in (
-            "uv sync",
-            "make check",
-            "make run",
-            next(line for line in logged if line.endswith("/api/health")),
-            next(line for line in logged if line.startswith("curl") and line.endswith("8000/")),
-        )
-    ]
-    assert order == sorted(order), logged
+    page = "curl -sf http://127.0.0.1:8000/"
+    health = f"{page}api/health"
+    assert logged == [health, "uv sync", "make check", "make run PORT=8000", health, page]
     kept = clone_dir(result)
     assert (kept / "repo").is_dir()  # каталог не удалён
     assert (kept / "repo" / ".env").is_file()  # шаг cp .env.example .env
@@ -122,4 +117,35 @@ def test_unreachable_health_names_the_step(tmp_path: Path) -> None:
     assert result.returncode != 0
     out = result.stdout + result.stderr
     assert "curl /api/health" in out
-    assert "make run" in calls(bin_dir)  # сервер успели запустить
+    assert "make run PORT=8000" in calls(bin_dir)  # сервер успели запустить
+
+
+def test_busy_port_fails_before_starting_the_server(tmp_path: Path) -> None:
+    """На 10:00 сервер команды уже на 8000: health чужого сервера не выдаётся за клон."""
+    (tmp_path / "tmp").mkdir()
+    bin_dir = stubs(tmp_path)
+
+    result = run_clone(bin_dir, tmp_path, seed_repo(tmp_path), BUSY="1")
+
+    assert result.returncode != 0
+    assert "порт 8000 занят" in result.stderr
+    assert not any(line.startswith("make run") for line in calls(bin_dir))
+
+
+def test_port_variable_moves_the_clone_server(tmp_path: Path) -> None:
+    (tmp_path / "tmp").mkdir()
+    bin_dir = stubs(tmp_path)
+
+    result = run_clone(bin_dir, tmp_path, seed_repo(tmp_path), PORT="18123")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    logged = calls(bin_dir)
+    assert "make run PORT=18123" in logged
+    assert all("18123" in line for line in logged if line.startswith("curl"))
+
+
+def test_make_run_takes_the_port_variable() -> None:
+    makefile = (Path(__file__).resolve().parents[2] / "Makefile").read_text(encoding="utf-8")
+
+    assert "PORT ?= 8000" in makefile
+    assert "--port $(PORT)" in makefile
