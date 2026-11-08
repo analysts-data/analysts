@@ -52,6 +52,18 @@ EXEMPT |= {
     "/dialogs/{dialog_id}/markers",
     "/markers/catalog",
 }
+# UI в работе (сессия React): страница «Источники», мастер добавления, фильтр по источнику
+EXEMPT |= {
+    "/sources",
+    "/sources/stats",
+    "/sources/test",
+    "/sources/{source_id}",
+    "/sources/{source_id}/test",
+    "/sources/{source_id}/sync",
+    "/sources/{source_id}/syncs",
+}
+# вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
+EXEMPT |= {"/sources/{source_id}/ingest"}
 # UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
 EXEMPT |= {"/telemetry", "/usage"}
 # UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)

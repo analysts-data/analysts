@@ -13,7 +13,7 @@ from cqa.domain.ingest import OrgRecord, OrgTurn, build_dialog
 from cqa.domain.models import Dialog
 
 # Роли по контракту: клиент, оператор, бот, событие; регистр и пробелы не важны.
-_ROLES: dict[str, str] = {
+ROLES: dict[str, str] = {
     "клиент": "client",
     "client": "client",
     "customer": "client",
@@ -56,7 +56,7 @@ def _turns(text: str) -> list[OrgTurn]:
         who: str | None = None
         body = line
         if match is not None:
-            found = _ROLES.get(match.group(1).casefold())
+            found = ROLES.get(match.group(1).casefold())
             if found is not None:
                 who, body = found, match.group(2).strip()
         if who is None:

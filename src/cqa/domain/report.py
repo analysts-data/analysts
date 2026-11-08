@@ -157,21 +157,30 @@ def build_report(
     lang: str | None = None,
     ch: str | None = None,
     operator: str | None = None,
+    source: str | None = None,
+    source_names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны."""
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны;
+    `source_names` — названия источников для раздела «По источникам»."""
     lang = lang.upper() if lang else None
     picked = [
         d
         for d in dialogs
-        if lang in (None, d.lang.upper()) and ch in (None, d.ch) and operator in (None, d.operator or UNKNOWN)
+        if lang in (None, d.lang.upper())
+        and ch in (None, d.ch)
+        and operator in (None, d.operator or UNKNOWN)
+        and source in (None, d.source_id)
     ]
     ids = {d.id for d in picked}
     appeals = [a for a in appeals if a.dlg in ids]
+    rows = _scored(checklist, picked, appeals)
+    labels = {"—": UNKNOWN, **(source_names or {})}
     rep: dict[str, Any] = {
         "at": at,
-        "filters": {"lang": lang, "ch": ch, "operator": operator},
-        **_summary(checklist, picked, _scored(checklist, picked, appeals), appeals, owners),
+        "filters": {"lang": lang, "ch": ch, "operator": operator, "source": source},
+        **_summary(checklist, picked, rows, appeals, owners),
         "operators": _section(checklist, picked, appeals),
+        "sources": _groups([(d.source_id or "—", t) for d, _, t in rows], labels),
     }
     rep["findings"] = _findings(
         rep, any(c.type != "flag" and c.signal == "resolution" for c in checklist.criteria)
@@ -431,6 +440,7 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
         ("По сотрудникам: сильные стороны", OPERATOR_HEAD, NUM, people(rep["operators"]["strengths"])),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
+        ("По источникам", ["Источник", "Диалогов", "Средний итог"], {1, 2}, groups(rep.get("sources", []))),
     ]  # fmt: skip
     return [t for t in tables if t[3]]
 

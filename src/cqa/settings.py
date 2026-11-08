@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     data_where: Where = "kz"
     allow_real_data: bool = False  # set only by a human
     org_api_url: SecretStr | None = None
+    allow_private_sources: bool = False  # http_json во внутренней сети (SSRF-защита, adapters/http_source.py)
     raw_dir: Path = Path("data/raw")
     audio_shift_s: float = 0.25
     audio_shift_paused_s: float = 4.5
