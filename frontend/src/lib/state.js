@@ -66,7 +66,7 @@ export async function startRun({ dialogs, criteria }) {
     S.run = { id: run_id, done: 0, total: 0, cost: 0, calls: 0, eta_s: null, errors: [], status: 'running' };
     toast('Оценка запущена.');
     render();
-    setTimeout(poll, 0);
+    setTimeout(poll, 400); // первый опрос не сразу: «Оценка запущена» успевает показаться до итога короткого прогона
   } catch (e) {
     toast(`Оценка не запущена: ${e.message}`);
   }

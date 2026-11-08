@@ -2,7 +2,7 @@
 import { Command } from 'cmdk';
 import { useEffect } from 'react';
 import { titleOf } from './lib/format.js';
-import { startRun } from './lib/state.js';
+import { api, startRun } from './lib/state.js';
 import { applyTheme, currentTheme, go, ROLES, setRole, useS, type Role } from './store';
 import { Modal } from './ui';
 import { openPaste } from './views/PasteDialog';
@@ -72,6 +72,12 @@ export function Palette({ open, onOpenChange }: { open: boolean; onOpenChange: (
                 Вставить диалог
               </Command.Item>
             )}
+            <Command.Item value="Выгрузить оценки CSV по критериям" onSelect={() => run(() => window.open(`${api.base}/scores/export?shape=wide`, '_blank'))} className={item}>
+              Выгрузить оценки (CSV, строка на диалог)
+            </Command.Item>
+            <Command.Item value="Выгрузить оценки CSV длинный формат" onSelect={() => run(() => window.open(`${api.base}/scores/export?shape=long`, '_blank'))} className={item}>
+              Выгрузить оценки (CSV, строка на критерий)
+            </Command.Item>
             <Command.Item value="тема тёмная светлая" onSelect={() => run(() => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true))} className={item}>
               {currentTheme() === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
             </Command.Item>
