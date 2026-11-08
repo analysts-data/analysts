@@ -39,7 +39,7 @@ The API is `GET/PUT /api/customer-offers`. A topic ID must already exist in `GET
 ## Matching and resolution behavior
 
 - Conversations are grouped only by `client_ref`.
-- A suggestion appears only for an approved offer that matches a configured topic ID or a configured phrase in a client-authored transcript turn.
+- A suggestion appears only for an approved offer that matches a configured topic ID or a configured phrase in a client-authored transcript turn from a dialogue marked `open` or `in_progress`. Resolved or unknown cases do not trigger an offer suggestion.
 - Phrase matching uses case-insensitive substring matching. It does not infer synonyms or paraphrase the client's request; configure likely forms explicitly.
 - The suggestion includes its match reason and available transcript evidence. Employees must check the client's situation and offer eligibility.
 - If no approved offer matches, the dashboard says there is no grounded suggestion.
