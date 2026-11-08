@@ -1,27 +1,46 @@
 // Экран очереди: группы приоритета, плитки-фильтры из хеша, поиск, добавление диалогов и панель оценки.
 // Роли: загрузка, оценка и цена только у специалиста КК; оператор не видит «Нужна проверка человека» и второе мнение.
-import { Search, X } from 'lucide-react';
+// Сотрудник, продукт и маркеры — из /api/state, если сервер их отдаёт; новые эндпоинты зовутся только по действию.
+import { Layers, Search, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ansTxt, f2, titleOf } from '../lib/format.js';
+import { t } from '../lib/i18n.js';
 import { byJev, reasonOf, syncNote, twoModels } from '../lib/queue.js';
 import { href } from '../lib/router.js';
 import { ans, flagsOf, flagWhy, r2 } from '../lib/scoring.js';
 import { go, rerender, useRoute, useS } from '../store';
 import { TERMS } from '../terms';
-import { Button, Chip, cn, PageHead, Tip, type Tone } from '../ui';
+import { Button, Chip, cn, LinkButton, PageHead, Tip, type Tone } from '../ui';
 import { AddMenu, JsonInput } from './queue/AddMenu';
-import { DIALOGS, hasFilters, plural, rowsOf, visibleRows, type Row } from './queue/order';
-import { RunPanel } from './queue/RunPanel';
+import { ExportButton } from './queue/Export';
+import { DIALOGS, hasFilters, markersOf, NO_OPERATOR, operatorOf, plural, productOf, rowsOf, visibleRows, type Row } from './queue/order';
+import { RunPanel, scoring } from './queue/RunPanel';
+import { BulkBar, PickCell, PickHead } from './BulkRecheck';
+import { SufficiencyChip } from './SufficiencyChip';
 
 const cut = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 
-// Подсказка группы зависит от второго мнения: без него о двух моделях не говорим.
-const GROUPS: [string, string, Tone, (two: boolean) => string][] = [
-  ['risk', 'Грубые ошибки', 'risk', two => `Находит модель${two ? ' или второе мнение' : ''}. Итог они не снижают.`],
-  ['review', 'Нужна проверка человека', 'info', two => (two ? 'Второе мнение не совпало или ответ не подтверждён цитатой.' : 'Ответ не подтверждён цитатой из диалога.')],
-  ['next', 'Без понятного следующего шага', 'ev', () => 'Критерий с сигналом «Решение запроса» ниже верхней ступени.'],
-  ['other', 'Остальные', 'na', () => ''],
+// Подсказка группы зависит от второго мнения: без него о двух моделях не говорим. Функция: тексты t() при отрисовке.
+const groups = (two: boolean): [string, string, Tone, string][] => [
+  ['risk', t('Грубые ошибки'), 'risk', two ? t('Находит модель или второе мнение. Итог они не снижают.') : t('Находит модель. Итог они не снижают.')],
+  ['review', t('Нужна проверка человека'), 'info', two ? t('Второе мнение не совпало или ответ не подтверждён цитатой.') : t('Ответ не подтверждён цитатой из диалога.')],
+  ['next', t('Без понятного следующего шага'), 'ev', t('Критерий с сигналом «Решение запроса» ниже верхней ступени.')],
+  ['other', t('Остальные'), 'na', ''],
 ];
+const chOf = (d: any) => (d.ch === 'call' ? t('Звонок') : t('Чат'));
+
+/** Строка с {j}, {k}, {enter}, {slash}: клавиши — элементами <kbd>, текст — из перевода. */
+const KEYS: Record<string, string> = { j: 'J', k: 'K', enter: 'Enter', slash: '/' };
+const withKeys = (s: string) =>
+  s.split(/\{(\w+)\}/).map((x, i) =>
+    i % 2 ? (
+      <kbd key={i} className="rounded border border-line px-1">
+        {KEYS[x] ?? x}
+      </kbd>
+    ) : (
+      x
+    ),
+  );
 const TONE: Record<string, Tone> = { 'c-risk': 'risk', 'c-info': 'info', 'c-ev': 'ev', 'c-na': 'na', 'c-ok': 'ok' };
 
 const setParam = (params: Record<string, string>, k: string, v: string) => href('queue', null, { ...params, [k]: v });
@@ -40,8 +59,8 @@ function grossWhy(d: any, cl: any, ap: any): { why: string; n?: number } | null 
 
 function Tile(p: { title: string; tip?: string; n: ReactNode; zero?: boolean; unit?: string; note: ReactNode; pressed?: boolean; onClick?: () => void; to?: string; g?: string }) {
   const cls = cn(
-    'tile flex min-w-0 flex-col items-start gap-0.5 rounded-card border p-3.5 text-left no-underline shadow-card transition-colors hover:border-line-strong',
-    p.pressed ? 'border-accent bg-accent-soft' : 'border-line bg-surface',
+    'tile relative flex min-w-0 flex-col items-start gap-0.5 px-4 py-3.5 text-left no-underline transition-colors',
+    p.pressed ? 'bg-accent-soft before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-accent' : 'bg-surface hover:bg-hover',
   );
   const inner = (
     <>
@@ -70,9 +89,10 @@ function Tile(p: { title: string; tip?: string; n: ReactNode; zero?: boolean; un
 
 function Status({ d, c }: { d: any; c: any }) {
   const S = useS();
-  if (c.pending) return <Chip tone="ev">Ждёт оценки</Chip>;
-  if (S.appeals.some((a: any) => a.dlg === d.id && a.status === 'pending')) return <Chip tone="info">Апелляция</Chip>;
-  return d.reviewed ? <Chip tone="ok">Проверен</Chip> : null;
+  if (scoring(S.run, d.id, c.pending)) return <Chip tone="na">{t('Оценивается…')}</Chip>;
+  if (c.pending) return <Chip tone="ev">{t('Ждёт оценки')}</Chip>;
+  if (S.appeals.some((a: any) => a.dlg === d.id && a.status === 'pending')) return <Chip tone="info">{t('Апелляция')}</Chip>;
+  return d.reviewed ? <Chip tone="ok">{t('Проверен')}</Chip> : null;
 }
 
 /** «Почему в очереди»: чип причины; у грубой ошибки ещё причина модели и ссылка на реплику. */
@@ -102,7 +122,7 @@ function Why({ x, op }: { x: Row; op: boolean }) {
       <span className="line-clamp-3 text-xs text-muted md:line-clamp-none">
         {g.n != null && (
           <a href={href('d', x.d.id, { n: String(g.n) })} className="font-semibold">
-            Реплика {g.n}
+            {t('Реплика {n}', { n: g.n })}
           </a>
         )}
         {g.n != null && short && ': '}
@@ -142,27 +162,34 @@ export function Queue() {
     go(href('queue'));
     rerender();
   };
+  // Фильтры по данным, которых у старого сервера нет: список строится из /api/state, пустой — фильтра нет.
+  const withOp = S.dialogs.some((d: any) => d.operator);
+  const operators = withOp ? [...new Set<string>(S.dialogs.map(operatorOf))].sort((a, b) => (a === NO_OPERATOR ? 1 : b === NO_OPERATOR ? -1 : a.localeCompare(b, 'ru'))) : [];
+  const products = [...new Map<string, string>(S.dialogs.map(productOf).filter(Boolean).map((x: any) => [x.id, x.name || x.id]))];
+  const markers = [...new Map<string, string>(S.dialogs.flatMap(markersOf).map(m => [m.k, m.label || m.k]))];
+  const cols = (withOp ? 7 : 6) + (qa ? 1 : 0);
   const sel = (id: string, label: string, k: string, vals: [string, string][]) => (
     <label className="flex items-center gap-2 text-[13px] text-muted">
       {label}
       <select id={id} className="fld" data-act={id} value={p[k] || ''} onChange={e => go(setParam(p, k, e.target.value))}>
-        {vals.map(([v, t]) => (
+        {vals.map(([v, label]) => (
           <option key={v} value={v}>
-            {t}
+            {label}
           </option>
         ))}
       </select>
     </label>
   );
-  const sub = qa ? 'Сначала диалоги с грубыми ошибками и спорными ответами модели' : 'Оценки диалогов по чек-листу. Откройте диалог, чтобы увидеть, за что снижен балл.';
+  const sub = qa ? t('Сначала диалоги с грубыми ошибками и спорными ответами модели') : t('Оценки диалогов по чек-листу. Откройте диалог, чтобы увидеть, за что снижен балл.');
+  const all_ = t('Все');
 
   if (!S.dialogs.length)
     return (
       <>
-        <PageHead title="Диалоги" sub={sub} />
+        <PageHead title={t('Диалоги')} sub={sub} />
         {qa && S.run && <RunPanel all={all} dialogs={null} pending={0} />}
-        <section className="flex flex-col items-start gap-3 rounded-card border border-line bg-surface p-5 shadow-card" aria-label="Список диалогов">
-          <p className="text-muted">{qa ? 'Диалогов пока нет. Загрузите набор или вставьте диалог текстом.' : 'Диалогов пока нет. Их загружает специалист КК.'}</p>
+        <section className="flex flex-col items-start gap-3 rounded-card border border-line bg-surface p-5 shadow-card" aria-label={t('Список диалогов')}>
+          <p className="text-muted">{qa ? t('Диалогов пока нет. Загрузите набор или вставьте диалог текстом.') : t('Диалогов пока нет. Их загружает специалист КК.')}</p>
           {qa && <AddMenu primary />}
         </section>
         {qa && <JsonInput />}
@@ -172,59 +199,78 @@ export function Queue() {
   const target = filtered ? seq : all;
   return (
     <>
-      <PageHead title="Диалоги" sub={sub}>
+      <PageHead title={t('Диалоги')} sub={sub}>
+        {!op && <ExportButton lang={p.lang} ch={p.ch} />}
+        {qa && S.features?.includes('batches') && (
+          <LinkButton href={`#/batches?new=1&ch=${encodeURIComponent(p.ch ?? '')}&lang=${encodeURIComponent(p.lang ?? '')}&prod=${encodeURIComponent(p.prod ?? '')}`}>
+            <Layers size={16} aria-hidden="true" />
+            {t('Оценить пакетом')}
+          </LinkButton>
+        )}
         {qa && <AddMenu />}
       </PageHead>
       {qa && <JsonInput />}
       {qa && S.source && <p className="text-[13px] text-muted">{syncNote(S.source)}</p>}
       {qa && <RunPanel all={all} dialogs={filtered ? seq.map(x => x.d.id) : null} pending={target.filter(x => x.c.pending).length} />}
 
-      <section className={cn('grid grid-cols-2 gap-3 md:grid-cols-3', op ? 'xl:grid-cols-4' : 'xl:grid-cols-5')} aria-label="Быстрые фильтры">
+      <section className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card [&>*:last-child:nth-child(odd)]:col-span-2 md:[&>*:last-child:nth-child(odd)]:col-span-1', op ? 'md:grid-cols-4' : 'md:grid-cols-5')} aria-label={t('Быстрые фильтры')}>
         <Tile
-          title="Грубые ошибки"
+          title={t('Грубые ошибки')}
           tip={TERMS.gross}
           n={cnt('risk')}
           zero={!cnt('risk')}
-          note={`не проверено: ${cnt('risk')}${checked ? `, проверено: ${checked}` : ''}`}
+          note={checked ? t('не проверено: {n}, проверено: {m}', { n: cnt('risk'), m: checked }) : t('не проверено: {n}', { n: cnt('risk') })}
           pressed={p.grp === 'risk'}
           onClick={() => toggle('risk')}
           g="risk"
         />
         {!op && (
           <Tile
-            title="Нужна проверка человека"
+            title={t('Нужна проверка человека')}
             tip={byJev(S.mode) ? TERMS.jevUnsure : TERMS.review}
             n={cnt('review')}
             zero={!cnt('review')}
-            note={byJev(S.mode) ? 'Jev не уверен в ответе' : two ? 'второе мнение не совпало или нет цитаты' : 'ответ не подтверждён цитатой'}
+            note={byJev(S.mode) ? t('Jev не уверен в ответе') : two ? t('второе мнение не совпало или нет цитаты') : t('ответ не подтверждён цитатой')}
             pressed={p.grp === 'review'}
             onClick={() => toggle('review')}
             g="review"
           />
         )}
-        <Tile title="Без следующего шага" n={cnt('next')} zero={!cnt('next')} note="следующий шаг не назван или неполный" pressed={p.grp === 'next'} onClick={() => toggle('next')} g="next" />
-        <Tile title="Апелляции ждут решения" tip={TERMS.appeal} n={ap.filter((a: any) => a.status === 'pending').length} zero={!ap.some((a: any) => a.status === 'pending')} note="решает проверяющий" to={href('appeals')} />
-        <Tile title="Средний итог" tip={TERMS.total} n={f2(avg)} unit={avg != null ? 'из 100' : undefined} note={`по ${totals.length} ${totals.length % 10 === 1 && totals.length % 100 !== 11 ? 'диалогу' : 'диалогам'}, открыть аналитику`} to={href('analytics')} />
+        <Tile title={t('Без следующего шага')} n={cnt('next')} zero={!cnt('next')} note={t('следующий шаг не назван или неполный')} pressed={p.grp === 'next'} onClick={() => toggle('next')} g="next" />
+        <Tile
+          title={t('Апелляции ждут решения')}
+          tip={TERMS.appeal}
+          n={ap.filter((a: any) => a.status === 'pending').length}
+          zero={!ap.some((a: any) => a.status === 'pending')}
+          note={t('решает проверяющий')}
+          to={href('appeals')}
+        />
+        <Tile
+          title={t('Средний итог')}
+          tip={TERMS.total}
+          n={f2(avg)}
+          unit={avg != null ? t('из 100') : undefined}
+          note={totals.length % 10 === 1 && totals.length % 100 !== 11 ? t('по {n} диалогу, открыть аналитику', { n: totals.length }) : t('по {n} диалогам, открыть аналитику', { n: totals.length })}
+          to={href('analytics')}
+        />
       </section>
 
       {p.grp === 'risk' && (
         <p className="text-ink2">
-          <b className="text-ink">
-            Грубые ошибки: {cnt('risk')} {plural(cnt('risk'), DIALOGS)}.
-          </b>{' '}
-          Балл они не снижают, каждую нужно проверить. Проверено {checked} из {flagged.length}.
+          <b className="text-ink">{t('Грубые ошибки: {n} {w}.', { n: cnt('risk'), w: plural(cnt('risk'), DIALOGS()) })}</b>{' '}
+          {t('Балл они не снижают, каждую нужно проверить. Проверено {n} из {m}.', { n: checked, m: flagged.length })}
         </p>
       )}
 
-      <section className="rounded-card border border-line bg-surface shadow-card" aria-label="Список диалогов">
+      <section className="rounded-card border border-line bg-surface shadow-card" aria-label={t('Список диалогов')}>
         <div className="flex flex-wrap items-center gap-3 border-b border-line px-3.5 py-3">
           <label className="relative flex min-w-0 flex-[1_1_220px] items-center">
-            <span className="sr">Поиск</span>
+            <span className="sr">{t('Поиск')}</span>
             <Search size={16} className="pointer-events-none absolute left-2.5 text-muted" aria-hidden="true" />
             <input
               id="q"
               className="fld w-full pl-8"
-              placeholder="Номер диалога или текст реплики"
+              placeholder={t('Номер диалога или текст реплики')}
               value={S.q}
               onChange={e => {
                 S.q = e.target.value;
@@ -233,53 +279,59 @@ export function Queue() {
             />
             <kbd className="pointer-events-none absolute right-2.5 rounded border border-line px-1 text-[11px] text-muted [@media(pointer:coarse)]:hidden">/</kbd>
           </label>
-          {sel('fl', 'Язык', 'lang', [
-            ['', 'Все'],
+          {sel('fl', t('Язык'), 'lang', [
+            ['', all_],
             ['RU', 'RU'],
             ['KZ', 'KZ'],
             ['EN', 'EN'],
           ])}
-          {sel('fc', 'Канал', 'ch', [
-            ['', 'Все'],
-            ['chat', 'Чат'],
-            ['call', 'Звонок'],
+          {sel('fc', t('Канал'), 'ch', [
+            ['', all_],
+            ['chat', t('Чат')],
+            ['call', t('Звонок')],
           ])}
+          {operators.length > 0 && sel('fop', t('Оператор'), 'op', [['', all_], ...operators.map((x): [string, string] => [x, x === NO_OPERATOR ? t('Не указан') : x])])}
+          {products.length > 0 && sel('fprod', t('Продукт'), 'prod', [['', all_], ...products])}
+          {markers.length > 0 && sel('fmk', t('Маркер'), 'mk', [['', all_], ...markers])}
           {filtered && (
             <Button size="sm" data-act="clear" onClick={clear}>
-              <X size={16} aria-hidden="true" /> Сбросить фильтры
+              <X size={16} aria-hidden="true" /> {t('Сбросить фильтры')}
             </Button>
           )}
+          {qa && <BulkBar />}
         </div>
         {!seq.length ? (
           <div className="flex flex-col items-start gap-3 p-5">
-            <p className="text-muted">Под эти фильтры ничего не подходит.</p>
-            <Button onClick={clear}>Сбросить фильтры</Button>
+            <p className="text-muted">{t('Под эти фильтры ничего не подходит.')}</p>
+            <Button onClick={clear}>{t('Сбросить фильтры')}</Button>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl md:min-w-[860px]">
               <thead>
                 <tr>
-                  <th>Диалог</th>
-                  <th className="hidden md:table-cell">Канал и язык</th>
-                  <th className="num !text-right">Итог</th>
-                  <th>Почему в очереди</th>
-                  <th className="hidden md:table-cell">Где потеряны баллы</th>
-                  <th className="hidden md:table-cell">Статус</th>
+                  {qa && <PickHead ids={seq.map(x => x.d.id)} />}
+                  <th>{t('Диалог')}</th>
+                  {withOp && <th className="hidden md:table-cell">{t('Оператор')}</th>}
+                  <th className="hidden md:table-cell">{t('Канал и язык')}</th>
+                  <th className="num !text-right">{t('Итог')}</th>
+                  <th>{t('Почему в очереди')}</th>
+                  <th className="hidden md:table-cell">{t('Где потеряны баллы')}</th>
+                  <th className="hidden md:table-cell">{t('Статус')}</th>
                 </tr>
               </thead>
-              {GROUPS.map(([g, title, tone, hint]) => {
+              {groups(two).map(([g, title, tone, hint]) => {
                 if (op && g === 'review') return null;
                 const rs = seq.filter(x => shown(x.g) === g);
                 if (!rs.length) return null;
                 return (
                   <tbody key={g}>
                     <tr className="grp">
-                      <td colSpan={6}>
+                      <td colSpan={cols}>
                         <Chip tone={tone} className="chip">
                           {title}: {rs.length}
                         </Chip>
-                        {hint(two) && <span className="ml-2 text-xs font-normal text-muted">{hint(two)}</span>}
+                        {hint && <span className="ml-2 text-xs font-normal text-muted">{hint}</span>}
                       </td>
                     </tr>
                     {rs.map(x => (
@@ -292,16 +344,30 @@ export function Queue() {
                           if (!(e.target as Element).closest('a')) go(href('d', x.d.id));
                         }}
                       >
+                        {qa && <PickCell d={x.d} />}
                         <td>
                           <a href={href('d', x.d.id)} className="whitespace-nowrap font-semibold no-underline">
                             {titleOf(x.d)}
                           </a>
                           <span className="block text-xs text-muted md:hidden">
-                            {x.d.ch === 'call' ? 'Звонок' : 'Чат'}, {x.d.lang}
+                            {chOf(x.d)}, {x.d.lang}
+                            {withOp && `, ${x.d.operator || t('Не указан')}`}
                           </span>
+                          <SufficiencyChip d={x.d} />
+                          {markersOf(x.d).length > 0 && (
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {markersOf(x.d).map(m => (
+                                <Chip key={m.k} tone="na" className="mark" data-k={m.k}>
+                                  {m.label || m.k}
+                                </Chip>
+                              ))}
+                            </span>
+                          )}
                         </td>
+                        {withOp && <td className={cn('hidden md:table-cell', !x.d.operator && 'text-muted')}>{x.d.operator || t('Не указан')}</td>}
                         <td className="hidden md:table-cell">
-                          {x.d.ch === 'call' ? 'Звонок' : 'Чат'}, {x.d.lang}
+                          {chOf(x.d)}, {x.d.lang}
+                          {productOf(x.d) && <span className="block text-xs text-muted">{productOf(x.d).name}</span>}
                         </td>
                         <td className="num font-bold">{f2(x.c.total)}</td>
                         <td>
@@ -325,10 +391,7 @@ export function Queue() {
           </div>
         )}
       </section>
-      <p className="text-xs text-muted [@media(pointer:coarse)]:hidden">
-        Клавиши <kbd className="rounded border border-line px-1">J</kbd> и <kbd className="rounded border border-line px-1">K</kbd> перемещаются по списку,{' '}
-        <kbd className="rounded border border-line px-1">Enter</kbd> открывает карточку, <kbd className="rounded border border-line px-1">/</kbd> ставит курсор в поиск.
-      </p>
+      <p className="text-xs text-muted [@media(pointer:coarse)]:hidden">{withKeys(t('Клавиши {j} и {k} перемещаются по списку, {enter} открывает карточку, {slash} ставит курсор в поиск.'))}</p>
     </>
   );
 }

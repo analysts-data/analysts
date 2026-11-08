@@ -99,6 +99,9 @@ class Fold(BaseModel):
     label: str
 
 
+MANUAL = "вручную"  # CriterionResult.model ручного ответа
+
+
 class CriterionResult(BaseModel):
     a: Answer
     alt: Answer | None = None
