@@ -46,6 +46,15 @@ CREATE TRIGGER IF NOT EXISTS checklists_no_update BEFORE UPDATE ON checklists
   BEGIN SELECT RAISE(ABORT, 'версии чек-листа неизменяемы'); END;
 """
 
+# Колонки, добавленные после первых баз: connect досоздаёт их в старой базе, прежние строки получают умолчание
+COLUMNS = [
+    ("results", "run_id", "INTEGER"),  # запуск, давший ответ; NULL — ручной ответ или строка до колонки
+    ("runs", "model", "TEXT"),
+    ("runs", "checklist_version", "INTEGER"),
+    ("runs", "force", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "skipped", "INTEGER NOT NULL DEFAULT 0"),
+]
+
 RunStatus = Literal["running", "done", "cancelled"]
 
 
@@ -60,6 +69,22 @@ class RunRow:
     status: RunStatus
     started: float
     finished: float | None
+    model: str | None
+    checklist_version: int | None
+    force: bool
+    skipped: int
+
+
+@dataclass(frozen=True)
+class ResultRow:
+    id: int
+    dialog_id: str
+    cid: str
+    version: int
+    fp: str
+    created: str
+    run_id: int | None
+    result: CriterionResult
 
 
 def _now() -> str:
@@ -78,6 +103,9 @@ def connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    for table, column, decl in COLUMNS:
+        if column not in {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -181,12 +209,47 @@ class Store:
 
     # --- результаты ---
 
-    def add_result(self, dialog_id: str, cid: str, version: int, fp: str, result: CriterionResult) -> None:
+    def add_result(
+        self,
+        dialog_id: str,
+        cid: str,
+        version: int,
+        fp: str,
+        result: CriterionResult,
+        run_id: int | None = None,
+    ) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO results (dialog_id, cid, version, fp, body, created) VALUES (?, ?, ?, ?, ?, ?)",
-                (dialog_id, cid, version, fp, _dump(result.model_dump(mode="json")), _now()),
+                "INSERT INTO results (dialog_id, cid, version, fp, body, created, run_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (dialog_id, cid, version, fp, _dump(result.model_dump(mode="json")), _now(), run_id),
             )
+
+    @staticmethod
+    def _result_row(row: sqlite3.Row) -> ResultRow:
+        return ResultRow(
+            id=row["id"],
+            dialog_id=row["dialog_id"],
+            cid=row["cid"],
+            version=row["version"],
+            fp=row["fp"],
+            created=row["created"],
+            run_id=row["run_id"],
+            result=CriterionResult.model_validate(json.loads(row["body"])),
+        )
+
+    def result_rows(self, *, dialog_id: str | None = None, run_id: int | None = None) -> list[ResultRow]:
+        """Все строки результатов диалога или запуска по возрастанию id (история append-only)."""
+        rows = self._conn.execute(
+            "SELECT * FROM results WHERE (? IS NULL OR dialog_id = ?) AND (? IS NULL OR run_id = ?) "
+            "ORDER BY id",
+            (dialog_id, dialog_id, run_id, run_id),
+        ).fetchall()
+        return [self._result_row(row) for row in rows]
+
+    def get_result(self, result_id: int) -> ResultRow | None:
+        row = self._conn.execute("SELECT * FROM results WHERE id = ?", (result_id,)).fetchone()
+        return self._result_row(row) if row is not None else None
 
     def current_results(self, fps: Mapping[str, str]) -> dict[str, dict[str, CriterionResult]]:
         """Для каждой пары — последний по id результат с отпечатком fps[cid]."""
@@ -204,9 +267,22 @@ class Store:
 
     # --- запуски ---
 
-    def add_run(self, total: int, started: float) -> int:
+    def add_run(
+        self,
+        total: int,
+        started: float,
+        *,
+        model: str | None = None,
+        checklist_version: int | None = None,
+        force: bool = False,
+        skipped: int = 0,
+    ) -> int:
         with self._conn:
-            cur = self._conn.execute("INSERT INTO runs (total, started) VALUES (?, ?)", (total, started))
+            cur = self._conn.execute(
+                "INSERT INTO runs (total, started, model, checklist_version, force, skipped) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (total, started, model, checklist_version, int(force), skipped),
+            )
             if cur.lastrowid is None:
                 raise RuntimeError("sqlite не вернул id запуска")
             return cur.lastrowid
@@ -236,10 +312,8 @@ class Store:
         with self._conn:
             self._conn.execute("UPDATE runs SET status = 'cancelled' WHERE status = 'running'")
 
-    def get_run(self, run_id: int) -> RunRow | None:
-        row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-        if row is None:
-            return None
+    @staticmethod
+    def _run_row(row: sqlite3.Row) -> RunRow:
         return RunRow(
             id=row["id"],
             total=row["total"],
@@ -250,7 +324,20 @@ class Store:
             status=row["status"],
             started=row["started"],
             finished=row["finished"],
+            model=row["model"],
+            checklist_version=row["checklist_version"],
+            force=bool(row["force"]),
+            skipped=row["skipped"],
         )
+
+    def get_run(self, run_id: int) -> RunRow | None:
+        row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return self._run_row(row) if row is not None else None
+
+    def list_runs(self, limit: int = 50) -> list[RunRow]:
+        """Последние запуски, новые первыми."""
+        rows = self._conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._run_row(row) for row in rows]
 
     # --- апелляции и решения ---
 

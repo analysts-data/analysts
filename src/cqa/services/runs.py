@@ -1,13 +1,17 @@
-"""Запуски оценки: план пар без текущего результата, диалоги по порядку, отмена и продолжение."""
+"""Запуски оценки: план пар без текущего результата или повторная проверка, диалоги по порядку,
+отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from cqa.adapters.store import RunRow, Store
+from cqa.domain.agreement import compare_answers
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog
 from cqa.domain.review import fingerprints
+from cqa.services.answers import MANUAL
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
@@ -21,25 +25,89 @@ def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
     return round(elapsed / done * (total - done))
 
 
-def plan_run(
-    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
-) -> list[tuple[Dialog, list[Criterion]]]:
-    """Пары без результата текущего смысла в порядке `dialogs` (None — порядок добавления).
+Plan = list[tuple[Dialog, list[Criterion]]]
 
-    Неизвестные id пропускаются: их отсеивает `Runner.start`.
-    """
+
+def _select(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> tuple[list[Dialog], list[Criterion]]:
+    """Диалоги в порядке `dialogs` (None — порядок добавления) и критерии; неизвестные id пропускаются."""
     chosen = [c for c in checklist.criteria if criteria is None or c.id in criteria]
     if dialogs is None:
-        items = store.list_dialogs()
-    else:
-        items = [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None]
-    current = current_results(store, checklist, items)
+        return store.list_dialogs(), chosen
+    return [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None], chosen
+
+
+def _plan(items: list[Dialog], chosen: list[Criterion], skip: Callable[[Dialog, Criterion], bool]) -> Plan:
     plan = []
     for dialog in items:
-        todo = [c for c in chosen if c.id not in current.get(dialog.id, {})]
+        todo = [c for c in chosen if not skip(dialog, c)]
         if todo:
             plan.append((dialog, todo))
     return plan
+
+
+def plan_run(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> Plan:
+    """Пары без результата текущего смысла. Неизвестные id пропускаются: их отсеивает `Runner.start`."""
+    items, chosen = _select(store, checklist, dialogs, criteria)
+    current = current_results(store, checklist, items)
+    return _plan(items, chosen, lambda d, c: c.id in current.get(d.id, {}))
+
+
+def plan_rerun(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> tuple[Plan, int]:
+    """Повторная проверка: все выбранные пары, кроме тех, что держит человек, — текущий ответ ручной
+    или по паре текущего смысла есть апелляция на рассмотрении или решение. Второе — число таких пар."""
+    items, chosen = _select(store, checklist, dialogs, criteria)
+    fps = fingerprints(checklist)
+    current = current_results(store, checklist, items)
+    held = {(a.dlg, a.cid, fp) for a, fp in store.list_appeals() if a.status != "closed"}
+
+    def skip(d: Dialog, c: Criterion) -> bool:
+        result = current.get(d.id, {}).get(c.id)
+        return (result is not None and result.model == MANUAL) or (d.id, c.id, fps[d.ch][c.id]) in held
+
+    plan = _plan(items, chosen, skip)
+    return plan, len(items) * len(chosen) - sum(len(cs) for _, cs in plan)
+
+
+def _created(started: float) -> str:
+    return datetime.fromtimestamp(started, UTC).isoformat()
+
+
+def list_runs(store: Store) -> list[dict[str, Any]]:
+    """`GET /api/runs`: последние запуски, новые первыми."""
+    return [
+        {
+            "id": r.id,
+            "created": _created(r.started),
+            "status": r.status,
+            "model": r.model,
+            "checklist_version": r.checklist_version,
+            "total": r.total,
+            "done": r.done,
+            "cost": r.cost,
+            "errors_count": len(r.errors),
+            "force": r.force,
+            "skipped": r.skipped,
+        }
+        for r in store.list_runs()
+    ]
+
+
+def compare_runs(store: Store, a: int, b: int) -> dict[str, Any]:
+    """`GET /api/runs/compare`: пары, отвеченные в обоих запусках; у пары берётся последняя строка запуска."""
+    answers = []
+    for run_id in (a, b):
+        if store.get_run(run_id) is None:
+            raise NotFound(f"Запуск {run_id} не найден")
+        answers.append({(r.dialog_id, r.cid): r.result.a for r in store.result_rows(run_id=run_id)})
+    checklist = store.current_checklist()
+    assert checklist is not None, "create_app сеет чек-лист на пустой базе"
+    return {"a": a, "b": b, **compare_answers(answers[0], answers[1], checklist)}
 
 
 class Runner:
@@ -63,8 +131,18 @@ class Runner:
             raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
         self._evaluator = evaluator
 
-    def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
-        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
+    def start(
+        self,
+        dialogs: list[str] | None,
+        criteria: list[str] | None,
+        *,
+        force: bool = False,
+        model: str | None = None,
+    ) -> int:
+        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
+
+        `force` — повторная проверка (`plan_rerun`), `model` — подпись модели в списке запусков.
+        """
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт")
         if dialogs is not None:
@@ -78,8 +156,19 @@ class Runner:
             unknown = [i for i in dict.fromkeys(criteria) if i not in known]
             if unknown:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
-        plan = plan_run(self._store, checklist, dialogs, criteria)
-        run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
+        plan, skipped = (
+            plan_rerun(self._store, checklist, dialogs, criteria)
+            if force
+            else (plan_run(self._store, checklist, dialogs, criteria), 0)
+        )
+        run_id = self._store.add_run(
+            sum(len(cs) for _, cs in plan),
+            self._clock(),
+            model=model,
+            checklist_version=checklist.version,
+            force=force,
+            skipped=skipped,
+        )
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
             return run_id
@@ -107,6 +196,7 @@ class Runner:
             "eta_s": eta,
             "errors": row.errors,
             "status": row.status,
+            "skipped": row.skipped,
         }
 
     def cancel(self, run_id: int) -> dict[str, str]:
@@ -126,9 +216,7 @@ class Runner:
             raise NotFound(f"Запуск {run_id} не найден")
         return row
 
-    async def execute(
-        self, run_id: int, checklist: Checklist, plan: list[tuple[Dialog, list[Criterion]]]
-    ) -> None:
+    async def execute(self, run_id: int, checklist: Checklist, plan: Plan) -> None:
         fps = fingerprints(checklist)
         queue = iter(plan)  # общая очередь: next() не уступает цикл событий, порядок плана сохраняется
 
@@ -163,7 +251,9 @@ class Runner:
             return
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
-            self._store.add_result(dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result)
+            self._store.add_result(
+                dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result, run_id=run_id
+            )
         calls = sum(e.result.calls for e in out.results)
         usd = sum(e.result.cost for e in out.results) + out.verifier_usd
         self._store.set_cost(dialog.id, Cost(calls=calls, verifier_calls=out.verifier_calls, usd=usd, ms=ms))

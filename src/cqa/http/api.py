@@ -24,9 +24,10 @@ from cqa.services.checklists import (
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
+from cqa.services.history import history, restore
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
-from cqa.services.runs import Runner
+from cqa.services.runs import Runner, compare_runs, list_runs
 from cqa.services.state import ReportFormat, build_state, mode_from_settings, report
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
@@ -84,6 +85,7 @@ class ProviderIn(BaseModel):
 class RunIn(BaseModel):
     dialogs: list[str] | None = None  # порядок очереди: диалоги для демо первыми
     criteria: list[str] | None = None
+    force: bool = False  # повторная проверка: заново и пары с ответом, кроме ручных и с апелляцией
 
 
 def _runner(request: Request) -> Runner:
@@ -237,6 +239,16 @@ async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request)
     return result.model_dump(mode="json", exclude_none=True)
 
 
+@router.get("/dialogs/{dialog_id}/history")
+async def get_history(dialog_id: str, request: Request) -> dict[str, list[dict[str, Any]]]:
+    return history(request.app.state.store, dialog_id)
+
+
+@router.post("/results/{result_id}/restore")
+async def post_restore(result_id: int, request: Request) -> dict[str, Any]:
+    return restore(request.app.state.store, result_id).model_dump(mode="json", exclude_none=True)
+
+
 def _apply(request: Request) -> Apply:
     """Пересобрать оценщик и плашку `mode` без перезапуска; во время запуска — 409."""
     state = request.app.state
@@ -295,7 +307,18 @@ async def post_upload(request: Request) -> dict[str, int]:
 
 @router.post("/runs")
 async def post_run(body: RunIn, request: Request) -> dict[str, int]:
-    return {"run_id": _runner(request).start(body.dialogs, body.criteria)}
+    model = request.app.state.mode.model
+    return {"run_id": _runner(request).start(body.dialogs, body.criteria, force=body.force, model=model)}
+
+
+@router.get("/runs")
+async def get_runs(request: Request) -> list[dict[str, Any]]:
+    return list_runs(request.app.state.store)
+
+
+@router.get("/runs/compare")  # до /runs/{run_id}: иначе «compare» разбирается как id
+async def get_runs_compare(a: int, b: int, request: Request) -> dict[str, Any]:
+    return compare_runs(request.app.state.store, a, b)
 
 
 @router.get("/runs/{run_id}")
