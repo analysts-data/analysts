@@ -110,7 +110,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
-| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `Syncer(store, source, http: HttpSource \| None, settings)` — синхронизация и проверка источников (`org_api` через `source`, `http_json` через `HttpSource` с SSRF-защитой), `PUT /api/source`, `source` в состоянии; lifespan запускает `Syncer.run()` по `schedule_min` источников |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `Syncer(store, source, http: HttpSource \| None, settings)` — синхронизация и проверка источников (`org_api` через `source`, `http_json` через `HttpSource` с SSRF-защитой), `PUT /api/source`, `source` в состоянии; lifespan запускает `Syncer.run(skip=automation.owns_sync)` по `schedule_min` источников |
+| `automation` | `Automation` | eval-and-delivery (`src/cqa/services/automation.py`): `/api/automation*`; lifespan запускает `Automation.run()` — одна задача, тик 15 с. Внешние куски — за `Ports` (`sources`, `sync`, `evaluate`, `source_of`, `blocked`, `notify`, `audit`, `steps`); `wire()` собирает их на реестре источников (`Syncer.sync_source`), очереди батчей, достаточности; алерты и классификация подключаются заменой одной строки в `wire()` |
 | `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
 | `batches` | `Batches` | eval-and-delivery (`src/cqa/services/batches.py`, таблицы в `src/cqa/adapters/batches.py`): `/api/batches`; lifespan запускает `Batches.work()`, `create_app` — `recover()` |
 

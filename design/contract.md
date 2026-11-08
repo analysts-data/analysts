@@ -524,6 +524,54 @@ SourceStats: `{id, name, kind, enabled, archived, dialogs, scored, avg_total, gr
 
 `GET /api/overview`: `employees` — `[{id, name, role, team, active, today: {"<action>": n}, week: {"<action>": n}, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed, median_decision_min}]`; `today` — с полуночи по Астане, `week` — 7 календарных дней с сегодняшним, счётчики — за всё время журнала (`decisions` — `appeal.decide` и `review.decide`), `median_decision_min` — медиана минут от `at` до `decidedAt` апелляций, решённых сотрудником, или `null`. `teams` — `[{team, employees, today, week, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed}]` по имени команды, суммы её сотрудников. `unattributed` — `{today, week}` действий без входа. `workload` — `{pending_appeals, needs_review, unreviewed}`: апелляции на рассмотрении и диалоги «нужна проверка» как в отчёте для руководства, диалоги без отметки «проверен».
 
+## Автоматизация (eval-and-delivery)
+
+Автосинхронизация источников и автооценка новых диалогов по расписанию, без ожидания человека. По умолчанию выключена: пока `enabled: false`, поведение прежнее (ручные запуски, Syncer раз в 5 минут, защита, `make results`).
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/automation` | — | настройки (ниже) |
+| `PUT /api/automation` | настройки целиком или частью: тело сливается с сохранёнными | настройки после сохранения; ошибки — 422 `{"detail": [{"loc": ["body", "sync", "every_min"], "msg": "<по-русски>"}]}`, по одной на поле, ничего не сохраняется |
+| `GET /api/automation/status` | — | `{state: "off" \| "idle" \| "syncing" \| "evaluating" \| "paused" \| "budget_reached" \| "quiet_hours", next_run_at: ISO \| null, last_cycle: Cycle \| null, today: {dialogs_evaluated, cost_usd, budget_left}, queue_length}` |
+| `POST /api/automation/run-now` | — | статус; цикл сразу, вне тихих часов и `on_new_dialogs`, но в пределах бюджета и лимита в час. Выключена, на паузе или цикл уже идёт — 409 |
+| `POST /api/automation/pause`, `/resume` | — | статус; пауза останавливает плановые циклы и синхронизацию, идущая пачка отменяется (диалоги в полёте дописываются) |
+| `GET /api/automation/cycles?limit=50&format=json\|csv` | — | циклы новыми первыми; `csv` — UTF-8 с BOM и `;` |
+
+Настройки (значения — по умолчанию):
+
+```json
+{"enabled": false,
+ "sync": {"enabled": true, "every_min": 5, "sources": "all"},
+ "evaluate": {"enabled": true, "on_new_dialogs": true, "sources": "all", "ch": "all", "lang": "all",
+              "batch_size": 20, "priority": "normal", "max_per_hour": 60, "daily_budget_usd": 1.0,
+              "quiet_hours": null, "only_unscored": true},
+ "after": {"classify_products": false, "evaluate_alerts": true, "prosody_for_calls": false}}
+```
+
+| Поле | Допустимо | Зачем (`why`) |
+| --- | --- | --- |
+| `enabled` | bool | Главный выключатель: без него планировщик только читает настройки |
+| `sync.enabled` | bool | Забирать новые диалоги самим; при `true` прежний 5-минутный цикл Syncer уступает расписанию автоматизации |
+| `sync.every_min` | целое ≥ 1 | Период цикла (синхронизация и оценка): чаще — меньше ждать, реже — меньше запросов к источнику |
+| `sync.sources` | `"all"` или список кодов | Какие источники синхронизировать: включённые источники реестра `/api/sources`, которые сервер забирает сам (`org_api`, `http_json`) |
+| `evaluate.enabled` | bool | Отдавать новые диалоги модели без кнопки |
+| `evaluate.on_new_dialogs` | bool | `false` — плановые циклы только синхронизируют, оценка — по «Запустить сейчас» |
+| `evaluate.sources`, `ch`, `lang` | `"all"` или список (`ch`: `chat`, `call`) | Оценивать только нужное: например, только звонки на казахском |
+| `evaluate.batch_size` | 1–500 | Диалогов за цикл: ограничивает перерасход бюджета одной пачкой |
+| `evaluate.priority` | `low`, `normal`, `high` | Место пачки в очереди батч-задач: пачка автоматизации — задание `/api/batches` с этим приоритетом |
+| `evaluate.max_per_hour` | целое ≥ 1 | Скользящий лимит диалогов за 60 минут: нагрузка на модель и провайдера |
+| `evaluate.daily_budget_usd` | > 0 | Потолок трат за сутки по Алматы; на нём пачка отменяется, новые не начинаются, создаётся алерт |
+| `evaluate.quiet_hours` | `null` или `{"from": "ЧЧ:ММ", "to": "ЧЧ:ММ"}` | Время Алматы без обращений к модели (через полночь можно); синхронизация идёт |
+| `evaluate.only_unscored` | bool | `true` — только диалоги без оценок; `false` — и частично оценённые (после правки чек-листа) |
+| `after.classify_products` | bool | Классификация продуктов после оценки (когда классификация в main; до этого — «недоступно») |
+| `after.evaluate_alerts` | bool | Проверить правила алертов после цикла (когда алерты в main) |
+| `after.prosody_for_calls` | bool | Заранее посчитать интонацию звонков с записью: карточка открывается без ожидания |
+
+Цикл: синхронизировать источники, которым пора → посчитать новые диалоги → очередь: пары без ответа, без `block` по достаточности, под фильтры, новые первыми → пачка `min(batch_size, остаток лимита в час)` модели (бюджет, тихие часы) → шаги `after`. Два цикла одновременно не идут; сбой цикла пишется в журнал сервера и цикл, создаёт алерт и сервер не останавливает. Запрет реальных данных (`CQA_ALLOW_REAL_DATA`) и обезличивание действуют, как у ручного запуска: оценку ведёт тот же оценщик.
+
+Cycle: `{id, trigger: "schedule" | "manual", started, finished, synced (источников), sources: [{id, added, skipped, error}], new_dialogs, queued, evaluated, errors: [строка], cost, skipped: null | "budget_reached" | "quiet_hours" | "hour_limit" | "busy", after: {"<шаг>": "ok" | "недоступно" | "ошибка: …"}, alerts: [hit]}`. Время — ISO с поясом Алматы.
+
+Алерты (`hit` в форме правил алертов: `{rule_id, severity: "warning", title, target_type, target_id, basis}`): `automation.budget` (раз в сутки, `basis: {day, budget_usd, spent_usd}`), `automation.cycle_failed` (`{started, error}`), `automation.source_down` (раз в сутки на источник, `{source, error, at}`). Каждое автоматическое действие (`automation.sync`, `automation.evaluate`, `automation.after`, `automation.alert`) пишется в журнал действий от имени «Автоматизация»; изменения настроек, пауза и запуск вручную — от имени пользователя.
 ## Пакетная обработка (eval-and-delivery)
 
 Большие объёмы оцениваются заданиями: задание делится на батчи, одна очередь в процессе отдаёт батчи `Runner` по одному. Каждый батч — обычный запуск (`POST /api/runs` с его диалогами), поэтому правило одного активного запуска сохраняется: пока идёт запуск вне очереди, очередь ждёт его конца. Следующий батч берётся у задания с высшим приоритетом (`high` → `normal` → `low`), внутри приоритета — по порядку создания; новое задание `high` обгоняет начатое `normal` на границе батча.

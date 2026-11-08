@@ -26,6 +26,7 @@ from cqa.http import api, batches, docs, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.alerts import refresh
+from cqa.services.automation import Automation, wire
 from cqa.services.batches import Batches
 from cqa.services.checklists import SEED_CHECKLIST
 from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
@@ -52,12 +53,14 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация источников по их расписанию, пока работает сервер."""
-    """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
-    syncer: Syncer | None = app.state.syncer
-    tasks = [asyncio.create_task(app.state.batches.work())]
-    if syncer:
-        tasks.append(asyncio.create_task(syncer.run()))
+    """Автосинхронизация набора организаторов, очередь батчей и планировщик автоматизации."""
+    syncer: Syncer = app.state.syncer
+    automation: Automation = app.state.automation
+    tasks = [
+        asyncio.create_task(app.state.batches.work()),
+        asyncio.create_task(syncer.run(skip=automation.owns_sync)),
+        asyncio.create_task(automation.run()),
+    ]
     yield
     for task in tasks:
         task.cancel()
@@ -148,6 +151,10 @@ def create_app(
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
+    # выключена по умолчанию: пока enabled false, планировщик только читает настройки
+    app.state.automation = Automation(
+        store, wire(store, app.state.syncer, app.state.runner, app.state.batches, prosody)
+    )
     app.state.telemetry_limit = TokenBucket(capacity=30, rate=0.5)  # ~1 пакет в 2 с на клиента
 
     app.include_router(api.router)
