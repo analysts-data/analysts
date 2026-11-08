@@ -49,6 +49,12 @@ export function Criteria({ ctx, sum }: { ctx: Ctx; sum: any }) {
   const cl = S.checklist;
   return (
     <>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_5rem_18px] gap-2 border-t border-line py-1.5 pl-4 pr-2 text-xs text-muted" aria-hidden="true">
+        <span />
+        <span className="text-right">{t('Ответ модели')}</span>
+        <span className="text-right">{t('Баллы / вес')}</span>
+        <span />
+      </div>
       {cl.sections.map((s: string, si: number) => {
         const cs = cl.criteria.filter((x: any) => x.sec === si);
         if (!cs.length) return null;
@@ -77,10 +83,19 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
   const busy = !r && evalOf(S, d.id) === 'running';
   let chip, pts, lowered, gist;
   if (c.type === 'flag') {
-    lowered = Boolean(r && a && Object.values(a).some(Boolean));
-    chip = !r ? <Chip tone="ev">{busy ? t('оценивается…') : t('ждёт оценки')}</Chip> : lowered ? <Chip tone="risk">{t('Да')}</Chip> : <Chip tone="ok">{t('Нет')}</Chip>;
+    const found = r && a ? (c.questions || []).filter((q: any) => a[q.k]) : [];
+    lowered = found.length > 0;
+    chip = !r ? (
+      <Chip tone="ev">{busy ? t('оценивается…') : t('ждёт оценки')}</Chip>
+    ) : lowered ? (
+      <Chip tone="risk" className="max-w-[40vw]">
+        <span className="truncate">{found.length === 1 ? t('Найдена: {kind}', { kind: found[0].label }) : t('Найдены: {n}', { n: found.length })}</span>
+      </Chip>
+    ) : (
+      <Chip tone="ok">{t('Не найдены')}</Chip>
+    );
     pts = t('без баллов');
-    gist = r ? ansTxt(c, a) : '';
+    gist = found.length > 1 ? ansTxt(c, a) : '';
   } else {
     const f = frac(c, a);
     lowered = Boolean(r && f != null && f < 1);
@@ -101,7 +116,7 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
       <div className="flex items-center hover:bg-hover">
         <button
           type="button"
-          className="crit-row grid min-w-0 flex-1 grid-cols-[2.2rem_minmax(0,1fr)_auto_auto_18px] items-center gap-2 py-2.5 pl-4 pr-2 text-left"
+          className="crit-row grid min-w-0 flex-1 grid-cols-[2.2rem_minmax(0,1fr)_auto_5rem_18px] items-center gap-2 py-2.5 pl-4 pr-2 text-left"
           data-act="crit"
           data-cid={c.id}
           aria-expanded={isOpen}
@@ -113,7 +128,7 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
             {!isOpen && gist && <span className="block truncate text-xs text-muted">{gist}</span>}
           </span>
           {chip}
-          <span className="num text-[13px] font-semibold">{pts}</span>
+          <span className="num text-right text-[13px] font-semibold">{pts}</span>
           <ChevronDown size={16} className={cn('text-muted transition-transform', isOpen && 'rotate-180')} aria-hidden="true" />
         </button>
         {S.role === 'operator' &&
@@ -277,7 +292,7 @@ function FlagBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
           <div key={x.q.k} className="flex flex-col gap-1.5 border-t border-line2 pt-2" data-k={x.q.k}>
             <div className="flex items-center justify-between gap-2">
               <b>{x.q.label}</b>
-              {a[x.q.k] ? <Chip tone="risk">{t('найдено')}</Chip> : <span className="text-[13px] text-muted">{t('нет')}</span>}
+              {a[x.q.k] ? <Chip tone="risk">{t('найдено')}</Chip> : <span className="text-[13px] text-muted">{t('не найдено')}</span>}
             </div>
             {x.why && <p className="text-[13px]">{x.why}</p>}
             <Evidence ev={x.ev} ctx={ctx} />
@@ -311,8 +326,13 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
     <>
       <div className="flex flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 text-[13px]">
-          <span>{t('Ответ:')}</span>
-          <AnsChip c={c} a={a} tone={tone(c, a)} />
+          <span>
+            {f == null
+              ? `${t('Ответ:')} ${ansTxt(c, a)}`
+              : c.type === 'scale'
+                ? t('Ответ: {a} по шкале, это {p} из {w} баллов', { a: ansTxt(c, a), p: fn(c.w * f), w: c.w })
+                : t('Ответ: {a}, это {p} из {w} баллов', { a: ansTxt(c, a), p: fn(c.w * f), w: c.w })}
+          </span>
           {altDiff && !op && (
             <span className="text-muted">{t('Второе мнение: {a}', { a: ansTxt(c, r.alt) })}</span>
           )}
