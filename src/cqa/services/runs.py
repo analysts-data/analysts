@@ -160,7 +160,8 @@ class Runner:
         *,
         parallel: int,
         clock: Callable[[], float] = time.time,
-        on_finish: Callable[[], Awaitable[object]] | None = None,  # проверка алертов после запуска
+        # конец запуска: алерты и вебхук run.finished; получает событие без текста диалогов
+        on_finish: Callable[[dict[str, Any]], Awaitable[object]] | None = None,
         classifier: Classifier | None = None,
     ) -> None:
         self._on_finish = on_finish
@@ -186,6 +187,13 @@ class Runner:
         if classifier is not None:
             self._classifier = classifier
 
+    def ensure_idle(self) -> None:
+        """Conflict с номером, ходом и ETA активного запуска: клиент API видит, сколько ждать."""
+        if self._active is not None:
+            p = self.progress(self._active)
+            extra = {"run_id": self._active, **{k: p[k] for k in ("done", "total", "eta_s")}}
+            raise Conflict(f"Запуск {self._active} ещё идёт", **extra)
+
     def start(
         self,
         dialogs: list[str] | None,
@@ -209,8 +217,7 @@ class Runner:
         текущими только после сохранения черновика; по умолчанию — текущая версия.
         """
         force = force or apply == "compare" or override is not None
-        if self._active is not None:
-            raise Conflict(f"Запуск {self._active} ещё идёт")
+        self.ensure_idle()
         if dialogs is not None:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
@@ -260,6 +267,10 @@ class Runner:
         self._products[run_id] = {**_no_products(), "total": len(todo)}
         if not plan and not todo:
             self._store.finish_run(run_id, self._clock(), "done")
+            if self._on_finish is not None:
+                task = asyncio.create_task(self._finished(run_id))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
             return run_id
         for d, _ in todo:
             self._store.set_product(d.id, ProductTag(status="pending"), "")
@@ -361,11 +372,18 @@ class Runner:
             self._store.clear_pending_products()
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
-        if self._on_finish is not None:
-            try:
-                await self._on_finish()
-            except Exception:  # алерты вторичны: запуск уже сохранён
-                log.exception("проверка алертов после запуска %s", run_id)
+        await self._finished(run_id)
+
+    async def _finished(self, run_id: int) -> None:
+        """`on_finish` с событием `run.finished`: счётчики, ошибки, диалоги очереди запуска."""
+        if self._on_finish is None:
+            return
+        p = self.progress(run_id)
+        counts = {k: p[k] for k in ("status", "done", "total", "errors")}
+        try:
+            await self._on_finish({"run_id": run_id, **counts, "dialog_ids": [d["id"] for d in p["dialogs"]]})
+        except Exception:  # алерты и вебхук вторичны: запуск уже сохранён
+            log.exception("действия после запуска %s", run_id)
 
     async def _classify(self, run_id: int, dialog: Dialog, key: str, products: Sequence[Product]) -> None:
         """Тема и маркеры диалога; сбой — статус error с текстом, оценку и `errors` запуска не трогает."""

@@ -87,3 +87,22 @@ def test_access_log_hides_the_login_token(caplog: pytest.LogCaptureFixture) -> N
         )
     assert TOKEN not in caplog.text
     assert "/login?token=***" in caplog.text
+
+
+def test_api_client_passes_with_a_bearer_token_instead_of_the_cookie() -> None:
+    api = client()
+    assert api.get("/api/state", headers={"Authorization": f"Bearer {TOKEN}"}).status_code == 200
+    assert api.get("/api/state", headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert api.get("/api/state", headers={"Authorization": TOKEN}).status_code == 401
+
+
+def test_cors_preflight_from_dynamics_passes_without_the_token() -> None:
+    headers = {
+        "Origin": "https://org.crm4.dynamics.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "authorization, idempotency-key, content-type",
+    }
+    response = client().options("/api/evaluate", headers=headers)
+    assert response.status_code == 200
+    allowed = response.headers["access-control-allow-headers"].lower()
+    assert "authorization" in allowed and "idempotency-key" in allowed
