@@ -20,6 +20,7 @@ from cqa.domain.models import Checklist
 from cqa.http import api
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
+from cqa.services.automation import Automation, wire
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
@@ -44,11 +45,15 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация набора организаторов, пока работает сервер."""
-    syncer: Syncer | None = app.state.syncer
-    task = asyncio.create_task(syncer.run()) if syncer else None
+    """Автосинхронизация набора организаторов и планировщик автоматизации, пока работает сервер."""
+    syncer: Syncer = app.state.syncer
+    automation: Automation = app.state.automation
+    tasks = [
+        asyncio.create_task(syncer.run(skip=automation.owns_sync)),
+        asyncio.create_task(automation.run()),
+    ]
     yield
-    if task:
+    for task in tasks:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
@@ -112,6 +117,8 @@ def create_app(
     evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)
+    # выключена по умолчанию: пока enabled false, планировщик только читает настройки
+    app.state.automation = Automation(store, wire(store, app.state.syncer, app.state.runner, prosody))
 
     app.include_router(api.router)
     app.include_router(audio_router)

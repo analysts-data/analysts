@@ -4,7 +4,7 @@ connection, used only from the event loop thread (review-workflow design, decisi
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
@@ -14,6 +14,7 @@ from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
+from cqa.services.automation import Automation, cycles_csv
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
@@ -321,3 +322,55 @@ async def get_run(run_id: int, request: Request) -> dict[str, Any]:
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
     return _runner(request).cancel(run_id)
+
+
+def _automation(request: Request) -> Automation:
+    automation: Automation = request.app.state.automation
+    return automation
+
+
+@router.get("/automation")
+async def get_automation(request: Request) -> dict[str, Any]:
+    return _automation(request).settings().model_dump(mode="json", by_alias=True)
+
+
+@router.put("/automation")
+async def put_automation(raw: Annotated[Any, Body()], request: Request) -> Response:
+    """Тело сливается с сохранёнными настройками; ошибки по полям — 422 {detail: [{loc, msg}]}."""
+    saved, errors = _automation(request).put(raw)
+    if saved is None:
+        return JSONResponse({"detail": errors}, status_code=422)
+    return JSONResponse(saved.model_dump(mode="json", by_alias=True))
+
+
+@router.get("/automation/status")
+async def get_automation_status(request: Request) -> dict[str, Any]:
+    return _automation(request).status()
+
+
+@router.post("/automation/run-now")
+async def post_automation_run_now(request: Request) -> dict[str, Any]:
+    return _automation(request).run_now()
+
+
+@router.post("/automation/pause")
+async def post_automation_pause(request: Request) -> dict[str, Any]:
+    return _automation(request).pause()
+
+
+@router.post("/automation/resume")
+async def post_automation_resume(request: Request) -> dict[str, Any]:
+    return _automation(request).resume()
+
+
+@router.get("/automation/cycles")
+async def get_automation_cycles(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    fmt: Annotated[Literal["json", "csv"], Query(alias="format")] = "json",
+) -> Response:
+    rows = _automation(request).cycles(limit)
+    if fmt == "json":
+        return JSONResponse(rows)
+    disposition = 'attachment; filename="cqa-automation-cycles.csv"'
+    return Response(cycles_csv(rows), media_type=MEDIA["csv"], headers={"Content-Disposition": disposition})

@@ -5,6 +5,7 @@
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -54,9 +55,13 @@ class Syncer:
         saved = self._store.org_source()
         return None if saved is None else {"group_id": saved[1], **self._last}
 
-    async def run(self, interval_s: float = SYNC_INTERVAL_S) -> None:
+    async def run(
+        self, interval_s: float = SYNC_INTERVAL_S, skip: Callable[[], bool] = lambda: False
+    ) -> None:
+        """skip() — синхронизацию ведёт автоматизация по своему расписанию, этот проход пропускается."""
         while True:
-            await self.sync()
+            if not skip():
+                await self.sync()
             await asyncio.sleep(interval_s)
 
     def _remember(self, counts: dict[str, int] | None, error: str | None) -> None:
