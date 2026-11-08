@@ -27,6 +27,7 @@ from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.services.alerts import refresh
 from cqa.services.batches import Batches
+from cqa.services.checklists import SEED_CHECKLIST
 from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
@@ -39,8 +40,6 @@ from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
-# ponytail: seed is the test fixture; a separate product file if the two ever diverge
-SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,

@@ -23,6 +23,7 @@ from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
 from cqa.domain.sufficiency import mark_unsupported
+from cqa.services.bands import current_bands
 from cqa.services.errors import Invalid, NotFound, Unavailable
 from cqa.services.sufficiency import assess_dialogs
 from cqa.settings import Settings
@@ -55,6 +56,12 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
     checklist = store.current_checklist()
     if checklist is None:
         raise Unavailable("Чек-лист не загружен")
+    return checklist, *state_for(store, checklist)
+
+
+def state_for(store: Store, checklist: Checklist) -> tuple[list[Dialog], list[Appeal]]:
+    """Dialogs and appeals as they would be with `checklist` current: results by its fingerprints.
+    For a draft that is the state right after saving it (what «Что если» compares)."""
     fps = fingerprints(checklist)
     stored = store.list_dialogs()
     results = current_results(store, checklist, stored)
@@ -75,7 +82,7 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
         for a, fp in store.list_appeals()
         if a.status in ("pending", "closed") or fp == fps[ch[a.dlg]].get(a.cid)
     ]
-    return checklist, dialogs, appeals
+    return dialogs, appeals
 
 
 ReportFormat = Literal["html", "json", "md", "csv"]
@@ -96,7 +103,7 @@ def report(
     names = {s["id"]: s["name"] for s in store.sources()}
     rep = build_report(
         checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator,
-        source=source, source_names=names,
+        source=source, source_names=names, bands=current_bands(store),
     )  # fmt: skip
     return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 

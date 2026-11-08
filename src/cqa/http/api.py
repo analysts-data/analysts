@@ -27,6 +27,7 @@ from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
+from cqa.domain.tuning import Bands
 from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
 from cqa.services import alerts, reports
@@ -34,13 +35,19 @@ from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
+from cqa.services.bands import bands_view, save_bands
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
+    checklist_presets,
+    criteria_templates,
     diff_draft,
     diff_versions,
     export_checklist,
+    normalize_draft,
     save_checklist,
+    simulate_draft,
+    trial_draft,
 )
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
@@ -379,6 +386,60 @@ async def post_checklist_diff(
     draft: Checklist, request: Request, fmt: Annotated[DiffFormat, Query(alias="format")] = "json"
 ) -> Response:
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
+
+
+@router.post("/checklist/simulate", summary="«Что если»: итоги по черновику без сохранения")
+async def post_checklist_simulate(draft: Checklist, request: Request) -> dict[str, Any]:
+    """«Что если»: итоги по черновику без сохранения, с объяснением каждого изменения."""
+    return simulate_draft(request.app.state.store, draft)
+
+
+class TrialIn(BaseModel):
+    checklist: Checklist
+    dialogs: list[str]
+
+
+@router.post(
+    "/checklist/trial", summary="Песочница: оценить изменённые критерии черновика на выбранных диалогах"
+)
+async def post_checklist_trial(body: TrialIn, request: Request) -> dict[str, Any]:
+    """Песочница: изменённые критерии черновика на выбранных диалогах; ход — GET /api/runs/{id}."""
+    out = trial_draft(request.app.state.store, _runner(request), body.checklist, body.dialogs)
+    _log(
+        request,
+        "run.trial",
+        "run",
+        out["run_id"],
+        {"dialogs": len(out["dialogs"]), "criteria": out["criteria"]},
+    )
+    return out
+
+
+@router.post("/checklist/normalize", summary="Нормировать веса черновика к сумме 100")
+async def post_checklist_normalize(draft: Checklist) -> dict[str, Any]:
+    return normalize_draft(draft)
+
+
+@router.get("/checklist/presets", summary="Готовые чек-листы для импорта в черновик")
+async def get_checklist_presets() -> list[dict[str, Any]]:
+    return checklist_presets()
+
+
+@router.get("/criteria/templates", summary="Шаблоны критериев")
+async def get_criteria_templates(tag: str | None = None) -> dict[str, Any]:
+    return criteria_templates(tag)
+
+
+@router.get("/bands", summary="Шкала оценок")
+async def get_bands(request: Request) -> dict[str, Any]:
+    return bands_view(request.app.state.store)
+
+
+@router.put("/bands", summary="Сохранить шкалу оценок")
+async def put_bands(body: Bands, request: Request) -> dict[str, Any]:
+    saved = save_bands(request.app.state.store, body)
+    _log(request, "bands.save", "bands", "", body.model_dump(mode="json"))
+    return saved
 
 
 @router.get("/sufficiency")

@@ -178,6 +178,7 @@ class Runner:
         apply: ApplyMode = "replace",
         override: Mapping[str, Any] | None = None,
         evaluator: Evaluator | None = None,
+        checklist: Checklist | None = None,
     ) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
 
@@ -185,6 +186,8 @@ class Runner:
         нужен `confirm`. `model` — подпись модели в списке запусков. Перепроверка другой моделью:
         `evaluator` только на этот запуск, `override` — его настройки для истории; `apply: "compare"` —
         ответы теневые, текущими их делает `adopt` или `restore`. `override` и `compare` — всегда `force`.
+        `checklist` — несохранённый черновик для песочницы: ответы пишутся с его отпечатками и становятся
+        текущими только после сохранения черновика; по умолчанию — текущая версия.
         """
         force = force or apply == "compare" or override is not None
         if self._active is not None:
@@ -193,7 +196,7 @@ class Runner:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
                 raise NotFound(f"Диалоги не найдены: {', '.join(unknown)}")
-        checklist = self._store.current_checklist()
+        checklist = self._store.current_checklist() if checklist is None else checklist
         assert checklist is not None, "create_app сеет чек-лист на пустой базе"
         if criteria is not None:
             known = {c.id for c in checklist.criteria}
