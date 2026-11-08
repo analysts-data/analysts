@@ -236,7 +236,7 @@ export function App() {
             </i>
             <div>
               <b className="block text-[15px]">{NAME}</b>
-              <span className="text-xs text-muted">Freedom · качество диалогов</span>
+              <span className="text-xs text-muted">Freedom Broker</span>
             </div>
           </div>
           <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Работа</div>
@@ -279,7 +279,7 @@ export function App() {
                 className="hidden min-h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] text-muted hover:bg-hover sm:inline-flex"
                 aria-label="Команды и поиск (Ctrl+K)"
               >
-                <Search size={15} /> Поиск <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
+                <Search size={15} /> <span className="hidden 2xl:inline">Поиск</span> <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
               {S.mode &&
                 (S.role === 'qa' ? (
@@ -303,7 +303,7 @@ export function App() {
                   </span>
                   </Tip>
                 ))}
-              <span className="hidden text-[13px] text-muted lg:inline" id="roleLbl">
+              <span className="sr 2xl:not-sr-only 2xl:text-[13px] 2xl:text-muted" id="roleLbl">
                 Смотреть как:
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
