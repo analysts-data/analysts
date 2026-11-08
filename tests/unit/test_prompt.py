@@ -1,8 +1,9 @@
+import hashlib
 from pathlib import Path
 from typing import Any
 
-from cqa.domain.models import Checklist, Criterion, Dialog, Fold, Line
-from cqa.domain.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_messages, render_dialog
+from cqa.domain.models import Checklist, Criterion, Dialog, Fold, JevQuestion, Line
+from cqa.domain.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_messages, criterion_block, render_dialog
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
@@ -196,3 +197,30 @@ def test_call_without_addendum_matches_chat_request() -> None:
 def test_flag_question_on_call_gets_the_addendum() -> None:
     calls = build_messages("", "", crit(FLAG, call="Уточнение для звонка."), "call")
     assert all("Для звонка: Уточнение для звонка." in user["content"] for _, user in calls)
+
+
+# sha256 блоков всех критериев checklist_v3.json до поля jev. Записанные ответы модели ищутся
+# по телу запроса, поэтому снимок меняется только вместе с перезаписью кассет.
+_BLOCKS_WITHOUT_JEV = "bab02712ced1984dc443fab544bca8c2e9ca2a9a001fcd4fbddea97b103f7935"
+
+
+def test_criterion_blocks_without_jev_are_byte_identical_to_the_snapshot() -> None:
+    blocks = [
+        block
+        for c in CHECKLIST.criteria
+        for block in (
+            [criterion_block(c, q) for q in c.questions or []] if c.type == "flag" else [criterion_block(c)]
+        )
+    ]
+    assert all(c.jev is None for c in CHECKLIST.criteria)
+    assert hashlib.sha256("\n\0".join(blocks).encode()).hexdigest() == _BLOCKS_WITHOUT_JEV
+
+
+def test_jev_answer_descriptions_replace_default_yes_no_and_na() -> None:
+    jev = JevQuestion(
+        type="choice",
+        instructions=BOOL.text,
+        criteria={"yes": "Назвал", "no": "Не назвал", "na": "Срока нет"},
+    )
+    block = criterion_block(crit(BOOL, na=True, naCond="Клиент не спрашивал", jev=jev))
+    assert '"yes" — Назвал, "no" — Не назвал, "na" — Срока нет, только если: Клиент не спрашивал.' in block
