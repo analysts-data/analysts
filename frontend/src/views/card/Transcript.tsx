@@ -2,6 +2,7 @@
 import { Play } from 'lucide-react';
 import { useState } from 'react';
 import { ansTxt, mmss } from '../../lib/format.js';
+import { t } from '../../lib/i18n.js';
 import { ans } from '../../lib/scoring.js';
 import { api } from '../../lib/state.js';
 import { S } from '../../store';
@@ -15,13 +16,13 @@ export type Marks = { sel: Set<number>; hl: Set<number>; now: number | null; fla
 /** Ссылка на плеер организаторов, если у реплики нет начала в записи. */
 export const OrgPlayer = ({ d }: { d: any }) => (
   <a className="text-[13px]" href={api.playerUrl(d.id)} target="_blank" rel="noopener">
-    Открыть в плеере
+    {t('Открыть в плеере')}
   </a>
 );
 
 export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; marks: Marks; prosody: any; onCrit: (cid: string) => void; onSeek: (l: any) => void }) {
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
-  if (!d.lines) return <div className="px-4 py-10 text-center text-muted">Расшифровка ещё не загружена. Оценка и обоснования справа.</div>;
+  if (!d.lines) return <div className="px-4 py-10 text-center text-muted">{t('Расшифровка ещё не загружена. Оценка и обоснования справа.')}</div>;
   const call = d.ch === 'call';
   const tags: Record<number, { id: string; t: any; tip: string }[]> = {};
   for (const c of S.checklist.criteria) {
@@ -42,8 +43,8 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
         <div key={`f${l.from}`} className="fold flex items-center justify-between gap-3 rounded-lg border border-dashed border-line-strong bg-sunken px-3 py-2 text-[13px] text-ink2">
           <span>
             {call ? `${mmss(l.t0)}–${mmss(l.t1)}, ` : ''}
-            <b>{l.label}</b>, реплики {l.from}
-            {l.to !== l.from ? `–${l.to}` : ''}, не оценивается. <span className="text-muted">Модель видит участок как контекст.</span>
+            <b>{l.label}</b>, {t('реплики {range}, не оценивается.', { range: l.to !== l.from ? `${l.from}–${l.to}` : l.from })}{' '}
+            <span className="text-muted">{t('Модель видит участок как контекст.')}</span>
           </span>
           <Button
             size="sm"
@@ -57,7 +58,7 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
               })
             }
           >
-            {shown ? 'Свернуть' : 'Показать'}
+            {shown ? t('Свернуть') : t('Показать')}
           </Button>
         </div>,
       );
@@ -68,7 +69,7 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
     const state = cn(marks.sel.has(l.n) && 'sel bg-ev-soft ring-2 ring-ev-line', marks.hl.has(l.n) && 'hl ring-2 ring-info-line', marks.now === l.n && 'now ring-2 ring-ink', marks.flash === l.n && 'flash');
     const tg = (tags[l.n] || []).map(x => (
       <Tip key={x.id} content={x.tip}>
-        <button type="button" data-act="crit" data-cid={x.id} onClick={() => onCrit(x.id)} aria-label={`Открыть критерий ${x.tip}`}>
+        <button type="button" data-act="crit" data-cid={x.id} onClick={() => onCrit(x.id)} aria-label={t('Открыть критерий {tip}', { tip: x.tip })}>
           <Chip tone={x.t}>{x.id}</Chip>
         </button>
       </Tip>
@@ -77,7 +78,7 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
     if (l.who === 'system' || l.who === 'bot') {
       out.push(
         <div key={l.n} id={`L${l.n}`} data-n={l.n} onAnimationEnd={end} className={cn('sys flex flex-wrap items-center gap-1.5 rounded-lg px-3 py-1.5 text-center text-xs text-muted', state)}>
-          {l.n}, {time}. {l.who === 'bot' ? 'Бот' : 'Система'}: {l.text} {tg}
+          {l.n}, {time}. {l.who === 'bot' ? t('Бот') : t('Система')}: {l.text} {tg}
         </div>,
       );
       continue;
@@ -93,25 +94,25 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
       >
         <header className="mb-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
           <span>{l.n}</span>
-          <b className="text-ink2">{l.who === 'client' ? 'Клиент' : 'Оператор'}</b>
+          <b className="text-ink2">{l.who === 'client' ? t('Клиент') : t('Оператор')}</b>
           <span className="num">{time}</span>
           {call &&
             (l.s == null ? (
               <OrgPlayer d={d} />
             ) : (
-              <Tip content={`Слушать с ${mmss(l.s)}`}>
+              <Tip content={t('Слушать с {at}', { at: mmss(l.s) })}>
                 <button
                   type="button"
                   className="grid h-6 w-6 place-items-center rounded-md text-accent hover:bg-hover"
                   data-act="seek"
                   onClick={() => onSeek(l)}
-                  aria-label={`Слушать реплику ${l.n} с ${mmss(l.s)}`}
+                  aria-label={t('Слушать реплику {n} с {at}', { n: l.n, at: mmss(l.s) })}
                 >
                   <Play size={13} />
                 </button>
               </Tip>
             ))}
-          {call && <ProsodyBadges p={prosody} n={l.n} />}
+          {call && <ProsodyBadges p={prosody} n={l.n} who={l.who} />}
           {tg}
         </header>
         {l.text}
