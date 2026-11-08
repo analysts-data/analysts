@@ -10,6 +10,7 @@ import { S } from '../../store';
 import { Term } from '../../terms';
 import { Button, Chip, cn, Tip, type Tone } from '../../ui';
 import { History } from './History';
+import { RecheckMenu } from './Recheck';
 import { evalOf } from './Ops';
 import { OrgPlayer } from './Transcript';
 import { lineBy, MANUAL, ptsTxt, tone } from './util';
@@ -194,6 +195,7 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
               {t('Исправить оценку')}
             </Button>
           )}
+          {!blocked && qa() && <RecheckMenu dialogs={[d.id]} criteria={[c.id]} size="sm" />}
         </div>
       )}
       {S.role !== 'operator' && <History d={d} c={c} lock={pa ? t('По критерию есть апелляция на рассмотрении: прежнюю оценку можно сделать текущей после решения.') : null} />}

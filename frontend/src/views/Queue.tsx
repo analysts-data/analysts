@@ -15,6 +15,8 @@ import { AddMenu, JsonInput } from './queue/AddMenu';
 import { ExportButton } from './queue/Export';
 import { DIALOGS, hasFilters, markersOf, NO_OPERATOR, operatorOf, plural, productOf, rowsOf, visibleRows, type Row } from './queue/order';
 import { RunPanel, scoring } from './queue/RunPanel';
+import { BulkBar, PickCell, PickHead } from './BulkRecheck';
+import { SufficiencyChip } from './SufficiencyChip';
 
 const cut = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 
@@ -165,7 +167,7 @@ export function Queue() {
   const operators = withOp ? [...new Set<string>(S.dialogs.map(operatorOf))].sort((a, b) => (a === NO_OPERATOR ? 1 : b === NO_OPERATOR ? -1 : a.localeCompare(b, 'ru'))) : [];
   const products = [...new Map<string, string>(S.dialogs.map(productOf).filter(Boolean).map((x: any) => [x.id, x.name || x.id]))];
   const markers = [...new Map<string, string>(S.dialogs.flatMap(markersOf).map(m => [m.k, m.label || m.k]))];
-  const cols = withOp ? 7 : 6;
+  const cols = (withOp ? 7 : 6) + (qa ? 1 : 0);
   const sel = (id: string, label: string, k: string, vals: [string, string][]) => (
     <label className="flex items-center gap-2 text-[13px] text-muted">
       {label}
@@ -290,6 +292,7 @@ export function Queue() {
               <X size={16} aria-hidden="true" /> {t('Сбросить фильтры')}
             </Button>
           )}
+          {qa && <BulkBar />}
         </div>
         {!seq.length ? (
           <div className="flex flex-col items-start gap-3 p-5">
@@ -301,6 +304,7 @@ export function Queue() {
             <table className="tbl md:min-w-[860px]">
               <thead>
                 <tr>
+                  {qa && <PickHead ids={seq.map(x => x.d.id)} />}
                   <th>{t('Диалог')}</th>
                   {withOp && <th className="hidden md:table-cell">{t('Оператор')}</th>}
                   <th className="hidden md:table-cell">{t('Канал и язык')}</th>
@@ -334,6 +338,7 @@ export function Queue() {
                           if (!(e.target as Element).closest('a')) go(href('d', x.d.id));
                         }}
                       >
+                        {qa && <PickCell d={x.d} />}
                         <td>
                           <a href={href('d', x.d.id)} className="whitespace-nowrap font-semibold no-underline">
                             {titleOf(x.d)}
@@ -342,6 +347,7 @@ export function Queue() {
                             {chOf(x.d)}, {x.d.lang}
                             {withOp && `, ${x.d.operator || t('Не указан')}`}
                           </span>
+                          <SufficiencyChip d={x.d} />
                           {markersOf(x.d).length > 0 && (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {markersOf(x.d).map(m => (

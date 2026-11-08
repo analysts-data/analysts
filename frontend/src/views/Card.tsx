@@ -19,6 +19,8 @@ import { CardForms, type Pending } from './card/Forms';
 import { IntonationPanel, useProsody } from './card/Intonation';
 import { evalOf, OpsBar, rerun } from './card/Ops';
 import { Player, seek } from './card/Player';
+import { RecheckMenu } from './card/Recheck';
+import { SufficiencyChip } from './SufficiencyChip';
 import { Transcript } from './card/Transcript';
 import { lineBy, plural, scored } from './card/util';
 import { Why } from './card/Why';
@@ -202,6 +204,7 @@ export function CardView({ id }: { id: string | null }) {
       <PageHead title={titleOf(d)} sub={`${call ? t('Звонок, {dur}', { dur: mmss(d.dur || 0) }) : t('Чат')}, ${LANG[d.lang]?.() || d.lang}, ${d.at}, ${t('чек-лист v{v}', { v: cl.version })}`}>
         {(S.role !== 'operator' || group === 'risk') && STATUS[group]?.()}
         {d.reviewed && <Chip tone="ok">{t('Проверен')}</Chip>}
+        <SufficiencyChip d={d} />
         {(evalNow === 'queued' || evalNow === 'running') && (
           <span className="text-[13px] text-muted" role="status" data-eval={evalNow}>
             {evalNow === 'queued' ? t('В очереди на оценку') : t('Оценивается…')}
@@ -239,6 +242,7 @@ export function CardView({ id }: { id: string | null }) {
             </span>
           </Tip>
         )}
+        {qa && todo < cl.criteria.length && <RecheckMenu dialogs={[d.id]} />}
         {qa && (
           <Button data-act="reviewed" disabled={busy} onClick={markReviewed}>
             {d.reviewed ? t('Снять отметку') : t('Отметить проверенным')}
