@@ -59,10 +59,11 @@ html{--shadow-pop:0 8px 24px rgba(16,24,40,.12),0 1px 2px rgba(16,24,40,.06);--o
 
   .fld:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px var(--accent)}
   .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .tbl th.num{white-space:normal}
   [data-total],.tabular{font-variant-numeric:tabular-nums}
   .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .tbl{width:100%;border-collapse:collapse}
-  .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:bottom;line-height:1.3}
   .tbl td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
   .tbl tr.click{cursor:pointer}
   .tbl tr.align-top>td{vertical-align:top}
