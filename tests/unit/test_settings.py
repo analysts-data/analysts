@@ -24,6 +24,7 @@ DEFAULTS = {
     "openrouter_api_key": None,
     "verifier": None,
     "evaluator": "llm",
+    "routing": None,
     "jev_api_key": None,
     "anonymize": True,
     "data_where": "kz",
