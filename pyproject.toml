@@ -12,6 +12,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "praat-parselmouth>=0.4.7",
   "numpy>=2.5.4",
+  "markdown>=3.11.3",
 ]
 
 [dependency-groups]

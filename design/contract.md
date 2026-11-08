@@ -105,6 +105,7 @@
 | Метод и путь | Тело | Ответ |
 | --- | --- | --- |
 | `GET /api/health` | — | `{ok: true}`; корень `/` отдаёт `web/index.html` с `<cqa-app>` |
+| `GET /api/openapi.json` | — | схема OpenAPI 3 всех путей `/api`; страницы `/docs/` (документация и справочник API по этой схеме) — HTML, в схему не входят |
 | `GET /api/state` | — | `{checklist, versions: [{v, note}], dialogs, appeals, owners: {"<tag>": "Не назначено" \| "Инструкция" \| "Сервис" \| "Продукт"}, mode, source}` — всё, что нужно интерфейсу |
 | `POST /api/datasets` | `{"group_id": "DEV"}` | `{added, skipped}` |
 | `POST /api/datasets/upload` | файл JSON в формате API организаторов | `{added, skipped}` |

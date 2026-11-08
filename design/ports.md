@@ -110,6 +110,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.docs.router)` — документация `/docs/` из `docs/site/*.md` и справочник по `app.openapi()`; Swagger и ReDoc выключены, схема — `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
 
