@@ -158,7 +158,8 @@ def test_reduced_criterion_shows_better_phrase_and_review_history(
     expect(page.locator('.crit[data-cid="06"] .box.good')).to_contain_text("Как сказать лучше")
     after = state_with(review_of("call-024", "04", 15, 10, "Срок ответа не назван."))
     page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=after))
-    page.evaluate("() => import('./js/state.js').then(s => s.reload())")
+    page.reload()  # the routed /api/state now answers with the decision
+    expect(page.locator('.crit[data-cid="04"]')).to_be_visible()
     open_crit(page, "04")
     history = page.locator('.crit[data-cid="04"] .hist')
     expect(history).to_contain_text("Решение")
