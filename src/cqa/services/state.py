@@ -9,6 +9,8 @@ from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.report import build_report, operator_card, operators, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
+from cqa.domain.scores_export import Shape
+from cqa.domain.scores_export import to_csv as scores_to_csv
 from cqa.services.errors import NotFound, Unavailable
 from cqa.settings import Settings
 
@@ -80,6 +82,12 @@ def operator_page(store: Store, name: str) -> dict[str, Any]:
     if card is None:
         raise NotFound(f"Сотрудник {name} не найден")
     return card
+
+
+def scores_csv(store: Store, shape: Shape, *, lang: str | None, ch: str | None) -> tuple[int, str]:
+    """Оценки для Excel из того же состояния, что GET /api/state: версия чек-листа и текст CSV."""
+    checklist, dialogs, appeals = current_state(store)
+    return checklist.version, scores_to_csv(checklist, dialogs, appeals, shape, lang=lang, ch=ch)
 
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:

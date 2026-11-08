@@ -125,6 +125,7 @@
 | `POST /api/operators/import` | CSV-текст или файл сырым телом: `conversation_id;operator` (UTF-8, разделитель `;` или `,`, строка заголовка `conversation_id` необязательна, пустой сотрудник снимает назначение) | `{updated, unknown_ids: [..]}`; не UTF-8 или нет ни одной строки — 422 |
 | `GET /api/operators` | — | `[OperatorRow]` (раздел «По сотрудникам»), худший `avg_total` первым, без оценённых — в конце |
 | `GET /api/operators/{name}` | — | OperatorRow и `dialog_ids: [..]`, `reasons` (как в отчёте); `Не указан` — диалоги без сотрудника; неизвестное имя — 404 |
+| `GET /api/scores/export?format=csv&shape=wide\|long&lang=RU&ch=chat\|call` | — | оценки для Excel: CSV UTF-8 с BOM, `;`, ячейка с `= + - @` в начале — текстом; `attachment; filename="cqa-scores-v<n>.csv"`. `wide` (по умолчанию) — строка на диалог: ID, название, канал, язык, дата, сотрудник (пусто — не указан), итог, грубое нарушение и виды, нужна проверка, проверен, ответ по каждому критерию (заголовок — название из чек-листа); `long` — строка на оценённую пару диалог × критерий: ответ, доля, `why`, `ev`, `tag`, `better`, модель, решение проверяющего. Ответы и итог с учётом решений; другой формат, форма или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -223,3 +224,7 @@ OperatorRow: `{operator, dialogs, scored, avg_total, gross_errors, needs_review,
 - `dialogs` — все диалоги сотрудника, `scored` — с итогом, `avg_total` — средний итог оценённых (`null`, если их нет); `gross_errors`, `needs_review`, `appeals_open` — как `risk.dialogs`, `needs_review`, `open_appeals` отчёта по его диалогам.
 - `weakest` — до трёх критериев с наименьшей средней долей баллов ниже 1, худший первым. `trend` — по дням `ДД.ММ` из `at` в порядке календаря: средний итог и число оценённых диалогов дня (у чата `at` — время загрузки набора).
 - Раздел отчёта «По сотрудникам»: `attention` — до 5 худших, `best` — до 3 лучших оценённых сотрудников без «Не указан»; списки не пересекаются (при малом числе сотрудников лучших не больше половины). Нет ни одного сотрудника — оба списка пустые, таблиц нет.
+
+## Доступ по токену (eval-and-delivery)
+
+Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
