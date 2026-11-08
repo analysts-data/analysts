@@ -7,7 +7,9 @@ import { href } from '../lib/router.js';
 import { calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
 import { setRole, useS } from '../store';
-import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, type Tone } from '../ui';
+import { Term } from '../terms';
+import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip, type Tone } from '../ui';
+import { humanError } from './AppealDialog';
 
 const MIN_REASON = 5;
 const WHO: Record<string, string> = { client: 'клиент', operator: 'оператор', bot: 'бот', system: 'система' };
@@ -17,6 +19,15 @@ const STATUS: Record<string, [Tone, string, string]> = {
   confirmed: ['ok', 'Оценка подтверждена', ', подтверждена'],
   closed: ['na', 'Закрыта', ', закрыта'],
 };
+const SUB: Record<string, string> = {
+  reviewer: 'Сравните оценку с доводом и фрагментом диалога, затем сохраните решение с причиной.',
+  operator: 'Апелляции по оценкам и решения проверяющего.',
+  qa: 'Спорная оценка, довод и фрагмент диалога на одном экране.',
+};
+const WAIT = 'Апелляцию рассматривает проверяющий. Когда он примет решение, статус сменится на «Оценка изменена» или «Оценка подтверждена».';
+// «Оператор» → «оператор» для «Просит оператор», «как просит оператор».
+const low = (by: string) => (by ? by[0].toLowerCase() + by.slice(1) : 'оператор');
+const same = (x: any, y: any) => JSON.stringify(x) === JSON.stringify(y);
 const step = (v: any) => (v === 'yes' ? 'Да' : v === 'no' ? 'Нет' : v === 'na' ? 'N/A' : String(v));
 
 export function Appeals({ id }: { id: string | null }) {
@@ -42,7 +53,9 @@ export function Appeals({ id }: { id: string | null }) {
         className={cn('flex flex-col gap-0.5 rounded-lg px-3 py-2.5 text-ink no-underline transition-colors hover:text-ink', on ? 'bg-accent-soft' : 'hover:bg-hover')}
       >
         <span className="flex items-baseline justify-between gap-2">
-          <b className="truncate font-semibold">{d ? titleOf(d) : x.dlg}</b>
+          <Tip content={d ? titleOf(d) : x.dlg}>
+            <b className="truncate font-semibold">{d ? titleOf(d) : x.dlg}</b>
+          </Tip>
           <span className="flex-none text-xs text-muted">{x.at}</span>
         </span>
         <span className="text-[13px]">
@@ -58,7 +71,7 @@ export function Appeals({ id }: { id: string | null }) {
 
   return (
     <>
-      <PageHead title="Апелляции" sub="Спорная оценка, довод и фрагмент разговора на одном экране" />
+      <PageHead title={S.role === 'reviewer' ? `Апелляции: ждут решения ${pend.length}` : 'Апелляции'} sub={SUB[S.role]} />
       <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="flex flex-col p-2" aria-label="Очередь апелляций">
           <p className="px-3 pb-1.5 pt-1.5 text-xs font-semibold text-muted">Ждут решения: {pend.length}</p>
@@ -72,7 +85,9 @@ export function Appeals({ id }: { id: string | null }) {
             <Detail key={a.id} a={a} d={dlg(a.dlg)} c={crit(a.cid)} />
           ) : (
             <Card>
-              <Empty action={<LinkButton href={href('queue')}>Открыть диалоги</LinkButton>}>Апелляций пока нет. Оспорить оценку можно в карточке разговора.</Empty>
+              <Empty action={<LinkButton href={href('queue')}>Перейти к диалогам</LinkButton>}>
+                {S.role === 'reviewer' ? 'Апелляций нет. Новые появятся здесь, когда оператор оспорит оценку.' : 'Апелляций нет. Не согласны с оценкой: откройте диалог и нажмите «Оспорить».'}
+              </Empty>
             </Card>
           )}
           <Card className="p-5" aria-label="История решений">
@@ -84,7 +99,11 @@ export function Appeals({ id }: { id: string | null }) {
                   return (
                     <li key={x.id} className="py-2.5 first:pt-0 last:pb-0">
                       <b className="font-semibold">
-                        {d ? titleOf(d) : x.dlg}, {x.cid}: {x.status === 'changed' ? `${txt(c, x.from)} → ${txt(c, x.to)}` : 'оценка подтверждена'}
+                        {d ? titleOf(d) : x.dlg},{' '}
+                        <Tip content={c?.name}>
+                          <span tabIndex={0}>{x.cid}</span>
+                        </Tip>
+                        : {x.status === 'changed' ? `${txt(c, x.from)} → ${txt(c, x.to)}` : 'оценка подтверждена'}
                       </b>
                       <p className="text-[13px] text-muted">
                         {x.reviewer}, {x.decidedAt}. {x.reason}
@@ -114,19 +133,23 @@ function Fragment({ d, r, a }: { d: any; r: any; a: any }) {
       {shown.map((l: any) => {
         const m = mine.includes(l.n), ap = theirs.includes(l.n);
         return (
-          <div key={l.n} className={cn('flex items-start justify-between gap-3 rounded-lg px-3 py-2', m ? 'bg-ev-soft' : ap ? 'bg-hover' : '')}>
+          <div key={l.n} className={cn('flex items-start justify-between gap-3 border-l-2 py-1 pl-3', m ? 'border-ev' : ap ? 'border-line-strong' : 'border-transparent')}>
             <div className="min-w-0">
               <span className="text-xs text-muted">
                 {l.n}, {WHO[l.who] || ''}
                 {m && ', основание модели'}
-                {ap && ', довод оспаривающего'}
+                {ap && ', из апелляции'}
               </span>
               <p>{l.text}</p>
             </div>
             {d.ch === 'call' && l.s != null && (
-              <LinkButton size="sm" href={href('d', d.id)} title="Открыть карточку и прослушать запись">
-                <Play size={13} aria-hidden="true" /> {mmss(l.s)}
-              </LinkButton>
+              <Tip content="Открыть карточку и прослушать запись с этой реплики">
+                <span className="flex-none">
+                  <LinkButton size="sm" href={href('d', d.id)} aria-label={`Прослушать с ${mmss(l.s)} в карточке`}>
+                    <Play size={14} aria-hidden="true" /> {mmss(l.s)}
+                  </LinkButton>
+                </span>
+              </Tip>
             )}
           </div>
         );
@@ -160,25 +183,23 @@ function Detail({ a, d, c }: { a: any; d: any; c: any }) {
       </div>
       <div className="compare grid gap-5 p-5 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold text-muted">Оценка модели</span>
+          <span className="text-xs font-semibold text-muted">{a.status === 'pending' ? 'Сейчас' : 'Было'}</span>
           <strong className="text-lg">{ansTxt(c, a.from)}</strong>
           {r.why && <span className="text-[13px] text-ink2">{r.why}</span>}
           {r.alt != null && (
-            <span className="text-[13px] text-info" title="Ответ второй модели. Расхождение: повод проверить внимательнее">
-              Второе мнение: {ansTxt(c, r.alt)}
+            <span className="text-[13px] text-info">
+              <Term k="second">Второе мнение</Term>: {ansTxt(c, r.alt)}
             </span>
           )}
         </div>
         <div className="flex flex-col gap-1 sm:border-l sm:border-line2 sm:pl-5">
-          <span className="text-xs font-semibold text-muted">Просит оспаривающий</span>
+          <span className="text-xs font-semibold text-muted">Просит {low(a.by)}</span>
           <strong className="text-lg">{ansTxt(c, a.ask)}</strong>
           <span className="text-[13px] text-ink2">«{a.comment}»</span>
         </div>
       </div>
       <div className="flex flex-col gap-1.5 p-5">
-        <span className="text-xs font-semibold text-muted" title="Жёлтым: реплики, на которые опиралась модель. Серым: реплика из довода">
-          Фрагмент разговора
-        </span>
+        <span className="text-xs font-semibold text-muted">Фрагмент диалога</span>
         <Fragment d={d} r={r} a={a} />
       </div>
       <div className="p-5">
@@ -194,12 +215,17 @@ function Detail({ a, d, c }: { a: any; d: any; c: any }) {
         ) : S.role === 'reviewer' ? (
           <Decision a={a} d={d} c={c} />
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-muted">Решение принимает проверяющий. Переключите роль, чтобы показать этот шаг.</span>
-            <Button size="sm" onClick={() => setRole('reviewer')}>
-              Стать проверяющим
-            </Button>
-          </div>
+          <p className="text-muted">
+            {WAIT}
+            {S.role === 'qa' && (
+              <>
+                {' '}
+                <button type="button" className="font-semibold text-accent hover:text-accent-ink hover:underline" onClick={() => setRole('reviewer')}>
+                  Смотреть как проверяющий
+                </button>
+              </>
+            )}
+          </p>
         )}
       </div>
     </Card>
@@ -225,22 +251,27 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
       await api.postDecision(a.id, { to, reason: reason.trim(), reviewer: signOf(S.role) });
     } catch (e: any) {
       setBusy(false);
-      toast(`Решение не сохранено: ${e.message}`);
+      toast(`Решение не сохранено. ${humanError(e, { 409: 'Апелляция уже рассмотрена, на экране её решение.' })}`);
+      if (e?.status === 409) await reload();
       return;
     }
     await reload();
     const nd = S.dialogs.find((x: any) => x.id === d.id) || d;
-    toast(`Решение сохранено. Итог ${titleOf(nd)}: ${f2(before)} → ${f2(calc(nd, S.checklist, S.appeals).total)}.`);
+    const total = flag ? '' : ` Итог ${titleOf(nd)}: ${f2(before)} → ${f2(calc(nd, S.checklist, S.appeals).total)}.`;
+    const what = same(to, a.from) ? `оценка «${ansTxt(c, to)}» подтверждена.` : `${ansTxt(c, a.from)} → ${ansTxt(c, to)}.`;
+    toast(`Решение сохранено: ${what}${total} ${a.by || 'Оператор'} увидит решение в карточке.`);
   }
 
   return (
     <fieldset className="flex flex-col gap-4">
-      <legend className="mb-2.5 text-base font-semibold">Решение проверяющего</legend>
+      <legend className="mb-2.5 text-base font-semibold">
+        <Term k="decision">Решение по апелляции</Term>
+      </legend>
       <div className="flex flex-wrap gap-2.5">
         {(
           [
-            ['confirm', 'Подтвердить оценку модели'],
-            ['change', 'Изменить оценку'],
+            ['confirm', `Подтвердить оценку модели «${ansTxt(c, a.from)}»`],
+            ['change', `Изменить оценку на «${ansTxt(c, val)}»${same(val, a.ask) ? `, как просит ${low(a.by)}` : ''}`],
           ] as const
         ).map(([v, t]) => (
           <label key={v} className={cn('flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-3', mode === v ? 'border-accent bg-accent-soft' : 'border-line hover:bg-hover')}>
@@ -268,7 +299,7 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
               </button>
             ))}
           </div>
-          <span className="text-xs text-muted">Нажатая кнопка: нарушение есть. Флаг в итог не входит.</span>
+          <span className="text-xs text-muted">Нажатая кнопка: нарушение есть. Грубые ошибки в итог не входят.</span>
         </div>
       )}
       {mode === 'change' && !flag && (
@@ -302,19 +333,22 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
           onChange={e => setReason(e.target.value)}
           placeholder="Например: регламент не позволяет называть срок, следующий шаг дан полностью"
         />
-        <span className="text-xs text-muted">Не короче {MIN_REASON} символов. Причину увидят оспаривающий и оператор в карточке.</span>
+        <span className="text-xs text-muted">Причина видна в карточке диалога рядом с исходной оценкой.</span>
       </label>
       <div className="flex flex-wrap items-center justify-between gap-3">
         {flag ? (
-          <span>Итог не меняется: {f2(before)}, флаг в сумму не входит</span>
+          <span>Итог не меняется: {f2(before)}. Грубые ошибки в итог не входят.</span>
         ) : (
           <span>
-            Итог разговора: <s className="text-muted">{f2(before)}</s> → <b className="text-xl">{f2(after)}</b>
+            <Term k="total">Итог</Term> диалога: <s className="text-muted">{f2(before)}</s> → <b className="text-xl">{f2(after)}</b>
           </span>
         )}
-        <Button variant="primary" data-act="decide" data-id={a.id} disabled={busy || reason.trim().length < MIN_REASON} onClick={decide}>
-          Сохранить решение
-        </Button>
+        <span className="flex flex-wrap items-center justify-end gap-3">
+          {reason.trim().length < MIN_REASON && <span className="text-xs text-muted">Напишите причину решения, не короче {MIN_REASON} символов</span>}
+          <Button variant="primary" data-act="decide" data-id={a.id} disabled={busy || reason.trim().length < MIN_REASON} onClick={decide}>
+            Сохранить решение
+          </Button>
+        </span>
       </div>
     </fieldset>
   );

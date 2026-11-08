@@ -100,10 +100,10 @@ class FakeEvaluator:
         self.calls += 1
         self.order.append(dialog.id)
         self.seen.extend(c.id for c in criteria)
+        if dialog.id in self.fail_on:  # at once, without waiting for the gate
+            raise RuntimeError("timeout")
         if self.gate is not None:
             await self.gate.wait()
-        if dialog.id in self.fail_on:
-            raise RuntimeError("timeout")
         known = self.res.get(dialog.id, {})
         results = [
             Evaluation(

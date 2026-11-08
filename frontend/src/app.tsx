@@ -2,14 +2,14 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
 import { TERMS } from './terms';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
 import { reload } from './lib/state.js';
 import { groupOf } from './lib/queue.js';
-import { applyTheme, currentTheme, load, ROLES, save, setRole, useRoute, useS, type Role } from './store';
-import { cn, Skeleton, Tip, TipProvider } from './ui';
+import { applyTheme, currentTheme, load, rerender, ROLES, save, setRole, useRoute, useS, type Role } from './store';
+import { Card, cn, Skeleton, Tip, TipProvider } from './ui';
 import { Queue } from './views/Queue';
 import { CardView } from './views/Card';
 import { Appeals } from './views/Appeals';
@@ -70,38 +70,83 @@ function Toast() {
       role="status"
       aria-live="polite"
       hidden={!shown}
-      className="fixed bottom-6 left-1/2 z-[60] max-w-[min(560px,calc(100vw-32px))] -translate-x-1/2 rounded-xl bg-ink px-4 py-3 text-sm text-bg shadow-pop"
+      className="fixed bottom-5 right-5 z-[60] w-max max-w-[min(420px,calc(100vw-32px))] rounded-xl bg-ink px-4 py-3 text-sm text-bg shadow-pop"
     >
       {shown?.msg}
     </div>
   );
 }
 
-// Первый вход в роли: одна фраза о том, с чего начать. «Понятно» скрывает её навсегда для этой роли.
-const HINTS: Record<string, string> = {
-  qa: 'Начните с очереди: сверху диалоги, которые стоит проверить первым. В карточке у каждого критерия балл, обоснование и реплика, на которой он основан.',
-  operator: 'Здесь оценки диалогов и примеры для обучения. Откройте диалог, чтобы увидеть, за что снижен балл. Не согласны с оценкой? Нажмите «Оспорить оценку» у критерия.',
-  reviewer: 'На экране «Апелляции» собраны оспоренные оценки. Укажите причину решения, и итог диалога пересчитается.',
+// Первый вход: три шага на домашнем экране роли (и на «Аналитике» для руководителя). «Понятно» прячет их,
+// кнопка «Подсказки» в шапке показывает снова. Тексты — openspec/reviews/ux-guidelines.md, «Онбординг».
+const HINTS: Record<string, { page: string; title: string; steps: string[] }> = {
+  qa: {
+    page: 'queue',
+    title: 'С чего начать',
+    steps: [
+      'Очередь идёт сверху вниз: грубые ошибки, затем нужна проверка человека, затем диалоги без следующего шага. Начните с верхней группы.',
+      'В диалоге у каждого критерия есть балл, обоснование и реплика-основание. «Принять» или «Оставить» решает расхождение моделей, «Исправить оценку» заменяет ответ модели.',
+      'Критерии, веса и правила меняются в «Чек-листе». Каждое сохранение создаёт новую версию, новый критерий нужно оценить кнопкой «Оценить набор».',
+    ],
+  },
+  operator: {
+    page: 'coaching',
+    title: 'Как читать оценки',
+    steps: [
+      'Здесь видно, где диалоги теряют баллы и как сказать лучше, на примерах реплик.',
+      'Откройте диалог: у каждого критерия есть балл, объяснение и цитата из разговора.',
+      'Не согласны с оценкой: нажмите «Оспорить» в строке критерия и объясните почему. Решение примет проверяющий, исходная оценка сохранится.',
+    ],
+  },
+  reviewer: {
+    page: 'appeals',
+    title: 'Как решать апелляции',
+    steps: [
+      'Здесь оценки, которые оспорили операторы. Первая ожидающая уже открыта.',
+      'Сравните: слева текущая оценка с обоснованием, справа довод оператора, ниже фрагмент диалога с отмеченными репликами.',
+      'Выберите «Подтвердить» или «Изменить», напишите причину и сохраните. Итог диалога пересчитается, оператор увидит решение в карточке.',
+    ],
+  },
+  analytics: {
+    page: 'analytics',
+    title: 'Как читать аналитику',
+    steps: [
+      'Верхний ряд отвечает на четыре вопроса бизнеса: сервис, риски, развитие сотрудников, процессы.',
+      'Любое число открывает список диалогов, из него диалог и нужную реплику.',
+      'Внизу повторяющиеся причины: укажите, кто исправляет, и скачайте CSV.',
+    ],
+  },
 };
+const hintKey = (role: string, page: string) => (page === 'analytics' ? 'analytics' : HINTS[role]?.page === page ? role : null);
 
-function RoleHint({ role }: { role: string }) {
+function RoleHint({ k }: { k: string }) {
   const [, force] = useState(0);
-  if (load(`cqa.hint.${role}`)) return null;
+  if (load(`cqa.hint.${k}`)) return null;
+  const h = HINTS[k];
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-line bg-surface px-4 py-2.5 text-[13px] text-ink2" role="note">
-      <Info size={16} className="flex-none text-muted" aria-hidden="true" />
-      <p className="min-w-0 flex-1">{HINTS[role]}</p>
-      <button
-        type="button"
-        className="text-[13px] font-semibold text-accent hover:text-accent-ink"
-        onClick={() => {
-          save(`cqa.hint.${role}`, '1');
-          force(x => x + 1);
-        }}
-      >
-        Понятно
-      </button>
-    </div>
+    <Card className="px-4 py-3.5">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-[15px] font-semibold">{h.title}</h2>
+        <button
+          type="button"
+          className="-my-1 rounded-lg px-2.5 py-1 text-[13px] font-semibold text-ink2 hover:bg-hover"
+          onClick={() => {
+            save(`cqa.hint.${k}`, '1');
+            force(x => x + 1);
+          }}
+        >
+          Понятно
+        </button>
+      </div>
+      <ol className="mt-2 grid gap-3 text-[13px] text-ink2 md:grid-cols-3">
+        {h.steps.map((t, i) => (
+          <li key={i} className="flex gap-2.5">
+            <span className="mt-px grid h-5 w-5 flex-none place-items-center rounded-full border border-line-strong text-[11px] font-semibold text-muted">{i + 1}</span>
+            <span>{t}</span>
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
 
@@ -186,12 +231,12 @@ export function App() {
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
         <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
-            <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent not-italic text-on-accent">
+            <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-brand not-italic text-white">
               <Logo />
             </i>
             <div>
               <b className="block text-[15px]">{NAME}</b>
-              <span className="text-xs text-muted">Качество диалогов</span>
+              <span className="text-xs text-muted">Freedom · качество диалогов</span>
             </div>
           </div>
           <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">Работа</div>
@@ -277,6 +322,25 @@ export function App() {
                   </Tip>
                 ))}
               </div>
+              <Tip content="Показать подсказки к этому экрану">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const k = hintKey(S.role, r.page) ?? S.role;
+                    try {
+                      localStorage.removeItem(`cqa.hint.${k}`);
+                    } catch {
+                      /* без хранилища подсказка и так видна */
+                    }
+                    if (!hintKey(S.role, r.page)) location.hash = `#/${HINTS[S.role].page}`;
+                    rerender();
+                  }}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 hover:bg-hover"
+                  aria-label="Подсказки"
+                >
+                  <CircleHelp size={17} />
+                </button>
+              </Tip>
               <Tip content={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}>
               <button
                 type="button"
@@ -291,7 +355,7 @@ export function App() {
             </div>
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
-            {!S.loading && !S.error && <RoleHint key={S.role} role={S.role} />}
+            {!S.loading && !S.error && hintKey(S.role, r.page) && <RoleHint key={hintKey(S.role, r.page)} k={hintKey(S.role, r.page)} />}
             <motion.div key={r.page + (r.id ?? '')} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
               <View page={r.page} id={r.id} />
             </motion.div>
