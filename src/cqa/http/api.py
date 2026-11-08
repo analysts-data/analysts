@@ -214,6 +214,38 @@ async def get_state(request: Request) -> dict[str, Any]:
     return {**state, "source": syncer.status() if syncer else None}
 
 
+
+
+@router.get("/customer-cases", summary="Связанные обращения и прозрачная очередь приоритета")
+async def get_customer_cases(request: Request) -> list[dict[str, Any]]:
+    """Группирует только по переданному интеграцией псевдониму. Не связывает по имени/телефону."""
+    dialogs = [d for d in request.app.state.store.list_dialogs() if d.client_ref]
+    groups: dict[str, list[Any]] = {}
+    for dialog in dialogs:
+        groups.setdefault(dialog.client_ref, []).append(dialog)
+    rows = []
+    for client_ref, items in groups.items():
+        items.sort(key=lambda d: d.at)
+        topics = [d.product.label if d.product else None for d in items]
+        topic_counts = {topic: topics.count(topic) for topic in set(topics) if topic}
+        repeated_topic = next((topic for topic, count in topic_counts.items() if count > 1), None)
+        reasons = []
+        if len(items) > 1:
+            reasons.append({"code": "repeat_contact", "label": f"Повторные обращения: {len(items)}"})
+        if repeated_topic:
+            reasons.append({"code": "repeat_topic", "label": f"Повторяется тема: {repeated_topic}"})
+        if any(d.case_status in ("open", "in_progress") for d in items):
+            reasons.append({"code": "unresolved", "label": "Есть обращение со статусом «не решено» или «в работе»"})
+        if any(d.risks for d in items):
+            reasons.append({"code": "risk", "label": "В диалоге отмечен риск; требуется проверить основание"})
+        priority = min(100, 30 * (len(items) > 1) + 25 * bool(repeated_topic) + 35 * any(d.case_status in ("open", "in_progress") for d in items) + 25 * any(d.risks for d in items))
+        rows.append({"client_ref": client_ref, "contact_count": len(items), "repeated_topic": repeated_topic,
+            "status": items[-1].case_status, "priority": priority, "priority_reasons": reasons,
+            "dialogs": [{"id": d.id, "at": d.at, "title": d.title, "topic": d.product.label if d.product else None,
+                "status": d.case_status, "risks": [r.model_dump(mode="json") for r in (d.risks or [])]} for d in items]})
+    return sorted(rows, key=lambda row: (-row["priority"], row["client_ref"]))
+
+
 @router.get("/report", summary="Отчёт для руководства: html, json или md")
 async def get_report(
     request: Request,
