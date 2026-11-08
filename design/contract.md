@@ -134,3 +134,25 @@
 `PUT /api/config` применяется без перезапуска: сервер пересобирает оценщик, `mode` в состоянии меняется сразу; во время запуска — 409. Значения хранятся в базе поверх `.env` и переживают перезапуск. Пустой `llm_api_key` или `jev_api_key` оставляет сохранённый ключ; ключи не уходят ни в один ответ. Ошибка конфигурации (нет ключа для `live`, неизвестный профиль, Jev без ключа, адрес не `http(s)://`) — 422, режим не меняется. Интерфейс открывает окно режима по клику на плашку `mode`.
 
 `mode` описывает режим данных для плашки в интерфейсе: `{"where": "kz" | "local" | "external", "anonymized": true, "model": "qwen3-6", "verifier": "jev" | "self" | null}`.
+
+## Провайдеры моделей (llm-evaluation)
+
+Несколько OpenAI-совместимых моделей, у каждой свой ключ. Раздел уточняет `GET /api/config` и `PUT /api/config` из таблицы HTTP API: `PUT /api/config` выбирает провайдера, адрес и ключ модели задаёт `PUT /api/providers/{id}`.
+
+Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-chat", "profile": "plain" | "deepseek", "where": "kz" | "local" | "external", "has_key": true}`. `id` — строчная латиница, цифры и дефис, до 32 знаков. Провайдер `env` есть всегда: он собран из `CQA_LLM_*` и `CQA_DATA_WHERE` (и полей, сохранённых прежней формой режима) и меняется только в `.env`.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/config` | — | поля из таблицы HTTP API и `llm_provider` (код основной модели), `providers: [Provider]`; `llm_base_url`, `llm_model`, `llm_profile`, `has_llm_key`, `data_where` описывают основную модель |
+| `PUT /api/config` | `{llm_provider, verifier: "jev" \| код провайдера \| null, anonymize, jev_api_key, allow_real_data}` | то же, что `GET /api/config`, после применения |
+| `PUT /api/providers/{id}` | `{label, base_url, model, profile, where, key}` | то же, что `GET /api/config`: провайдер создан или изменён |
+| `DELETE /api/providers/{id}` | — | то же, что `GET /api/config` |
+| `POST /api/providers/{id}/check` | — | `{ok: true \| false, ms, error: null \| "<текст>"}` |
+
+Ключ только записывается: ни в ответах, ни в журнале его нет, есть `has_key`; пустой `key` при изменении оставляет сохранённый. Список провайдеров хранится в базе и заменяет `CQA_PROVIDERS` из `.env`.
+
+Основная модель — провайдер `llm_provider`: его `where` становится `mode.where`, `model` — `mode.model`. `verifier`: `"jev"`, код провайдера (та же модель вопросов по критериям уходит этому провайдеру, его ответ — в `alt`) или `null`; `mode.verifier` повторяет его, поэтому в `mode` бывает и код провайдера.
+
+Ошибки: неизвестный провайдер в `llm_provider` или `verifier`, нет ключа для `live` — 422, режим не меняется. Неверный `id`, адрес не `http(s)://`, неизвестный профиль, `PUT /api/providers/env` — 422. `DELETE` основной модели, второго мнения или `env` — 409, неизвестный `id` — 404. Любое изменение во время запуска — 409, как у `PUT /api/config`.
+
+`POST /api/providers/{id}/check`: один запрос `max_tokens: 1` с синтетическим текстом «Ответь одним словом: да», без повторов, таймаут 20 секунд, реальные данные не уходят; запрос идёт в сеть и в режиме `replay`. Ошибка провайдера — `ok: false` с текстом, а не код HTTP; неизвестный `id` — 404.
