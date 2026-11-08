@@ -14,11 +14,12 @@ import { Recommendations } from './Recommendations';
 import { Dlg } from './checklist/Dlg';
 import { Term } from '../terms';
 import { Editor, RulesEditor, setDraft, signalChip } from './checklist/Editor';
+import { BandsCard, canon, DraftCheck, loadPresets, Normalize, PresetDlg, TemplateOffer } from './checklist/Flex';
 
 const typeName = (type: string): string | undefined => ({ bool: t('Да/Нет'), scale: t('Шкала'), flag: t('Грубая ошибка') } as Record<string, string>)[type];
 const scored = (cs: any[]) => cs.filter(c => c.type !== 'flag');
 const wsum = (cs: any[]) => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: unknown, b: unknown) => canon(a) === canon(b);
 // ждёт оценки: критерий действующей версии, у которого хотя бы в одном диалоге нет записи; переживает перезагрузку
 const waiting = (S: any): string[] => S.checklist.criteria.filter((c: any) => S.dialogs.some((d: any) => !d.res[c.id])).map((c: any) => c.id);
 // средний итог набора по уже полученным ответам: для черновика — тот же calc с черновиком вместо версии
@@ -29,20 +30,25 @@ function avgTotal(S: any, cl: any) {
 // Короткая сводка черновика у кнопки сохранения; полную разницу считает сервер («Что изменится»).
 // Правило контракта: вес, название, секция и роль в отчётах новой оценки не требуют.
 const NO_REEVAL = new Set(['w', 'name', 'sec', 'signal']);
+const diffKeys = (o: any, n: any) => [...new Set([...Object.keys(o), ...Object.keys(n)])].filter(k => !same(o[k], n[k]));
+// есть новые или изменённые по смыслу критерии: после сохранения их нужно оценить (и их проверяет песочница)
+const meaningChanged = (cl: any, dr: any) =>
+  dr.rules !== cl.rules ||
+  dr.criteria.some((n: any) => {
+    const o = cl.criteria.find((x: any) => x.id === n.id);
+    return !o || diffKeys(o, n).some(k => !NO_REEVAL.has(k));
+  });
 function summary(cl: any, dr: any) {
   const old = new Map(cl.criteria.map((x: any) => [x.id, x]));
   const parts: string[] = [];
-  let reeval = dr.rules !== cl.rules;
   for (const n of dr.criteria) {
     const o: any = old.get(n.id);
     if (!o) {
       parts.push(t('добавлен {id}', { id: n.id }));
-      reeval = true;
       continue;
     }
-    const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter(k => !same(o[k], n[k]));
+    const keys = diffKeys(o, n);
     if (!keys.length) continue;
-    if (keys.some(k => !NO_REEVAL.has(k))) reeval = true;
     parts.push(keys.length === 1 && keys[0] === 'w' ? t('вес {id}: {from} → {to}', { id: n.id, from: o.w, to: n.w }) : t('изменён {id}', { id: n.id }));
   }
   for (const o of cl.criteria) if (!dr.criteria.some((x: any) => x.id === o.id)) parts.push(t('удалён {id}', { id: o.id }));
@@ -50,7 +56,7 @@ function summary(cl: any, dr: any) {
   if (dr.rules !== cl.rules) parts.push(t('общие правила'));
   if (!parts.length) return null;
   const head = parts.length > 4 ? t('{list} и ещё {n}', { list: parts.slice(0, 4).join(', '), n: parts.length - 4 }) : parts.join(', ');
-  return `${head[0].toUpperCase()}${head.slice(1)}. ${reeval ? t('Изменённые критерии после сохранения нужно оценить заново.') : t('Итоги пересчитаются без новой оценки.')}`;
+  return `${head[0].toUpperCase()}${head.slice(1)}. ${meaningChanged(cl, dr) ? t('Изменённые критерии после сохранения нужно оценить заново.') : t('Итоги пересчитаются без новой оценки.')}`;
 }
 const item = 'flex min-h-8 w-full cursor-pointer items-center rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink no-underline hover:bg-hover hover:text-ink';
 const closeMenu = (e: { currentTarget: HTMLElement }) => {
@@ -81,6 +87,7 @@ const readFile = async (e: ChangeEvent<HTMLInputElement>) => {
 export function Checklist() {
   const S = useS();
   const [diff, setDiff] = useState<{ title: string; md: string } | null>(null);
+  const [presets, setPresets] = useState<any[] | null>(null);
   // новая версия с сервера сбрасывает черновик; если сохранение упало, правки остаются
   if (S.draft?.version !== S.checklist.version) setDraft(structuredClone(S.checklist));
   const cl = S.checklist,
@@ -165,6 +172,15 @@ export function Checklist() {
       }
     });
 
+  const openPresets = async (e: MouseEvent<HTMLElement>) => {
+    closeMenu(e);
+    try {
+      setPresets(await loadPresets());
+    } catch (err) {
+      toast(t('Готовые чек-листы не загружены: {msg}', { msg: err.message }));
+    }
+  };
+
   const exportJev = (e: MouseEvent<HTMLElement>) => {
     closeMenu(e);
     try {
@@ -194,6 +210,9 @@ export function Checklist() {
                   {t('Импорт из файла чек-листа (JSON)')}
                   <input type="file" accept=".json,application/json" data-act="cimport" className="sr" disabled={dirty} onChange={importJson} />
                 </label>
+                <button type="button" className={cn(item, dirty && 'cursor-not-allowed opacity-45')} data-act="cpreset" disabled={dirty} onClick={openPresets}>
+                  {t('Начать с готового чек-листа')}
+                </button>
                 <label className={cn(item, S.busy && 'cursor-not-allowed opacity-45')}>
                   {t('Импорт из формата Jev')}
                   <input type="file" accept=".json,application/json" data-act="cjevimport" className="sr" disabled={S.busy} onChange={importJev} />
@@ -297,6 +316,8 @@ export function Checklist() {
         </section>
       )}
 
+      {qa && dirty && <DraftCheck meaning={meaningChanged(cl, dr)} />}
+
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.3fr)]">
         <Card className="p-2.5" aria-label={t('Структура чек-листа')}>
           {dr.sections.map((s: string, si: number) => {
@@ -353,6 +374,7 @@ export function Checklist() {
                   : t('Итог всё равно приводится к 100, но вклад каждого критерия незаметно вырастет.')}
               </span>
             )}
+            {qa && <Normalize sum={sum} />}
           </div>
           <div className="flex flex-col gap-1 px-2.5 pb-1 pt-3 text-[13px]">
             <span className="text-xs font-semibold text-muted">
@@ -384,7 +406,10 @@ export function Checklist() {
           </div>
         </Card>
         {c ? (
-          <Editor c={c} readOnly={!qa} />
+          <div className="flex min-w-0 flex-col gap-3">
+            {qa && !cl.criteria.some((x: any) => x.id === c.id) && <TemplateOffer c={c} />}
+            <Editor c={c} readOnly={!qa} />
+          </div>
         ) : (
           <Card className="flex flex-col items-center gap-3 p-10 text-center text-muted">
             {t('Критериев нет.')}
@@ -393,6 +418,8 @@ export function Checklist() {
         )}
       </div>
       <RulesEditor readOnly={!qa} />
+      <BandsCard readOnly={!qa} />
+      {presets && <PresetDlg list={presets} onClose={() => setPresets(null)} />}
 
       {diff && (
         <Dlg
