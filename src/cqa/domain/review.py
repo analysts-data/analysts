@@ -104,5 +104,14 @@ def needs_review(c: Criterion, r: CriterionResult) -> bool:
     return c.type in ("bool", "scale") and (r.evFail or (r.alt is not None and r.alt != r.a))
 
 
+def awaits_review(criteria: Sequence[Criterion], d: Dialog, decided: set[tuple[str, str]]) -> bool:
+    """Диалог не отмечен проверенным, и есть расхождение или проваленное основание без решения.
+    `decided` — пары (диалог, критерий) с решением confirmed или changed."""
+    return not d.reviewed and any(
+        (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
+        for c in criteria
+    )
+
+
 def stamp(dt: datetime) -> str:
     return dt.astimezone(ASTANA).strftime("%d.%m %H:%M")

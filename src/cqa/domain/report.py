@@ -1,6 +1,6 @@
 """Отчёт для руководства: ключевые числа, критерии, причины, каналы и языки, выводы. Чистые функции.
 
-Ответ пары — с учётом последнего решения (`effective_answer`), итог — `scoring.total`, доля — `frac`:
+Ответ пары — с учётом последнего решения (`effective_answers`), итог — `scoring.total`, доля — `frac`:
 те же числа, что видит интерфейс.
 """
 
@@ -10,7 +10,7 @@ from typing import Any
 
 from cqa.domain.checklist_export import CSS as MEMO_CSS
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
-from cqa.domain.review import effective_answers, needs_review
+from cqa.domain.review import awaits_review, effective_answers
 from cqa.domain.scoring import frac, r2, total
 from cqa.domain.tuning import Band, band_of
 
@@ -79,14 +79,7 @@ def build_report(
     no_next = sum(
         any(c.signal == "resolution" and _lost(c, ans.get(c.id)) for c in scored_cs) for _, ans, _ in rows
     )
-    review = sum(
-        not d.reviewed
-        and any(
-            (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
-            for c in scored_cs
-        )
-        for d, _, _ in rows
-    )
+    review = sum(awaits_review(scored_cs, d, decided) for d, _, _ in rows)
     costs = [d.cost for d, _, _ in rows if d.cost]
     in_band = [b.label for _, _, t in rows if (b := band_of(bands, t))]
 
