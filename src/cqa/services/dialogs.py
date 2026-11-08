@@ -47,7 +47,9 @@ def save_owners(store: Store, owners: Mapping[str, str]) -> dict[str, str]:
     return store.get_owners()
 
 
-def paste_text(store: Store, *, title: str, ch: Literal["chat", "call"], text: str) -> str:
+def paste_text(
+    store: Store, *, title: str, ch: Literal["chat", "call"], text: str, source_id: str = "paste"
+) -> str:
     """`POST /api/dialogs/text`: сохраняет диалог из текста через `add_dialogs`, оценка не запускается."""
     try:
         dialog = paste_dialog(
@@ -59,6 +61,6 @@ def paste_text(store: Store, *, title: str, ch: Literal["chat", "call"], text: s
         )
     except PasteError as exc:
         raise Invalid(str(exc)) from None
-    with logged(store, "paste") as save:
+    with logged(store, source_id) as save:
         save(IngestResult([dialog], {}, 0, []))
     return dialog.id
