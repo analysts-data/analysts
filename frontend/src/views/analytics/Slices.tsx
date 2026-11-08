@@ -329,7 +329,7 @@ function Heatmap({ p }: { p: P }) {
                     </Def>
                   </th>
                   {d.columns.map((c: any) => (
-                    <th key={c.id} className="num">
+                    <th key={c.id} className="!text-center">
                       <Tip content={c.name}>
                         <span tabIndex={0}>{c.id}</span>
                       </Tip>
