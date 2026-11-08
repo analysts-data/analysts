@@ -39,7 +39,8 @@ def _choice_criteria(criterion: Criterion) -> dict[str, str | None]:
         options = {"yes": "Да", "no": "Нет"}
     if criterion.na:
         options["na"] = criterion.naCond or "Неприменимо"
-    return options
+    descriptions = criterion.jev_descriptions()
+    return {key: descriptions.get(key, text) for key, text in options.items()}
 
 
 def _choice_answer(value: Any, criterion: Criterion) -> str | int | None:

@@ -2,6 +2,7 @@
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { esc, fn } from '../format.js';
 import { runErrors } from './queue.js';
+import { importQuestions, exportQuestions, syncJev } from '../checklist_json.js';
 
 const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
 const TYPES = [['bool', 'Да / Нет'], ['scale', 'Шкала'], ['flag', 'Флаг нарушения, без баллов']];
@@ -37,6 +38,11 @@ export function view(S) {
       <button type="button" class="btn only-qa" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
       <button type="button" class="btn only-qa" data-act="cwhat" ${dirty ? '' : 'disabled'}>Что изменится</button>
       <button type="button" class="btn pri only-qa" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+  ${S.role === 'qa' ? `<section class="card pad row" aria-label="Формат Jev">
+    <label class="btn">Импорт из формата Jev<input type="file" accept=".json,application/json" data-act="cjevimport" class="sr" ${S.busy ? 'disabled' : ''}></label>
+    <button type="button" class="btn" data-act="cjevexport">Экспорт в формат Jev</button>
+    <span class="muted small">Вопросы Jev (questions). Импорт обновляет черновик по ID, веса настраиваются отдельно.</span>
+  </section>` : ''}
   ${pend.length || run || errs ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
@@ -154,6 +160,7 @@ function setField(t) {
     c.questions = t.value.split('\n').map(s => s.trim()).filter(Boolean)
       .map((label, i) => ({ ...(c.questions?.[i] || { k: 'q' + (i + 1) }), label }));
   } else c[k] = t.value;
+  syncJev(c, k === 'channel' ? 'na' : k);
 }
 
 const TYPED = new Set(['name', 'text', 'naCond', 'call']);
@@ -176,6 +183,33 @@ async function busy(request) {
 }
 
 export const actions = {
+  // формат Jev: вопросы сливаются в черновик по ID, несохранённые правки остаются
+  cjevimport: async t => {
+    const file = t.files[0];
+    t.value = '';
+    if (!file || S.role !== 'qa' || S.busy) return;
+    S.busy = true;
+    render();
+    try {
+      const text = await file.text();
+      if (S.role !== 'qa') return;
+      const result = importQuestions(S.draft, JSON.parse(text.replace(/^\uFEFF/, '')));
+      S.draft = result.draft;
+      toast(`Добавлено ${result.added}, обновлено ${result.updated}. Проверьте веса и сохраните версию.`);
+    } catch (e) { toast(`Импорт не выполнен: ${e.message}`); }
+    finally { S.busy = false; render(); }
+  },
+  cjevexport: () => {
+    if (S.role !== 'qa') return;
+    try {
+      const blob = new Blob([JSON.stringify(exportQuestions(S.draft), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = `questions-v${S.draft.version}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (S.draft.criteria.some(c => c.type === 'flag')) toast('Флаги экспортированы отдельными noul-вопросами с ID «критерий_подвопрос».');
+    } catch (e) { toast(`Экспорт не выполнен: ${e.message}`); }
+  },
   csel: t => { S.cSel = t.dataset.cid; render(); },
   cf: t => { setField(t); if (TYPED.has(t.dataset.cf)) syncSave(); else render(); },
   cadd: () => {

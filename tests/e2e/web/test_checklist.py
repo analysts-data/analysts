@@ -479,6 +479,45 @@ def test_import_disabled_while_draft_dirty(page: Page, web_url: str) -> None:
     expect(page.locator("#cf-name")).to_have_value("Приветствие")
 
 
+def test_jev_import_merges_questions_into_draft_by_id(page: Page, web_url: str) -> None:
+    api = open_checklist(page, web_url, {"version": 4, "pending": ["01", "09"]})
+    greet = {
+        "type": "noul",
+        "instructions": "Оператор поздоровался.",
+        "criteria": {"true": "Да", "false": "Нет"},
+    }
+    term = {
+        "type": "choice",
+        "instructions": "Оператор назвал срок.",
+        "criteria": {"yes": "Да", "no": "Нет", "na": "Срок не нужен"},
+    }
+    body = json.dumps({"questions": {"01": greet, "09": term}}, ensure_ascii=False).encode()
+    expect(page.locator('[data-view="checklist"] label:has([data-act="cjevimport"])')).to_have_text(
+        "Импорт из формата Jev"
+    )
+    expect(page.locator('[data-act="cjevexport"]')).to_have_text("Экспорт в формат Jev")
+    page.set_input_files(
+        '[data-act="cjevimport"]', files=[{"name": "q.json", "mimeType": "application/json", "buffer": body}]
+    )
+    expect(page.locator("#toast")).to_have_text(
+        "Добавлено 1, обновлено 1. Проверьте веса и сохраните версию."
+    )
+    expect(item(page, "01")).to_contain_text("изменён")
+    expect(item(page, "09")).to_contain_text("N/A")
+    page.locator('[data-act="csave"]').click()
+    expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 4 применяется")
+    [draft] = api.puts
+    old = next(c for c in CHECKLIST["criteria"] if c["id"] == "01")
+    c01, c09 = (next(c for c in draft["criteria"] if c["id"] == cid) for cid in ("01", "09"))
+    assert (c01["text"], c01["jev"], c01["w"], c01["name"]) == (
+        greet["instructions"],
+        greet,
+        old["w"],
+        old["name"],
+    )
+    assert (c09["type"], c09["na"], c09["naCond"], c09["jev"]) == ("bool", True, "Срок не нужен", term)
+
+
 def test_run_progress_survives_page_reload(page: Page, web_url: str) -> None:
     api = open_checklist(page, web_url, {"version": 4, "pending": ["04"]})
     save_text_change(page)

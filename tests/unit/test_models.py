@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog, JevQuestion
 
 # JSON examples from design/contract.md, placeholders replaced by concrete values of the same shape
 CHECKLIST = {
@@ -139,3 +139,28 @@ def test_scale_answer_outside_steps_is_rejected() -> None:
     assert scale.accepts(15) and scale.accepts("na")
     assert not scale.accepts(12)
     assert not scale.accepts("yes")
+
+
+@pytest.mark.parametrize(
+    ("kind", "criteria", "expected"),
+    [
+        ("noul", {"true": "Сделал", "false": "Не сделал"}, {"yes": "Сделал", "no": "Не сделал"}),
+        (
+            "choice",
+            {"yes": "Да", "no": "Нет", "not_applicable": "Нет"},
+            {"yes": "Да", "no": "Нет", "na": "Нет"},
+        ),
+        ("choice", {"yes": "Да", "no": "Нет", "na": "Нет"}, {"yes": "Да", "no": "Нет", "na": "Нет"}),
+    ],
+)
+def test_jev_descriptions_map_source_keys_to_answer_keys(
+    kind: Any, criteria: dict[str, str], expected: dict[str, str]
+) -> None:
+    jev = JevQuestion(type=kind, instructions="Текст", criteria=criteria)
+    criterion = Criterion.model_validate({**CHECKLIST["criteria"][0], "jev": jev.model_dump()})
+    assert criterion.jev_descriptions() == expected
+    assert criterion.jev is not None and criterion.jev.criteria == criteria
+
+
+def test_criterion_without_jev_has_no_descriptions() -> None:
+    assert Criterion.model_validate(CHECKLIST["criteria"][0]).jev_descriptions() == {}
