@@ -53,3 +53,5 @@ class Settings(BaseSettings):
     db_path: str = "data/cqa.db"
     eval_dataset: Path = Path("data/dev.json")
     holdout_dir: Path | None = None
+    telemetry: Literal["on", "off"] = "on"  # метрики использования (README «Метрики использования»)
+    telemetry_retention_days: int = 30

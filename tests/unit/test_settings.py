@@ -35,6 +35,8 @@ DEFAULTS = {
     "db_path": "data/cqa.db",
     "eval_dataset": Path("data/dev.json"),
     "holdout_dir": None,
+    "telemetry": "on",
+    "telemetry_retention_days": 30,
 }
 
 

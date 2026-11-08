@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import sqlite3
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from cqa.services.prosody import dialog_prosody
 from cqa.services.runs import Runner
 from cqa.services.state import mode_from_settings
 from cqa.services.sync import Syncer
+from cqa.services.telemetry import TokenBucket, purge
 from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -95,6 +97,7 @@ def create_app(
     store = Store(conn if conn is not None else connect(settings.db_path))
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
+    purge(store, settings.telemetry_retention_days, datetime.now(UTC))
     seed_checklist(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
@@ -109,6 +112,7 @@ def create_app(
     evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
     app.state.mode = mode_from_settings(settings)
+    app.state.telemetry_limit = TokenBucket(capacity=30, rate=0.5)  # ~1 пакет в 2 с на клиента
 
     app.include_router(api.router)
     app.include_router(audio_router)
