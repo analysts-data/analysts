@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.analytics import Filters
@@ -33,9 +33,18 @@ from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
 from cqa.services.errors import Unavailable
-from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
+from cqa.services.history import adopt, history, restore
+from cqa.services.llm_config import (
+    Apply,
+    configure,
+    delete_provider,
+    provider,
+    put_provider,
+    run_settings,
+    view,
+)
 from cqa.services.ports import DialogSource
-from cqa.services.runs import Runner
+from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
 from cqa.services.state import (
     Audience,
     ReportFormat,
@@ -104,8 +113,26 @@ class ProviderIn(BaseModel):
     key: str = ""  # пусто — оставить сохранённый ключ
 
 
+class OverrideIn(BaseModel):
+    """Перепроверка другой моделью: поля поверх текущего режима, неуказанное — как в режиме."""
+
+    model_config = ConfigDict(extra="forbid")
+    evaluator: Literal["llm", "jev"] | None = None
+    llm_provider: str | None = None
+    verifier: str | None = None  # "jev", код провайдера или null — без второго мнения
+
+
 class RunIn(BaseModel):
     dialogs: list[str] | None = None  # порядок очереди: диалоги для демо первыми
+    criteria: list[str] | None = None
+    force: bool = False  # повторная проверка: заново и пары с ответом, кроме ручных и с апелляцией
+    confirm: bool = False  # повторная проверка без списка dialogs больше CONFIRM_OVER диалогов
+    apply: ApplyMode = "replace"  # compare — ответы теневые до adopt или restore
+    override: OverrideIn | None = None
+
+
+class AdoptIn(BaseModel):
+    dialogs: list[str] | None = None
     criteria: list[str] | None = None
 
 
@@ -401,6 +428,18 @@ async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request)
     return result.model_dump(mode="json", exclude_none=True)
 
 
+@router.get("/dialogs/{dialog_id}/history")
+async def get_history(dialog_id: str, request: Request) -> dict[str, list[dict[str, Any]]]:
+    return history(request.app.state.store, dialog_id)
+
+
+@router.post("/results/{result_id}/restore")
+async def post_restore(result_id: int, request: Request) -> dict[str, Any]:
+    result = restore(request.app.state.store, result_id)
+    _log(request, "result.restore", "result", result_id, {"model": result.model})
+    return result.model_dump(mode="json", exclude_none=True)
+
+
 def _apply(request: Request) -> Apply:
     """Пересобрать оценщик и плашку `mode` без перезапуска; во время запуска — 409."""
     state = request.app.state
@@ -503,10 +542,47 @@ async def post_upload(request: Request) -> dict[str, int]:
 
 @router.post("/runs", summary="Запустить оценку")
 async def post_run(body: RunIn, request: Request) -> dict[str, int]:
-    run_id = _runner(request).start(body.dialogs, body.criteria)
+    state = request.app.state
+    runner = _runner(request)
+    evaluator, model, override = None, state.mode.model, None
+    if body.override is not None:  # оценщик только на этот запуск, сохранённый режим не меняется
+        override = body.override.model_dump(exclude_unset=True)
+        settings = run_settings(state.settings, override)
+        evaluator, model = build_evaluator(settings, state.prosody), mode_from_settings(settings).model
+    run_id = runner.start(
+        body.dialogs,
+        body.criteria,
+        force=body.force,
+        confirm=body.confirm,
+        model=model,
+        apply=body.apply,
+        override=override,
+        evaluator=evaluator,
+    )
     picked = None if body.dialogs is None else len(body.dialogs)
-    _log(request, "run.start", "run", run_id, {"dialogs": picked, "criteria": body.criteria})
+    details = {"dialogs": picked, "criteria": body.criteria, "force": body.force, "apply": body.apply}
+    recheck = body.force or body.apply == "compare" or override is not None
+    _log(request, "run.recheck" if recheck else "run.start", "run", run_id, {**details, "override": override})
     return {"run_id": run_id}
+
+
+@router.post("/runs/{run_id}/adopt")
+async def post_adopt(run_id: int, request: Request, body: AdoptIn | None = None) -> dict[str, int]:
+    """Теневые ответы запуска compare — текущими (все или часть по dialogs и criteria)."""
+    body = body or AdoptIn()
+    result = adopt(request.app.state.store, run_id, body.dialogs, body.criteria)
+    _log(request, "run.adopt", "run", run_id, {**body.model_dump(), **result})
+    return result
+
+
+@router.get("/runs")
+async def get_runs(request: Request) -> list[dict[str, Any]]:
+    return list_runs(request.app.state.store)
+
+
+@router.get("/runs/compare")  # до /runs/{run_id}: иначе «compare» разбирается как id
+async def get_runs_compare(a: int, b: int, request: Request) -> dict[str, Any]:
+    return compare_runs(request.app.state.store, a, b)
 
 
 @router.get("/runs/{run_id}", summary="Прогресс запуска оценки")

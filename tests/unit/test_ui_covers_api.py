@@ -27,6 +27,11 @@ EXEMPT = {
     "/employees/{employee_id}",
     "/me",
     "/overview",
+    # UI в работе: история оценок, возврат оценки, сравнение и принятие запусков (review-workflow-history)
+    "/dialogs/{dialog_id}/history",
+    "/results/{result_id}/restore",
+    "/runs/compare",
+    "/runs/{run_id}/adopt",
 }
 # UI в работе: оценки по сотрудникам (PR #80)
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
