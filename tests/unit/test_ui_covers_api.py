@@ -51,6 +51,8 @@ EXEMPT |= {
 }
 # вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
 EXEMPT |= {"/sources/{source_id}/ingest"}
+# UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
+EXEMPT |= {"/telemetry", "/usage"}
 # UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
 EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
 # UI в работе: рекомендации (PR #89)

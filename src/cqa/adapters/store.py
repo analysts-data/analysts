@@ -65,6 +65,12 @@ INSERT OR IGNORE INTO sources (id, name, kind, service, enabled, schedule_min, c
 UPDATE sources SET secret = (SELECT url FROM org_source),
   config = json_object('group_id', (SELECT group_id FROM org_source)), enabled = 1
   WHERE id = 'org' AND secret IS NULL AND EXISTS (SELECT 1 FROM org_source);
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, role TEXT,
+  event TEXT NOT NULL, page TEXT NOT NULL, props TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS telemetry_at ON telemetry(at);
+CREATE TRIGGER IF NOT EXISTS telemetry_no_update BEFORE UPDATE ON telemetry
+  BEGIN SELECT RAISE(ABORT, 'метрики только дописываются'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -731,6 +737,29 @@ class Store:
                 "errors = '[\"прервана перезапуском сервера\"]' WHERE status = 'running'",
                 (_now(),),
             )
+
+    # --- метрики использования (только дописываются, старше срока хранения удаляются при старте) ---
+
+    def add_telemetry(self, rows: Sequence[tuple[str, str, str | None, str, str, str]]) -> None:
+        """rows — (at ISO UTC, actor, role, event, page, props JSON)."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO telemetry (at, actor, role, event, page, props) VALUES (?, ?, ?, ?, ?, ?)", rows
+            )
+
+    def telemetry(
+        self, after: str | None, role: str | None
+    ) -> list[tuple[str, str, str | None, str, str, str]]:
+        rows = self._conn.execute(
+            "SELECT at, actor, role, event, page, props FROM telemetry "
+            "WHERE (? IS NULL OR at >= ?) AND (? IS NULL OR role = ?) ORDER BY id",
+            (after, after, role, role),
+        ).fetchall()
+        return [(r["at"], r["actor"], r["role"], r["event"], r["page"], r["props"]) for r in rows]
+
+    def purge_telemetry(self, before: str) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM telemetry WHERE at < ?", (before,))
 
     def set_owners(self, owners: Mapping[str, str]) -> None:
         with self._conn:
