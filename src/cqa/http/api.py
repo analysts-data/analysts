@@ -154,8 +154,7 @@ async def get_report(
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     store = request.app.state.store
     body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
