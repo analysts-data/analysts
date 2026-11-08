@@ -91,6 +91,7 @@ def create_app(
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT"],
         allow_headers=["Content-Type", "Authorization", "Idempotency-Key"],
+        allow_headers=["Content-Type", "X-CQA-User"],  # X-CQA-User — текущий сотрудник
     )
     settings = settings or Settings()
     app.state.settings = settings
