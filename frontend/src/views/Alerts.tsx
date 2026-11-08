@@ -63,7 +63,7 @@ function targetOf(a: any, dialogs: any[]): { to: string; label: string } {
   const kind = TARGET[a.target_type]?.() ?? a.target_type;
   if (a.target_type === 'dialog') {
     const d = dialogs.find(x => x.id === a.target_id);
-    return { to: href('d', a.target_id), label: `${kind} ${d ? titleOf(d) : a.target_id}` };
+    return { to: href('d', a.target_id), label: d ? titleOf(d) : `${kind} ${a.target_id}` }; // «Чат sc-26» уже говорит, что это диалог
   }
   if (a.target_type === 'operator') return { to: href('people', a.target_id), label: `${kind} ${a.target_id}` };
   if (a.target_type === 'run') return { to: href('analytics'), label: `${kind} ${a.target_id}` };
@@ -335,8 +335,21 @@ export function Alerts({ id }: { id: string | null }) {
                         <td>
                           <Chip tone={st}>{sl()}</Chip>
                         </td>
-                        <td className="font-semibold">{a.title}</td>
                         <td>
+                          <span className="font-semibold">{a.title}</span>
+                          {(a.basis != null || a.note) && (
+                            <button
+                              type="button"
+                              className="mt-0.5 flex items-center gap-1 text-[13px] font-semibold text-accent hover:text-accent-ink"
+                              data-act="why"
+                              aria-expanded={shown}
+                              onClick={() => setOpen(shown ? null : String(a.id))}
+                            >
+                              {t('Почему')} {shown ? <ChevronUp size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+                            </button>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap">
                           <a href={to.to} data-act="target">
                             {to.label}
                           </a>
@@ -382,12 +395,7 @@ export function Alerts({ id }: { id: string | null }) {
                           )}
                         </td>
                         <td>
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            {(a.basis != null || a.note) && (
-                              <Button size="sm" variant="ghost" data-act="why" aria-expanded={shown} onClick={() => setOpen(shown ? null : String(a.id))}>
-                                {t('Почему')} {shown ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
-                              </Button>
-                            )}
+                          <div className="flex flex-wrap justify-end gap-1.5 md:flex-nowrap">
                             {canAct && a.status === 'new' && (
                               <Button
                                 size="sm"

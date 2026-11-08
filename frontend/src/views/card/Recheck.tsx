@@ -145,8 +145,9 @@ function Settings({ full, apply, onRun, onClose }: { full: boolean; apply: Apply
 
 const item = 'flex cursor-pointer select-none items-center gap-2.5 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-hover';
 
-/** Кнопка с меню перепроверки. dialogs — диалоги запуска, criteria — критерии (null — все). */
-export function RecheckMenu({ dialogs, criteria = null, size, label }: { dialogs: string[]; criteria?: string[] | null; size?: 'sm'; label?: string }) {
+/** Кнопка с меню перепроверки. dialogs — диалоги запуска, criteria — критерии (null — все).
+ * joined — только стрелка, приставленная справа к кнопке «Оценить заново». */
+export function RecheckMenu({ dialogs, criteria = null, size, label, joined }: { dialogs: string[]; criteria?: string[] | null; size?: 'sm'; label?: string; joined?: boolean }) {
   const S = useS();
   const [apply, setApply] = useState<Apply>('compare');
   const [dlg, setDlg] = useState<'model' | 'full' | null>(null);
@@ -165,11 +166,11 @@ export function RecheckMenu({ dialogs, criteria = null, size, label }: { dialogs
   return (
     <>
       <M.Root modal={false}>
-        <Tip content={why}>
+        <Tip content={why ?? (joined ? t('Перепроверить другой моделью или с другими настройками') : null)}>
           <span>
             <M.Trigger asChild disabled={busy || Boolean(why)}>
-              <Button size={size} data-act="recheck" data-cid={criteria?.[0]} aria-busy={busy}>
-                {busy ? t('Перепроверяется…') : label || t('Перепроверить')} <ChevronDown size={15} aria-hidden="true" />
+              <Button size={size} data-act="recheck" data-cid={criteria?.[0]} aria-busy={busy} aria-label={joined ? t('Перепроверить') : undefined} className={joined ? '-ml-px rounded-l-none !px-2.5' : undefined}>
+                {joined ? null : busy ? t('Перепроверяется…') : label || t('Перепроверить')} <ChevronDown size={15} aria-hidden="true" />
               </Button>
             </M.Trigger>
           </span>
