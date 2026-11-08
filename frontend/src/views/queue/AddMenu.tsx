@@ -1,4 +1,5 @@
 // «Добавить диалоги»: меню из трёх пунктов (набор организаторов, файл JSON, текст диалога). Только специалисту КК.
+// В пустой очереди те же три способа видны сразу (AddChoices).
 import { ChevronDown, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../../lib/i18n.js';
@@ -59,6 +60,48 @@ function DatasetDialog({ onClose }: { onClose: () => void }) {
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Пустая очередь: три способа добавить диалоги строками, без меню; основной — набор организаторов. */
+export function AddChoices() {
+  const [dataset, setDataset] = useState(false);
+  const rows: [string, string, React.ReactNode][] = [
+    [
+      t('Набор организаторов'),
+      t('По коду набора, например DEV. Со ссылкой API набор обновляется раз в 5 минут.'),
+      <Button variant="primary" onClick={() => setDataset(true)}>
+        {t('Получить набор')}
+      </Button>,
+    ],
+    [
+      t('Файл JSON'),
+      t('Выгрузка диалогов в формате организаторов.'),
+      <Button onClick={() => document.getElementById('jsonf')?.click()}>{t('Выбрать файл')}</Button>,
+    ],
+    [
+      t('Текст диалога'),
+      t('Вставьте переписку из чата или расшифровку звонка: реплики и роли разберутся сами.'),
+      <Button data-act="paste" onClick={openPaste}>
+        {t('Вставить текст')}
+      </Button>,
+    ],
+  ];
+  return (
+    <>
+      <ul className="divide-y divide-line2">
+        {rows.map(([title, sub, action]) => (
+          <li key={title} className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-4">
+            <div className="min-w-0 flex-1 basis-64">
+              <p className="font-semibold">{title}</p>
+              <p className="text-[13px] text-muted">{sub}</p>
+            </div>
+            {action}
+          </li>
+        ))}
+      </ul>
+      {dataset && <DatasetDialog onClose={() => setDataset(false)} />}
+    </>
   );
 }
 

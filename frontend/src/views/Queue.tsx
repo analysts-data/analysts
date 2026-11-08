@@ -11,7 +11,7 @@ import { ans, flagsOf, flagWhy, r2 } from '../lib/scoring.js';
 import { go, rerender, useRoute, useS } from '../store';
 import { TERMS } from '../terms';
 import { Button, Chip, cn, LinkButton, PageHead, Tip, type Tone } from '../ui';
-import { AddMenu, JsonInput } from './queue/AddMenu';
+import { AddChoices, AddMenu, JsonInput } from './queue/AddMenu';
 import { ExportButton } from './queue/Export';
 import { DIALOGS, hasFilters, markersOf, NO_OPERATOR, operatorOf, plural, productOf, rowsOf, visibleRows, type Row } from './queue/order';
 import { RunPanel, scoring } from './queue/RunPanel';
@@ -227,9 +227,9 @@ export function Queue() {
       <>
         <PageHead title={t('Диалоги')} sub={sub} />
         {qa && S.run && <RunPanel all={all} dialogs={null} pending={0} />}
-        <section className="flex flex-col items-start gap-3 rounded-card border border-line bg-surface p-5 shadow-card" aria-label={t('Список диалогов')}>
-          <p className="text-muted">{qa ? t('Диалогов пока нет. Загрузите набор или вставьте диалог текстом.') : t('Диалогов пока нет. Их загружает специалист КК.')}</p>
-          {qa && <AddMenu primary />}
+        <section className="rounded-card border border-line bg-surface shadow-card" aria-label={t('Список диалогов')}>
+          <p className={cn('px-5 pt-4 text-muted', !qa && 'pb-4')}>{qa ? t('Диалогов пока нет. Добавьте их одним из способов:') : t('Диалогов пока нет. Их загружает специалист КК.')}</p>
+          {qa && <AddChoices />}
         </section>
         {qa && <JsonInput />}
       </>
