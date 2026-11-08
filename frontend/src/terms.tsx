@@ -1,5 +1,6 @@
 // Глоссарий интерфейса (openspec/reviews/ux-guidelines.md): одно понятие — одно слово и одна подсказка.
 import type { ReactNode } from 'react';
+import { Tip } from './ui';
 
 export const TERMS = {
   na: 'Критерий не относится к этому диалогу. Его вес поровну распределён между остальными критериями.',
@@ -22,11 +23,16 @@ export const TERMS = {
 } as const;
 export type TermKey = keyof typeof TERMS;
 
-/** Видимый текст с подсказкой из глоссария (title, пунктир снизу — признак подсказки). */
+/**
+ * Термин с подсказкой из глоссария: пунктир снизу — признак, что есть пояснение; фокус с клавиатуры тоже открывает его.
+ * Ставь на главном вхождении термина на экране (заголовок, плитка, чип в шапке), не в каждой строке таблицы.
+ */
 export function Term({ k, children, className }: { k: TermKey; children: ReactNode; className?: string }) {
   return (
-    <span title={TERMS[k]} className={`cursor-help underline decoration-dotted decoration-1 underline-offset-[3px] ${className ?? ''}`}>
-      {children}
-    </span>
+    <Tip content={TERMS[k]}>
+      <span tabIndex={0} className={`cursor-help underline decoration-line-strong decoration-dotted decoration-1 underline-offset-[3px] ${className ?? ''}`}>
+        {children}
+      </span>
+    </Tip>
   );
 }
