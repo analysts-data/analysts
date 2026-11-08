@@ -36,6 +36,9 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     putAnswer: (did, cid, payload) => call('PUT', `/dialogs/${id(did)}/answers/${id(cid)}`, payload),
     getConfig: () => call('GET', '/config'),
     putConfig: cfg => call('PUT', '/config', cfg),
+    putProvider: (pid, provider) => call('PUT', `/providers/${id(pid)}`, provider),
+    deleteProvider: pid => call('DELETE', `/providers/${id(pid)}`),
+    checkProvider: pid => call('POST', `/providers/${id(pid)}/check`),
     audioUrl: did => `${base}/dialogs/${id(did)}/audio`,
     playerUrl: did => `${base}/dialogs/${id(did)}/player`,
   };

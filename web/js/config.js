@@ -1,10 +1,4 @@
-// Режим оценки: три пресета интерфейса и тело PUT /api/config (design/contract.md). Без DOM.
-export const PRESETS = {
-  local: 'Локальная модель',
-  anon: 'Внешний API, обезличенные данные',
-  raw: 'Внешний API без обезличивания',
-};
-
+// Режим оценки: тела PUT /api/config и PUT /api/providers/{id} (design/contract.md, «Провайдеры моделей»). Без DOM.
 const WHERE = { kz: 'Казахстан', local: 'локально', external: 'внешний провайдер' };
 // Плашка режима данных: скрыть нельзя, это ответ про трансграничную передачу на защите.
 // llm_mode из GET /api/config: replay — ответы из записей, модель не вызывается.
@@ -13,20 +7,25 @@ export const modeText = (m, llmMode) => [`Обработка: ${WHERE[m.where] |
   llmMode === 'replay' ? 'Записанные ответы' : `модель ${m.model}`,
   m.verifier ? `второе мнение: ${m.verifier}` : ''].filter(Boolean).join(' · ');
 
-export const presetOf = cfg => (cfg.data_where === 'local' ? 'local' : cfg.anonymize ? 'anon' : 'raw');
-
-// Локальная модель не выводит данные наружу, поэтому обезличивание ей не нужно.
-export const configBody = (preset, where, f) => ({
-  llm_base_url: f.llm_base_url.trim(),
-  llm_model: f.llm_model.trim(),
-  llm_profile: f.llm_profile,
-  llm_api_key: f.llm_api_key.trim(),
-  data_where: preset === 'local' ? 'local' : where,
-  anonymize: preset === 'anon',
-  verifier: f.jev ? 'jev' : null,
+export const configBody = f => ({
+  llm_provider: f.llm_provider,
+  verifier: f.verifier || null,
+  anonymize: Boolean(f.anonymize),
   jev_api_key: f.jev_api_key.trim(),
   allow_real_data: Boolean(f.allow_real_data),
 });
+
+// Пустой ключ оставляет сохранённый на сервере.
+export const providerBody = f => ({
+  label: f.label.trim(),
+  base_url: f.base_url.trim(),
+  model: f.model.trim(),
+  profile: f.profile,
+  where: f.where,
+  key: f.key.trim(),
+});
+
+export const whereOf = (cfg, id) => cfg.providers.find(p => p.id === id)?.where;
 
 // Что подтвердить перед сохранением: открытый текст уходит наружу, реальные звонки уходят модели.
 export function risks(before, after) {

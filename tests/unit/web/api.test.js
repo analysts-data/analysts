@@ -36,13 +36,18 @@ test('every client method goes to its contract path', async () => {
   await api.putAnswer('p1-ru-003', '01', { a: 'no', reason: 'r', by: 'Специалист КК' });
   await api.getConfig();
   await api.putConfig({ llm_model: 'm' });
+  await api.putProvider('ds', { label: 'DS' });
+  await api.deleteProvider('ds');
+  await api.checkProvider('ds');
   const seen = calls.map(c => `${c.method} ${c.url}`);
   assert.deepEqual(seen, [
     'GET /api/state', 'POST /api/datasets', 'POST /api/datasets/upload', 'POST /api/runs', 'GET /api/runs/r1',
     'POST /api/runs/r1/cancel', 'PUT /api/checklist', 'POST /api/appeals', 'POST /api/appeals/a1/decision',
     'POST /api/decisions', 'POST /api/dialogs/p1-ru-003/reviewed', 'PUT /api/owners', 'PUT /api/source',
     'PUT /api/dialogs/p1-ru-003/answers/01', 'GET /api/config', 'PUT /api/config',
+    'PUT /api/providers/ds', 'DELETE /api/providers/ds', 'POST /api/providers/ds/check',
   ]);
+  assert.deepEqual(JSON.parse(calls[16].body), { label: 'DS' });
   assert.deepEqual(JSON.parse(calls[1].body), { group_id: 'DEV' });
   assert.equal(calls[2].body, '{"data": {}}');
   assert.deepEqual(JSON.parse(calls[3].body), { dialogs: ['call-024'], criteria: null });
