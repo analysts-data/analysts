@@ -1,7 +1,7 @@
 // Экран очереди: группы приоритета, плитки-фильтры из хеша, поиск, добавление диалогов и панель оценки.
 // Роли: загрузка, оценка и цена только у специалиста КК; оператор не видит «Нужна проверка человека» и второе мнение.
 // Сотрудник, продукт и маркеры — из /api/state, если сервер их отдаёт; новые эндпоинты зовутся только по действию.
-import { Search, X } from 'lucide-react';
+import { Layers, Search, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ansTxt, f2, titleOf } from '../lib/format.js';
 import { t } from '../lib/i18n.js';
@@ -10,7 +10,7 @@ import { href } from '../lib/router.js';
 import { ans, flagsOf, flagWhy, r2 } from '../lib/scoring.js';
 import { go, rerender, useRoute, useS } from '../store';
 import { TERMS } from '../terms';
-import { Button, Chip, cn, PageHead, Tip, type Tone } from '../ui';
+import { Button, Chip, cn, LinkButton, PageHead, Tip, type Tone } from '../ui';
 import { AddMenu, JsonInput } from './queue/AddMenu';
 import { ExportButton } from './queue/Export';
 import { DIALOGS, hasFilters, markersOf, NO_OPERATOR, operatorOf, plural, productOf, rowsOf, visibleRows, type Row } from './queue/order';
@@ -201,6 +201,12 @@ export function Queue() {
     <>
       <PageHead title={t('Диалоги')} sub={sub}>
         {!op && <ExportButton lang={p.lang} ch={p.ch} />}
+        {qa && S.features?.includes('batches') && (
+          <LinkButton href={`#/batches?new=1&ch=${encodeURIComponent(p.ch ?? '')}&lang=${encodeURIComponent(p.lang ?? '')}&prod=${encodeURIComponent(p.prod ?? '')}`}>
+            <Layers size={16} aria-hidden="true" />
+            {t('Оценить пакетом')}
+          </LinkButton>
+        )}
         {qa && <AddMenu />}
       </PageHead>
       {qa && <JsonInput />}

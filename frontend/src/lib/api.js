@@ -15,9 +15,11 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), hea
     const res = await fetchFn(base + path, init);
     const text = await res.text();
     if (!res.ok) {
-      let detail = text;
-      try { detail = JSON.parse(text).detail ?? text; } catch { /* тело не JSON */ }
-      throw Object.assign(new Error(`${res.status}: ${detail}`), { status: res.status });
+      let detail = text, body = null;
+      try { body = JSON.parse(text); detail = body.detail ?? text; } catch { /* тело не JSON */ }
+      if (typeof detail !== 'string') detail = JSON.stringify(detail);
+      // body — разобранный ответ ошибки: формы показывают ошибки у полей (fields, detail[].loc)
+      throw Object.assign(new Error(`${res.status}: ${detail}`), { status: res.status, body });
     }
     return text;
   };
@@ -32,6 +34,7 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis), hea
     get: path => call('GET', path),
     post: (path, body) => call('POST', path, body),
     put: (path, body) => call('PUT', path, body),
+    del: path => call('DELETE', path),
     getState: () => call('GET', '/state'),
     postDataset: groupId => call('POST', '/datasets', { group_id: groupId }),
     uploadDataset: file => call('POST', '/datasets/upload', file, true),
