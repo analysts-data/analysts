@@ -37,6 +37,7 @@ DEFAULTS = {
     "holdout_dir": None,
     "telemetry": "on",
     "telemetry_retention_days": 30,
+    "access_token": None,
 }
 
 

@@ -55,3 +55,4 @@ class Settings(BaseSettings):
     holdout_dir: Path | None = None
     telemetry: Literal["on", "off"] = "on"  # метрики использования (README «Метрики использования»)
     telemetry_retention_days: int = 30
+    access_token: SecretStr | None = None  # show over the LAN: cookie from /login?token=, empty — open
