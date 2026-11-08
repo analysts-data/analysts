@@ -100,11 +100,11 @@ def _rows(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[App
 
 
 def _op(d: Dialog) -> str | None:
-    return getattr(d, "operator", None)  # Dialog.operator и Dialog.product добавляют другие ветки
+    return d.operator
 
 
 def _product(d: Dialog) -> str | None:
-    return getattr(d, "product", None)
+    return getattr(d, "product", None)  # Dialog.product добавляет другая ветка; до неё разреза нет
 
 
 def _scored(checklist: Checklist) -> list[Criterion]:
