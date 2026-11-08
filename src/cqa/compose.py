@@ -1,5 +1,6 @@
 """Сборка реализаций портов из `Settings`; без запросов наружу."""
 
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +10,14 @@ from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JEV_MODEL, JevVerifier
 from cqa.adapters.llm import ChatClient, ping
 from cqa.adapters.org_api import OrgApi
+from cqa.adapters.store import Store
+from cqa.domain.routing import DEFAULT, Rule
+from cqa.services.errors import Invalid
 from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Prosody, Verifier
 from cqa.services.ingest import OrgDialogSource
 from cqa.services.llm_config import as_llm, config_error
 from cqa.services.ports import Evaluator
+from cqa.services.routing import RoutedEvaluator, facts, rule_settings, rules
 from cqa.settings import Provider, Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
@@ -77,3 +82,26 @@ def build_evaluator(settings: Settings, prosody: Prosody | None = None) -> Evalu
         config_error=config_error(settings),
         prosody=prosody,
     )
+
+
+def _for_rule(settings: Settings, rule: Rule, prosody: Prosody | None) -> Evaluator | str:
+    try:
+        s = rule_settings(settings, rule.use)
+    except Invalid as exc:  # провайдер удалён после сохранения правила: падают только диалоги правила
+        return str(exc)
+    return build_evaluator(s, None if rule.use.prosody is False else prosody)
+
+
+def build_routed(settings: Settings, prosody: Prosody | None, store: Store) -> Evaluator:
+    """Оценщик по правилам обработки. Без включённых правил — ровно `build_evaluator`: те же запросы.
+
+    ponytail: у каждого правила свой ChatClient со своим лимитом CQA_LLM_RPM; общий лимит на провайдера,
+    если правила с одним провайдером упрутся в его квоту.
+    """
+    default = build_evaluator(settings, prosody)
+    found = rules(settings)
+    active = [r for r in found if r.enabled and r.id != DEFAULT]
+    if not active:
+        return default
+    built = {r.id: _for_rule(settings, r, prosody) for r in active}
+    return RoutedEvaluator(found, default, built, partial(facts, store))

@@ -13,8 +13,10 @@ from cqa.domain.appeal_stats import appeal_stats
 from cqa.domain.models import Answer as ResultAnswer
 from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, ReasonCode
 from cqa.domain.review import Answer, allowed_answers, effective_answer, fingerprint, needs_review, stamp
+from cqa.domain.sufficiency import mark_unsupported
 from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.state import current_state
+from cqa.services.sufficiency import assess_dialogs
 
 REASONS = [
     ReasonCode.model_validate({"code": code, "label": label, "applies": applies})
@@ -106,6 +108,7 @@ def _pair(store: Store, dlg: str, cid: str) -> _Pair:
     result = store.current_results({cid: fp}).get(dlg, {}).get(cid)
     if result is None:
         raise Invalid(f"Критерий {cid} ждёт оценки, оспаривать пока нечего")
+    result = mark_unsupported({cid: result}, assess_dialogs(store, [dialog])[dlg])[cid]  # как в состоянии
     records = [(a, afp) for a, afp in store.list_appeals() if a.dlg == dlg and a.cid == cid]
     return _Pair(criterion, fp, result, records)
 
