@@ -1,5 +1,5 @@
 // Hash-роутинг: #/queue?grp=risk, #/d/{id}, #/appeals/{id}, #/checklist, #/analytics, #/coaching. Без DOM.
-const PAGES = ['queue', 'd', 'appeals', 'checklist', 'analytics', 'coaching', 'alerts', 'people', 'audit', 'reports', 'usage', 'sources', 'batches', 'routing', 'automation', 'sufficiency'];
+const PAGES = ['queue', 'd', 'appeals', 'checklist', 'analytics', 'coaching', 'alerts', 'people', 'audit', 'reports', 'usage', 'sources', 'batches', 'routing', 'automation', 'sufficiency', 'products'];
 
 export function parseHash(hash) {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');

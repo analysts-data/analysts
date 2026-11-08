@@ -5,9 +5,12 @@ import { S, api, userHeader } from './state.js';
 const Q = [];
 let timer;
 
+// экран по контракту (^\w[\w.:/#-]{0,63}$): analytics, d, queue — без #/ и без id
+const screen = () => (globalThis.location?.hash.split('?')[0] ?? '').replace(/^#\/?/, '').split('/')[0] || 'queue';
+
 export function track(event, props = {}) {
   if (!S.features?.includes('telemetry')) return; // сервер без сбора метрик
-  Q.push({ event, at: new Date().toISOString(), page: globalThis.location?.hash.split('?')[0] || '#/', props });
+  Q.push({ event, at: new Date().toISOString(), page: screen(), props });
   if (Q.length >= 20) flush();
   else {
     clearTimeout(timer);
