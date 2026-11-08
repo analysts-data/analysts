@@ -123,9 +123,8 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
-    hooks = httpx.AsyncClient(
-        timeout=5
-    )  # ponytail: ждём вебхук в запросе, очередь — если получатель медленный
+    # ponytail: вебхук ждём в самом запросе; очередь — если получатель окажется медленным
+    hooks = httpx.AsyncClient(timeout=5)
 
     async def alerts() -> list[dict[str, Any]]:
         """Проверить правила алертов и отправить новые как `alert.created` (вебхук только при настройке)."""
@@ -137,12 +136,10 @@ def create_app(
         return created
 
     app.state.alerts = alerts
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts)
     evaluator = (
         evaluator if evaluator is not None else build_routed(settings, prosody, store)
     )  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
