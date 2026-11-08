@@ -2,6 +2,7 @@
 // Ответы берутся через ans/frac из scoring.js, чтобы доля аналитики не разошлась с итогом карточки.
 import { ans, frac, r2, flagsOf, calc } from './scoring.js';
 import { groupOf } from './queue.js';
+import { t } from './i18n.js';
 
 // Виды грубых ошибок (signal=risk) через flagsOf: счётчики по подвопросам, диалоги с флагом и проверенные из них.
 // {flaggedIds: [..], reviewed: n, kinds: [{k, label, n}]}
@@ -100,9 +101,9 @@ export function reasonsStats(S) {
 // с эталоном жюри. Итог — из calc с учётом решений, ответы — через ans.
 export function resultsCsv(dialogs, checklist, appeals) {
   const cols = checklist.criteria.filter(c => c.type !== 'flag');
-  const cell = a => (a == null ? 'ждёт оценки' : a === 'na' ? '—' : String(a));
+  const cell = a => (a == null ? t('ждёт оценки') : a === 'na' ? '—' : String(a));
   const lines = [
-    ['Диалог', 'Канал', 'Язык', 'Итог', 'Грубые ошибки', ...cols.map(c => c.id)].join(';'),
+    [t('Диалог'), t('Канал'), t('Язык'), t('Итог'), t('Грубые ошибки'), ...cols.map(c => c.id)].join(';'),
     ...dialogs.map(d =>
       csvRow([
         d.id,
@@ -126,7 +127,7 @@ export const nextStepStats = S => ({
 // Выгрузка повторяющихся причин: BOM, разделитель «;» (задача 3.2, кнопка «Скачать CSV»).
 export function reasonsCsv(S) {
   const lines = [
-    ['Причина', 'Разговоров', 'Критерии', 'Языки', 'Что менять', 'Диалоги'].join(';'),
+    [t('Причина'), t('Разговоров'), t('Критерии'), t('Языки'), t('Что менять'), t('Диалоги')].join(';'),
     ...reasonsStats(S).recurring.map(g =>
       csvRow([g.tag, g.dialogs.length, g.criteria.join(','), g.langs.join(','), g.owner, g.dialogs.join(', ')])
     ),
@@ -210,15 +211,22 @@ export function coachingStats(S) {
 }
 
 // «Как звучит хороший ответ»: реплики оператора из оснований ответов с полным баллом.
+// Диалог с грубой ошибкой не образец; реплика-основание сниженного или флагового критерия тоже.
 export function goodExamples(S, cid, limit = 3) {
   const c = S.checklist.criteria.find(x => x.id === cid);
   const out = [];
   for (const d of S.dialogs) {
     const r = d.res[cid];
     if (!r || !r.ev || frac(c, ans(d, cid, S.appeals)) !== 1) continue;
+    if (flagsOf(d, S.checklist, S.appeals).length) continue;
+    const bad = new Set(
+      S.checklist.criteria
+        .filter(x => x.type === 'flag' || (frac(x, ans(d, x.id, S.appeals)) ?? 1) < 1)
+        .flatMap(x => (d.res[x.id] && d.res[x.id].ev) || [])
+    );
     for (const n of r.ev) {
       const l = lineOf(d, n);
-      if (l && l.who === 'operator') out.push({ dialogId: d.id, lineNo: n, text: l.text });
+      if (l && l.who === 'operator' && !bad.has(n)) out.push({ dialogId: d.id, lineNo: n, text: l.text });
     }
   }
   return out.slice(0, limit);

@@ -443,6 +443,115 @@ def test_org_source_is_saved_and_replaced():
     assert store.org_source() == ("https://org.test/api?token=b", "CTRL1")
 
 
+# --- история оценок и запуски ---
+
+OLD_SCHEMA = """
+CREATE TABLE dialogs (id TEXT PRIMARY KEY, body TEXT NOT NULL, reviewed INTEGER NOT NULL DEFAULT 0,
+  audio_url TEXT, cost TEXT);
+CREATE TABLE results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dialog_id TEXT NOT NULL REFERENCES dialogs(id),
+  cid TEXT NOT NULL, version INTEGER NOT NULL, fp TEXT NOT NULL, body TEXT NOT NULL, created TEXT NOT NULL);
+CREATE TABLE runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0,
+  cost REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'running', started REAL NOT NULL, finished REAL);
+INSERT INTO dialogs (id, body) VALUES ('d1', '{}');
+INSERT INTO results (dialog_id, cid, version, fp, body, created)
+  VALUES ('d1', '04', 3, 'f1', '{"a": 15}', 't');
+INSERT INTO runs (total, started) VALUES (8, 1.0);
+"""
+
+
+def test_old_database_gains_run_columns_and_keeps_its_rows(tmp_path: Path) -> None:
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.executescript(OLD_SCHEMA)
+    old.close()
+
+    store = Store(connect(path))
+
+    (row,) = store.result_rows(dialog_id="d1")
+    assert (row.cid, row.run_id, row.result.a) == ("04", None, 15)
+    run = store.get_run(1)
+    assert run is not None
+    assert (run.model, run.checklist_version, run.force, run.skipped) == (None, None, False, 0)
+    Store(connect(path))  # second open: columns are already there
+
+
+def test_result_remembers_the_run_that_gave_it():
+    store = Store(connect(":memory:"))
+    store.add_dialogs([_by_id(_dialogs_fixture(), "call-024")], {})
+    run_id = store.add_run(1, 100.0)
+
+    store.add_result("call-024", "04", 3, "f1", _result(a=15), run_id=run_id)
+    store.add_result("call-024", "04", 3, "f1", _result(a=10, model="вручную"))
+
+    rows = store.result_rows(dialog_id="call-024")
+    assert [(r.run_id, r.result.a) for r in rows] == [(run_id, 15), (None, 10)]
+    assert [r.result.a for r in store.result_rows(run_id=run_id)] == [15]
+    assert store.get_result(rows[0].id) == rows[0]
+    assert store.get_result(999) is None
+
+
+def test_runs_remember_model_version_and_force_newest_first():
+    store = Store(connect(":memory:"))
+    first = store.add_run(16, 1.0, model="qwen3-6", checklist_version=3)
+    second = store.add_run(4, 2.0, model="jev-latest", checklist_version=3, force=True, skipped=2)
+
+    runs = store.list_runs()
+
+    assert [r.id for r in runs] == [second, first]
+    assert (runs[0].model, runs[0].checklist_version, runs[0].force, runs[0].skipped) == (
+        "jev-latest",
+        3,
+        True,
+        2,
+    )
+    assert (runs[1].force, runs[1].skipped) == (False, 0)
+
+
+def test_run_dialog_statuses_follow_the_run_and_the_latest_run_wins():
+    store = Store(connect(":memory:"))
+    store.add_dialogs([_by_id(_dialogs_fixture(), i) for i in ("call-024", "p1-ru-003")], {})
+    first = store.add_run(16, 1.0)
+    store.queue_dialogs(first, [("call-024", "queued", 8, 0), ("p1-ru-003", "queued", 8, 0)])
+    store.set_dialog_status(first, "call-024", "error", error="timeout")
+    store.finish_run(first, 2.0, "cancelled")
+    second = store.add_run(8, 3.0)
+    store.queue_dialogs(second, [("call-024", "queued", 8, 0)])
+    store.set_dialog_status(second, "call-024", "evaluating")
+
+    assert store.run_dialogs(first) == [
+        {"id": "call-024", "status": "error", "error": "timeout", "done": 0, "total": 8, "skipped": 0},
+        {"id": "p1-ru-003", "status": "cancelled", "error": None, "done": 0, "total": 8, "skipped": 0},
+    ]
+    latest = store.latest_dialog_status()
+    assert (latest["call-024"]["run_id"], latest["call-024"]["status"]) == (second, "evaluating")
+    assert (latest["p1-ru-003"]["run_id"], latest["p1-ru-003"]["status"]) == (first, "cancelled")
+
+    store.cancel_stale_runs()  # restart: the evaluating dialog of the dead run is cancelled too
+    assert store.latest_dialog_status()["call-024"]["status"] == "cancelled"
+
+
+def test_shadow_result_stays_out_of_the_current_answer():
+    store = Store(connect(":memory:"))
+    store.add_dialogs([_by_id(_dialogs_fixture(), "call-024")], {})
+    run_id = store.add_run(1, 1.0, apply="compare", override={"llm_provider": "ds"})
+
+    store.add_result("call-024", "04", 3, "f1", _result(a=15))
+    store.add_result("call-024", "04", 3, "f1", _result(a=10), run_id=run_id, shadow=True)
+
+    assert store.current_results({"04": "f1"})["call-024"]["04"].a == 15
+    assert [(r.result.a, r.shadow) for r in store.result_rows(dialog_id="call-024")] == [
+        (15, False),
+        (10, True),
+    ]
+    run = store.get_run(run_id)
+    assert run is not None and (run.apply, run.override) == ("compare", {"llm_provider": "ds"})
+    plain = store.get_run(store.add_run(1, 2.0))
+    assert plain is not None and (plain.apply, plain.override) == ("replace", None)
+
+
 # --- Сотрудник диалога ---
 
 
