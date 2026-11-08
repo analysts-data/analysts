@@ -22,6 +22,7 @@ function Target({ type, id }: { type: string; id: string }) {
 const detailsText = (d: any) =>
   d && typeof d === 'object'
     ? Object.entries(d)
+        .filter(([, v]) => v != null && v !== '' && !(Array.isArray(v) && !v.length)) // пустые поля не шумят
         .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
         .join('; ')
     : String(d ?? '');
