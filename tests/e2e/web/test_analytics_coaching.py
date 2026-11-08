@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import BrowserContext, Page, Route, expect
+from playwright.sync_api import BrowserContext, Page, Request, Route, expect
 
 pytestmark = pytest.mark.e2e
 STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "analytics_state.json").read_text(
@@ -11,12 +11,20 @@ STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "analytics_state.jso
 
 
 def open_page(page: Page, web_url: str, route: str) -> list[str]:
-    """Отдаёт фикстуру на GET /api/state и возвращает журнал запросов к /api/."""
+    """Отдаёт фикстуру на GET /api/state и возвращает журнал запросов экрана к /api/.
+
+    Запросы шапки (ops.ts: сотрудники для «Вы вошли как», колокольчик алертов, метрики) идут с любого экрана
+    и в журнал не попадают; всё остальное, в том числе новые пути сервера, — попадает.
+    """
     requests: list[str] = []
-    page.on(
-        "request",
-        lambda r: requests.append(f"{r.method} {r.url.split('/api', 1)[1]}") if "/api/" in r.url else None,
-    )
+    shell = ("/employees", "/alerts?status=new", "/telemetry")
+
+    def log(r: Request) -> None:
+        path = r.url.split("/api", 1)[1] if "/api/" in r.url else None
+        if path is not None and path not in shell:
+            requests.append(f"{r.method} {path}")
+
+    page.on("request", log)
     page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=STATE))
     page.goto(f"{web_url}/{route}")
     return requests
