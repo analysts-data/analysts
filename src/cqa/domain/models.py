@@ -199,6 +199,8 @@ class Dialog(BaseModel):
     operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
     source_id: str | None = None  # источник из реестра (GET /api/sources); колонка dialogs.source_id
     external_id: str | None = None  # id записи в источнике; дубли по (source_id, external_id)
+    client_ref: str | None = None  # стабильный псевдоним клиента от банковской интеграции
+    case_status: Literal["unknown", "open", "in_progress", "resolved"] = "unknown"
     sufficiency: Sufficiency | None = None
 
 
