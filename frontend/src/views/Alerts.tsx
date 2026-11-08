@@ -1,6 +1,6 @@
 // Экран «Алерты»: GET /api/alerts с фильтрами статуса и важности, «Принять», «Решить» с заметкой, «Назначить»,
 // «Почему» (basis сервера как есть, без догадок интерфейса) и переход к объекту. Формы — helpers-ops.md, «Алерты и маркеры».
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { Fragment, useEffect, useState } from 'react';
 import { titleOf } from '../lib/format.js';
 import { lang, t } from '../lib/i18n.js';
@@ -8,7 +8,8 @@ import { href } from '../lib/router.js';
 import { api, toast } from '../lib/state.js';
 import { refreshOps } from '../ops';
 import { go, useRoute, useS } from '../store';
-import { Button, Card, Chip, cn, Field, Modal, PageHead, Skeleton, type Tone } from '../ui';
+import { Button, Card, Chip, cn, Field, Modal, PageHead, Skeleton, Tip, type Tone } from '../ui';
+import { RulesDialog } from './alerts/Rules';
 
 // Подписи — функции: t() при отрисовке, после смены языка.
 const SEV: Record<string, [() => string, Tone, number]> = {
@@ -37,14 +38,16 @@ const BASIS: Record<string, () => string> = {
   window: () => t('Период'),
   dialogs: () => t('Диалоги'),
   lines: () => t('Реплики'),
+  criteria: () => t('Критерии'),
+  appeals: () => t('Апелляции'),
 };
 const LOCALE: Record<string, string> = { ru: 'ru-RU', en: 'en-GB', kk: 'kk-KZ' };
 
 // Черновики заметок «Решить» по id алерта: живут, пока открыта вкладка, и переживают переход между экранами.
 const drafts: Record<string, string> = {};
 
-/** Ответ GET /api/alerts: массив или {items, counts}, как newAlerts в ops.ts. */
-const itemsOf = (data: any): any[] => (Array.isArray(data) ? data : (data?.items ?? []));
+/** Ответ GET /api/alerts: {alerts, counts} (design/contract.md); массив и {items} — от заглушек. */
+const itemsOf = (data: any): any[] => (Array.isArray(data) ? data : (data?.alerts ?? data?.items ?? []));
 
 const when = (iso: string | null) =>
   iso
@@ -84,27 +87,30 @@ export function Basis({ basis, dialog }: { basis: any; dialog?: string | null })
       );
     });
   return (
-    <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
-      {Object.entries(basis)
-        .filter(([k, v]) => v != null && v !== '' && k !== 'dialog')
-        .map(([k, v]) => (
-          <Fragment key={k}>
-            <dt className="text-muted">{BASIS[k]?.() ?? k}</dt>
-            <dd className="[overflow-wrap:anywhere]">
-              {k === 'lines' && Array.isArray(v)
-                ? lines(v)
-                : k === 'dialogs' && Array.isArray(v)
-                  ? v.map((id: string, i: number) => (
-                      <Fragment key={id}>
-                        {i > 0 && ', '}
-                        <a href={href('d', id)}>{id}</a>
-                      </Fragment>
-                    ))
-                  : plain(v)}
-            </dd>
-          </Fragment>
-        ))}
-    </dl>
+    <div className="flex flex-col gap-2">
+      {basis.why && <p className="text-[13px]">{basis.why}</p>}
+      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]">
+        {Object.entries(basis)
+          .filter(([k, v]) => v != null && v !== '' && k !== 'dialog' && k !== 'why')
+          .map(([k, v]) => (
+            <Fragment key={k}>
+              <dt className="text-muted">{BASIS[k]?.() ?? k}</dt>
+              <dd className="[overflow-wrap:anywhere]">
+                {k === 'lines' && Array.isArray(v)
+                  ? lines(v)
+                  : k === 'dialogs' && Array.isArray(v)
+                    ? v.map((id: string, i: number) => (
+                        <Fragment key={id}>
+                          {i > 0 && ', '}
+                          <a href={href('d', id)}>{id}</a>
+                        </Fragment>
+                      ))
+                    : plain(v)}
+              </dd>
+            </Fragment>
+          ))}
+      </dl>
+    </div>
   );
 }
 
@@ -162,6 +168,8 @@ export function Alerts({ id }: { id: string | null }) {
   const [open, setOpen] = useState<string | null>(id);
   const [busy, setBusy] = useState<string | null>(null);
   const [resolving, setResolving] = useState<any>(null);
+  const [rules, setRules] = useState(false);
+  const [checking, setChecking] = useState(false);
   const canAct = S.role !== 'operator';
   const status = p.status || '',
     sev = p.severity || '';
@@ -196,6 +204,21 @@ export function Alerts({ id }: { id: string | null }) {
     }
   }
 
+  async function evaluate() {
+    setChecking(true);
+    try {
+      const r: any = await api.post('/alerts/evaluate');
+      const n = r?.created?.length ?? 0;
+      toast(n ? t('Правила проверены, новых алертов: {n}.', { n }) : t('Правила проверены, новых алертов нет.'));
+      await load();
+      refreshOps();
+    } catch (e: any) {
+      toast(t('Проверка не выполнена: {e}', { e: e.message }));
+    } finally {
+      setChecking(false);
+    }
+  }
+
   const setParam = (k: string, v: string) => go(href('alerts', id, { ...p, [k]: v }));
   const sel = (label: string, k: string, value: string, vals: [string, string][]) => (
     <label className="flex items-center gap-2 text-[13px] text-muted">
@@ -219,7 +242,21 @@ export function Alerts({ id }: { id: string | null }) {
 
   return (
     <>
-      <PageHead title={t('Алерты')} sub={t('Сигналы правил по диалогам, сотрудникам и прогонам. Примите алерт, чтобы взять его в работу, и решите с заметкой.')} />
+      <PageHead title={t('Алерты')} sub={t('Сигналы правил по диалогам, сотрудникам и прогонам. Примите алерт, чтобы взять его в работу, и решите с заметкой.')}>
+        {canAct && (
+          <>
+            <Button data-act="rules" onClick={() => setRules(true)}>
+              <SlidersHorizontal size={16} aria-hidden="true" /> {t('Правила алертов')}
+            </Button>
+            <Tip content={t('Проверить все включённые правила на текущих данных. Само это происходит после оценки, апелляции и решения.')}>
+              <Button data-act="evaluate" disabled={checking} onClick={evaluate}>
+                <RefreshCw size={16} aria-hidden="true" /> {checking ? t('Проверяем…') : t('Проверить сейчас')}
+              </Button>
+            </Tip>
+          </>
+        )}
+      </PageHead>
+      {rules && <RulesDialog onClose={() => setRules(false)} />}
       {counts && (
         <p className="text-ink2">
           <b className="text-ink">{t('Новых: {n}', { n: counts.new ?? 0 })}</b>
