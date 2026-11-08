@@ -90,7 +90,7 @@ def test_filters_by_language_and_channel() -> None:
         80.5,
         0,
     )
-    assert kz["filters"] == {"lang": "KZ", "ch": None}
+    assert kz["filters"] == {"lang": "KZ", "ch": None, "operator": None}
     assert (call["summary"]["dialogs"], call["summary"]["open_appeals"]) == (1, 1)
 
 
