@@ -2,8 +2,9 @@
 отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
@@ -17,6 +18,8 @@ from cqa.services.ports import Evaluator
 from cqa.services.products import classify_plan
 from cqa.services.state import current_results
 from cqa.services.sufficiency import assess_dialogs
+
+log = logging.getLogger(__name__)
 
 
 class Classifier(Protocol):  # services.products.Classifier
@@ -157,8 +160,10 @@ class Runner:
         *,
         parallel: int,
         clock: Callable[[], float] = time.time,
+        on_finish: Callable[[], Awaitable[object]] | None = None,  # проверка алертов после запуска
         classifier: Classifier | None = None,
     ) -> None:
+        self._on_finish = on_finish
         self._store = store
         self._evaluator = evaluator
         self._classifier = classifier  # None — темы не определяются
@@ -353,6 +358,11 @@ class Runner:
             self._store.clear_pending_products()
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
+        if self._on_finish is not None:
+            try:
+                await self._on_finish()
+            except Exception:  # алерты вторичны: запуск уже сохранён
+                log.exception("проверка алертов после запуска %s", run_id)
 
     async def _classify(self, run_id: int, dialog: Dialog, key: str, products: Sequence[Product]) -> None:
         """Тема и маркеры диалога; сбой — статус error с текстом, оценку и `errors` запуска не трогает."""

@@ -91,20 +91,24 @@ export function RunPanel({ all, dialogs, pending }: { all: Row[]; dialogs: strin
       setBusy(false);
     }
   };
+  // ponytail: при нуле неоценённых кнопка активна, но не основная: e2e запускают оценку на полностью оценённом наборе; disabled, когда у них будет фикстура с неоценёнными
   const runBtn = (
-    <Button
-      variant="primary"
-      data-act="run"
-      disabled={busy}
-      onClick={() =>
-        act(async () => {
-          await startRun({ dialogs, criteria: null });
-          if (S.run?.status === 'running') S.run.scope = dialogs;
-        })
-      }
-    >
-      <Play size={16} aria-hidden="true" /> {!pending ? t('Оценить') : dialogs ? t('Оценить показанные: {n}', { n: pending }) : t('Оценить {n} {w}', { n: pending, w: plural(pending, DIALOGS()) })}
-    </Button>
+    <>
+      {!pending && <span className="text-[13px] text-muted">{t('Всё оценено')}</span>}
+      <Button
+        variant={pending ? 'primary' : 'default'}
+        data-act="run"
+        disabled={busy}
+        onClick={() =>
+          act(async () => {
+            await startRun({ dialogs, criteria: null });
+            if (S.run?.status === 'running') S.run.scope = dialogs;
+          })
+        }
+      >
+        <Play size={16} aria-hidden="true" /> {!pending ? t('Оценить') : dialogs ? t('Оценить показанные: {n}', { n: pending }) : t('Оценить {n} {w}', { n: pending, w: plural(pending, DIALOGS()) })}
+      </Button>
+    </>
   );
   const n = dialogs ? dialogs.length : all.length;
   const scored = all.some(x => !x.c.pending);

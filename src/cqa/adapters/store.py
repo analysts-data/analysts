@@ -17,6 +17,7 @@ from cqa.domain.models import (
     Outcome,
     Product,
     ProductTag,
+    ReasonCode,
     RiskMark,
 )
 
@@ -54,6 +55,18 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS markers (
+  dialog_id TEXT NOT NULL REFERENCES dialogs(id), label TEXT NOT NULL, by TEXT NOT NULL, at TEXT NOT NULL,
+  PRIMARY KEY (dialog_id, label));
+CREATE TABLE IF NOT EXISTS lists (name TEXT PRIMARY KEY, body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, rule_id TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('info', 'warning', 'critical')), title TEXT NOT NULL,
+  target_type TEXT NOT NULL, target_id TEXT NOT NULL, basis TEXT NOT NULL, created TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'ack', 'resolved')),
+  assignee TEXT, acked_by TEXT, acked_at TEXT, resolved_by TEXT, resolved_at TEXT, note TEXT,
+  UNIQUE (rule_id, target_type, target_id));
+CREATE TABLE IF NOT EXISTS appeal_reasons (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sources (
   id TEXT PRIMARY KEY, name TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('org_api', 'http_json', 'webhook', 'file', 'paste', 'api')),
@@ -684,6 +697,19 @@ class Store:
         rows = self._conn.execute("SELECT body, fp FROM appeals ORDER BY n").fetchall()
         return [(Appeal.model_validate(json.loads(row["body"])), row["fp"]) for row in rows]
 
+    def appeal_reasons(self) -> list[ReasonCode] | None:
+        """Каталог кодов причин, сохранённый из интерфейса; `None` — ещё не сохраняли."""
+        row = self._conn.execute("SELECT body FROM appeal_reasons").fetchone()
+        return [ReasonCode.model_validate(r) for r in json.loads(row["body"])] if row else None
+
+    def set_appeal_reasons(self, reasons: Sequence[ReasonCode]) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO appeal_reasons (id, body) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET body = excluded.body",
+                (_dump([r.model_dump() for r in reasons]),),
+            )
+
     # --- адресаты причин ---
 
     def get_owners(self) -> dict[str, str]:
@@ -729,6 +755,89 @@ class Store:
                 "UPDATE sources SET secret = ?, config = json_object('group_id', ?), enabled = 1 "
                 "WHERE id = 'org'",
                 (url, group_id),
+            )
+
+    # --- маркеры, списки (каталог маркеров, правила алертов), алерты ---
+
+    def markers(self) -> dict[str, list[dict[str, str]]]:
+        """Ручные маркеры: id диалога -> [{label, by, at}] в порядке постановки."""
+        out: dict[str, list[dict[str, str]]] = {}
+        for r in self._conn.execute("SELECT dialog_id, label, by, at FROM markers ORDER BY rowid"):
+            out.setdefault(r["dialog_id"], []).append({"label": r["label"], "by": r["by"], "at": r["at"]})
+        return out
+
+    def change_markers(
+        self, dialog_id: str, add: Sequence[str], remove: Sequence[str], by: str, at: str
+    ) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO markers (dialog_id, label, by, at) VALUES (?, ?, ?, ?)",
+                [(dialog_id, label, by, at) for label in add],
+            )
+            self._conn.executemany(
+                "DELETE FROM markers WHERE dialog_id = ? AND label = ?",
+                [(dialog_id, label) for label in remove],
+            )
+
+    def get_list(self, name: str) -> Any:
+        row = self._conn.execute("SELECT body FROM lists WHERE name = ?", (name,)).fetchone()
+        return json.loads(row["body"]) if row is not None else None
+
+    def set_list(self, name: str, body: object) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO lists (name, body) VALUES (?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET body = excluded.body",
+                (name, _dump(body)),
+            )
+
+    def all_prosody(self) -> dict[str, dict[str, Any]]:
+        return {r["dialog_id"]: json.loads(r["body"]) for r in self._conn.execute("SELECT * FROM prosody")}
+
+    @staticmethod
+    def _alert(row: sqlite3.Row) -> dict[str, Any]:
+        return {**dict(row), "basis": json.loads(row["basis"])}
+
+    def add_alerts(self, hits: Sequence[Mapping[str, Any]], created: str) -> list[dict[str, Any]]:
+        """Новые алерты; пара (правило, цель), уже бывшая в таблице в любом статусе, пропускается."""
+        ids = []
+        with self._conn:
+            for h in hits:
+                cur = self._conn.execute(
+                    "INSERT OR IGNORE INTO alerts "
+                    "(rule_id, severity, title, target_type, target_id, basis, created) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        h["rule_id"],
+                        h["severity"],
+                        h["title"],
+                        h["target_type"],
+                        h["target_id"],
+                        _dump(h["basis"]),
+                        created,
+                    ),
+                )
+                if cur.rowcount:
+                    ids.append(cur.lastrowid)
+        return [a for i in ids if (a := self.get_alert(i)) is not None]
+
+    def get_alert(self, alert_id: int | None) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+        return self._alert(row) if row is not None else None
+
+    def list_alerts(self) -> list[dict[str, Any]]:
+        return [self._alert(r) for r in self._conn.execute("SELECT * FROM alerts ORDER BY id DESC")]
+
+    ALERT_FIELDS = frozenset(
+        {"status", "assignee", "acked_by", "acked_at", "resolved_by", "resolved_at", "note"}
+    )
+
+    def update_alert(self, alert_id: int, **fields: str | None) -> None:
+        assert set(fields) <= self.ALERT_FIELDS, fields
+        with self._conn:
+            self._conn.execute(
+                f"UPDATE alerts SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",  # noqa: S608
+                (*fields.values(), alert_id),
             )
 
     # --- источники и журнал синхронизаций ---

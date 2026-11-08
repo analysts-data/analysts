@@ -15,7 +15,7 @@
    Фирменный зелёный — знак продукта и полосы прогресса; для кнопок и текста он темнее, иначе контраст ниже AA. */
 /* шрифт интерфейса: Onest (открытый неогротеск, кириллица и казахские буквы), встроен в сборку */
 html:root{--font:'Onest Variable',"Segoe UI",system-ui,-apple-system,Arial,sans-serif}
-html{--on-risk:#fff;--field:#8C95A1;--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B323}
+html{--shadow-pop:0 8px 24px rgba(16,24,40,.12),0 1px 2px rgba(16,24,40,.06);--on-risk:#fff;--field:#8C95A1;--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B323}
 [data-theme=dark]{
   --bg:#101214;--surface:#171A1D;--hover:#1F2327;--sunken:#14171A;--top:rgba(23,26,29,.9);
   --line:#272B30;--line2:#202428;--line-strong:#383E45;
@@ -25,7 +25,7 @@ html{--on-risk:#fff;--field:#8C95A1;--on-accent:#fff;--sunken:#F7F8FA;--top:rgba
   --risk:#FF8A7A;--risk-soft:#3A1C18;
   --info:#7FB0F5;--info-line:#3586EA;--info-soft:#16243A;
   --na:#A8B2BF;--na-soft:#22272C;
-  --shadow:0 1px 2px rgba(0,0,0,.5);
+  --shadow:0 1px 2px rgba(0,0,0,.5);--shadow-pop:0 8px 24px rgba(0,0,0,.55);
   color-scheme:dark;
 }
 @tailwind base;

@@ -14,55 +14,31 @@ FRONT = ROOT / "frontend" / "src"
 EXEMPT = {
     "/health",
     "/login",
-    # UI в работе: страница «Отчёты» (reports-hub, PR #82)
-    "/reports",
+    # пути отчётов приходят из каталога GET /api/reports (href_template, items), в коде интерфейса их нет
     "/quality",
     "/quality/{report_id}",
     "/runs/{run_id}/report",
     "/results/{which}",
-    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
-    "/audit",
-    "/employees",
-    "/employees/import",
-    "/employees/{employee_id}",
+    # текущий сотрудник: интерфейс знает его по выбору «Вы вошли как» (X-CQA-User), отдельный запрос не нужен
     "/me",
-    "/overview",
-    # UI в работе: правила при недостаточности данных (docs/insufficient-data.md)
-    "/sufficiency",
-    # UI в работе: экран «Пакеты» (пакетная обработка), спецификация — в PR «пакетная обработка»
-    "/batches",
-    "/batches/{job_id}",
-    "/batches/{job_id}/{action}",
-    # UI в работе: история оценок, возврат оценки, сравнение и принятие запусков (review-workflow-history)
-    "/dialogs/{dialog_id}/history",
-    "/results/{result_id}/restore",
-    "/runs/compare",
-    "/runs/{run_id}/adopt",
 }
-# UI в работе: оценки по сотрудникам (PR #80)
-EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
-# UI в работе (сессия React): страница «Источники», мастер добавления, фильтр по источнику
+# UI в работе: колокольчик, страница алертов, чипы и фильтр маркеров (PR #87)
 EXEMPT |= {
-    "/sources",
-    "/sources/stats",
-    "/sources/test",
-    "/sources/{source_id}",
-    "/sources/{source_id}/test",
-    "/sources/{source_id}/sync",
-    "/sources/{source_id}/syncs",
+    "/alerts",
+    "/alerts/evaluate",
+    "/alerts/rules",
+    "/alerts/{alert_id}/ack",
+    "/alerts/{alert_id}/assignee",
+    "/alerts/{alert_id}/resolve",
+    "/dialogs/{dialog_id}/markers",
+    "/markers/catalog",
 }
-# вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
-EXEMPT |= {"/sources/{source_id}/ingest"}
-# UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
-EXEMPT |= {"/telemetry", "/usage"}
-# UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
-EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
-# UI в работе: рекомендации (PR #89)
-EXEMPT |= {"/recommendations"}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 # UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
 EXEMPT |= {"/routing", "/routing/explain"}
+# UI в работе: выбор «Причина решения» в форме решения, плитка «Изменено людьми» в аналитике (PR #92)
+EXEMPT |= {"/appeals/reasons", "/appeals/stats"}
 # UI в работе: темы обращений (PR #95)
 EXEMPT |= {"/products", "/products/stats", "/dialogs/{dialog_id}/product"}
 

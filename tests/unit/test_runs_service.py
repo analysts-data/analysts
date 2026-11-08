@@ -609,3 +609,18 @@ async def test_override_alone_is_a_forced_re_check(store: Store) -> None:
     await _drain(runner)
     run = store.get_run(run_id)
     assert run is not None and (run.force, run.total, run.apply) == (True, 1, "replace")
+
+
+async def test_finished_run_calls_alert_hook_and_survives_its_failure(store: Store) -> None:
+    calls: list[int] = []
+
+    async def hook() -> None:
+        calls.append(1)
+        raise RuntimeError("alerts down")
+
+    plan = plan_run(store, CHECKLIST, None, None)
+    run_id = store.add_run(sum(len(cs) for _, cs in plan), 100.0)
+    await Runner(store, FakeEvaluator(), parallel=1, on_finish=hook).execute(run_id, CHECKLIST, plan)
+
+    run = store.get_run(run_id)
+    assert calls == [1] and run is not None and run.status == "done"
