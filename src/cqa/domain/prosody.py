@@ -17,7 +17,7 @@ import numpy.typing as npt
 from cqa.domain.audio_timeline import MIN_UTTERANCE_S, utterance_s
 from cqa.domain.models import Fold, Line
 
-# ponytail: пороги эвристические, по литературе о просодии и прослушиванию звонков DEV, не обучены;
+# ponytail: пороги эвристические — по литературе о просодии и числам 5 звонков DEV, не обучены;
 # калибровать на звонках с разметкой специалистов КК
 RAISED_ST: Final = 3.0  # тон выше обычного для говорящего, полутоны
 RAISED_DB: Final = 6.0  # громче обычного для говорящего, дБ
@@ -27,7 +27,8 @@ FAST_RATIO: Final = 1.5  # темп от обычного для говорящ�
 FAST_MIN_WPS: Final = 3.5  # и не меньше, слов в секунду
 LONG_PAUSE_S: Final = 5.0  # тишина перед ответом оператора клиенту
 OVERLAP_MIN_S: Final = 1.0  # реплика началась раньше конца чужой
-SPEECH_RANGE_DB: Final = 25.0  # речь — кадры не тише 95-го процентиля записи минус столько
+JUDGED_MIN_S: Final = 1.5  # тон и темп короче — «Алло?», «Да-да»: не показательны
+SPEECH_RANGE_DB: Final = 30.0  # речь — кадры не тише 95-го процентиля записи минус столько
 GAP_IN_LINE_S: Final = 0.5  # тишина короче — пауза внутри реплики, длиннее — граница с предыдущей
 MIN_BASELINE_LINES: Final = 3  # меньше реплик — обычной манеры нет, относительных отклонений тоже
 MIN_VOICED: Final = 10  # кадров с тоном для медианы и размаха
@@ -105,12 +106,14 @@ def _features(lines: Sequence[Line | Fold], tr: Tracks) -> list[_Feat]:
     out: list[_Feat] = []
     sounding = [x for x in lines if isinstance(x, Line) and x.s is not None and x.who != "system"]
     starts = [x.s or 0.0 for x in sounding]
-    prev_end, prev_who = 0.0, ""  # метка конца и роль предыдущей звучащей реплики, бот тоже
+    prev_start, prev_end, prev_who = 0.0, 0.0, ""  # предыдущая звучащая реплика, бот тоже
     for k, ln in enumerate(sounding):
         s, mark = starts[k], starts[k] + utterance_s(ln.text)
         lo, after_speaker = min(s, prev_end), prev_who in NAME
-        overlap = max(0.0, prev_end - s) if after_speaker and prev_who != ln.who else 0.0
-        prev_end, prev_who = mark, ln.who
+        # перебил — начал после начала чужой реплики; короткая вставка внутри длинной — не перебивание
+        cut_in = after_speaker and prev_who != ln.who and s > prev_start
+        overlap = max(0.0, prev_end - s) if cut_in else 0.0
+        prev_start, prev_end, prev_who = s, mark, ln.who
         if ln.who not in NAME:
             continue
         found = _speech(tr.int_t, (tr.int_t >= lo) & (tr.int_t <= mark) & (tr.db >= loud), s)
@@ -154,14 +157,15 @@ def _baseline(feats: list[_Feat]) -> dict[str, Any]:
 
 def _flag(f: _Feat, prev: _Feat | None, base: dict[str, Any]) -> list[Flag]:
     flags: list[Flag] = []
-    if base["lines"] >= MIN_BASELINE_LINES:
+    judged = base["lines"] >= MIN_BASELINE_LINES and f.dur >= JUDGED_MIN_S
+    if judged:
         higher = f.f0 is not None and base["f0"] and _st(f.f0, base["f0"]) >= RAISED_ST
         louder = f.db is not None and base["db"] is not None and f.db - base["db"] >= RAISED_DB
         if higher or louder:
             flags.append("raised")
     if f.range_st is not None and f.range_st < MONOTONE_ST and f.dur >= MONOTONE_MIN_S:
         flags.append("monotone")
-    if base["lines"] >= MIN_BASELINE_LINES and f.wps >= max(FAST_RATIO * base["wps"], FAST_MIN_WPS):
+    if judged and f.wps >= max(FAST_RATIO * base["wps"], FAST_MIN_WPS):
         flags.append("fast")
     if prev is not None and prev.scored:
         reply = f.who == "operator" and prev.who == "client"

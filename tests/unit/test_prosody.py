@@ -232,3 +232,20 @@ def test_previous_speaker_running_past_the_mark_does_not_hide_the_pause() -> Non
 
     assert by_n(result, 5)["flags"] == ["long_pause"]
     assert by_n(result, 5)["pause"] == pytest.approx(9.0, abs=0.1)
+
+
+def test_short_line_is_not_judged_for_raised_tone_or_pace() -> None:
+    lines = dialogue(8, words={4: 1})  # «Алло?» — 0,6 с: тон вопроса и темп по одному слову не показательны
+    result = analyse(lines, tracks(talk(lines, {4: (6.0, 8.0)})))
+
+    assert by_n(result, 4)["flags"] == []
+
+
+def test_short_interjection_inside_a_long_line_is_not_an_overlap() -> None:
+    lines = dialogue(8, words={3: 25})  # оператор говорит 10 с, клиент вставил «угу» на 5-й секунде
+    s3 = lines[2].s or 0.0
+    uh = line(3, "client", s3 + 5.0, words=1)  # метка конца «угу» раньше — в расшифровке он первый
+    long = line(4, "operator", s3, words=25)
+    result = analyse([*lines[:2], uh, long, *lines[4:]], tracks(talk([*lines[:2], long, uh, *lines[4:]])))
+
+    assert all("overlap" not in x["flags"] for x in result["lines"])
