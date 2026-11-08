@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from collections.abc import Callable, Iterator
 from functools import partial
@@ -10,6 +11,20 @@ import pytest
 from playwright.sync_api import Page, expect
 
 WEB = Path(__file__).resolve().parents[3] / "web"
+# все разделы, которые объявляет сервер (frontend/src/pages.tsx): экраны тестируются на заглушках API
+FEATURES = [
+    "alerts",
+    "employees",
+    "audit",
+    "reports",
+    "usage",
+    "telemetry",
+    "docs",
+    "batches",
+    "routing",
+    "sources",
+    "automation",
+]
 STATE = Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json"
 
 
@@ -31,8 +46,22 @@ def live_config(page: Page) -> None:
     """GET /api/config для плашки режима: у статического сервера нет API, а 404 — ошибка в консоли."""
     page.route(
         "**/api/config",
-        lambda r: r.fulfill(status=200, content_type="application/json", body='{"llm_mode": "live"}'),
+        lambda r: r.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"llm_mode": "live", "features": FEATURES}),
+        ),
     )
+    # Сотрудники, алерты и метрики шапки: у статического сервера их нет, а 404 и 501 — ошибки в консоли.
+    page.route(
+        re.compile(r".*/api/(employees|alerts)(\?.*)?$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body="[]"),
+    )
+    page.route(
+        re.compile(r".*/api/me$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body="null"),
+    )
+    page.route("**/api/telemetry", lambda r: r.fulfill(status=204))
 
 
 @pytest.fixture(autouse=True)

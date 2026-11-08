@@ -16,6 +16,7 @@ import numpy.typing as npt
 
 from cqa.domain.audio_timeline import MIN_UTTERANCE_S, utterance_s
 from cqa.domain.models import Fold, Line
+from cqa.domain.talkstats import Span, call_stats
 
 # ponytail: пороги эвристические — по литературе о просодии и числам 5 звонков DEV, не обучены;
 # калибровать на звонках с разметкой специалистов КК
@@ -210,7 +211,8 @@ def _r(x: float | None, nd: int = 1) -> float | None:
 
 
 def analyse(lines: Sequence[Line | Fold], tracks: Tracks) -> dict[str, Any]:
-    """`{"lines": [{n, f0, range_st, db, wps, pause, flags}], "speakers": {...}, "summary": [...]}`."""
+    """`{"lines": [{n, f0, range_st, db, wps, pause, flags}], "speakers", "summary", "talk"}`;
+    `talk` — статистика разговора `talkstats.call_stats` по тем же отрезкам речи."""
     feats = _features(lines, tracks)
     base = {who: _baseline([f for f in feats if f.who == who and f.scored]) for who in NAME}
     for i, f in enumerate(feats):
@@ -231,4 +233,10 @@ def analyse(lines: Sequence[Line | Fold], tracks: Tracks) -> dict[str, Any]:
         ],
         "speakers": {who: {k: v if k == "lines" else _r(v) for k, v in b.items()} for who, b in base.items()},
         "summary": _summary(feats),
+        "talk": call_stats(
+            [
+                Span(f.who, f.start, f.end, len(f.line.text.split()), "overlap" in f.flags, f.scored)
+                for f in feats
+            ]
+        ),
     }

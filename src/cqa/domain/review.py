@@ -11,7 +11,6 @@ from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dia
 
 ASTANA = timezone(timedelta(hours=5))
 Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true | false}
-MANUAL = "вручную"  # CriterionResult.model ручного ответа (services.answers)
 
 # Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
 # call — смысл только для звонков: входит в отпечаток звонка, отпечаток чата не меняет.

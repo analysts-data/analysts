@@ -9,10 +9,11 @@ from typing import Any
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
 from cqa.domain.review import fingerprint
-from cqa.services.errors import Conflict, NotFound
-from cqa.services.runs import Runner, eta_seconds, plan_run
+from cqa.services.answers import MANUAL
+from cqa.services.errors import Conflict, Invalid, NotFound
+from cqa.services.runs import Runner, compare_runs, eta_seconds, list_runs, plan_rerun, plan_run
 from cqa.services.state import current_results
 from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
 
@@ -326,7 +327,9 @@ def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store)
         "eta_s": 30,
         "errors": ["p1-ru-003: timeout"],
         "status": "running",
+        "skipped": 0,
         "insufficient": 0,
+        "dialogs": [],
     }
 
 
@@ -342,7 +345,12 @@ async def test_progress_of_a_finished_run(store: Store) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "skipped": 0,
         "insufficient": 0,
+        "dialogs": [
+            {"id": "call-024", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
+            {"id": "p1-ru-003", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
+        ],
     }
 
 
@@ -376,3 +384,226 @@ async def test_use_during_a_run_is_a_conflict(store: Store) -> None:
     with pytest.raises(Conflict, match="идёт"):
         runner.use(FakeEvaluator())
     runner.cancel(runner._active or 0)
+
+
+# --- повторная проверка, запуски, сравнение ---
+
+
+def _answer_all(store: Store, run_id: int | None = None) -> None:
+    for d in store.list_dialogs():
+        for c in CHECKLIST.criteria:
+            store.add_result(
+                d.id, c.id, 3, fingerprint(CHECKLIST, c, d.ch), CriterionResult(a="na"), run_id=run_id
+            )
+
+
+def _appeal(store: Store, dlg: str, cid: str, status: str, fp: str | None = None) -> None:
+    ch = DIALOGS[dlg].ch
+    criterion = next(c for c in CHECKLIST.criteria if c.id == cid)
+    appeal = Appeal.model_validate(
+        {"id": "", "kind": "appeal", "dlg": dlg, "cid": cid, "from": "na", "ask": "na", "by": "Оператор",
+         "at": "07.11 15:10", "status": status, "comment": "Не согласен с оценкой"}
+    )  # fmt: skip
+    store.add_appeal(appeal, fp or fingerprint(CHECKLIST, criterion, ch))
+
+
+def test_rerun_plans_pairs_that_already_have_a_current_result(store: Store) -> None:
+    _answer_all(store)
+    assert plan_run(store, CHECKLIST, None, None) == []
+    plan, held = plan_rerun(store, CHECKLIST, None, ["01", "04"])
+    assert (_ids(plan), held) == ([("call-024", ["01", "04"]), ("p1-ru-003", ["01", "04"])], {})
+
+
+def test_rerun_skips_manual_answers_and_pairs_with_an_open_or_decided_appeal(store: Store) -> None:
+    _answer_all(store)
+    store.add_result("call-024", "01", 3, fingerprint(CHECKLIST, CHECKLIST.criteria[0], "call"),
+                     CriterionResult(a="yes", model=MANUAL))  # fmt: skip
+    _appeal(store, "call-024", "04", "pending")
+    _appeal(store, "p1-ru-003", "04", "changed")
+    _appeal(store, "p1-ru-003", "01", "closed")  # closed and other meanings do not hold the pair
+    _appeal(store, "p1-ru-003", "05", "confirmed", fp="0000000000000000")
+
+    plan, held = plan_rerun(store, CHECKLIST, None, ["01", "04", "05"])
+
+    assert _ids(plan) == [("call-024", ["05"]), ("p1-ru-003", ["01", "05"])]
+    assert held == {"call-024": 2, "p1-ru-003": 1}  # dialog -> pairs a human holds
+
+
+async def test_execute_saves_the_run_id_with_every_result(store: Store) -> None:
+    run_id = await _execute(store, FakeEvaluator(), ["call-024"])
+    rows = store.result_rows(dialog_id="call-024")
+    assert len(rows) == 8 and {r.run_id for r in rows} == {run_id}
+
+
+async def test_forced_start_re_evaluates_and_reports_skipped_pairs(store: Store) -> None:
+    _answer_all(store)
+    _appeal(store, "call-024", "04", "pending")
+    evaluator = FakeEvaluator()
+    runner = Runner(store, evaluator, parallel=1, clock=_clock())
+
+    run_id = runner.start(["call-024"], None, force=True, model="qwen3-6")
+    await _drain(runner)
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert (run.total, run.force, run.skipped, run.model, run.checklist_version) == (7, True, 1, "qwen3-6", 3)
+    assert runner.progress(run_id)["skipped"] == 1
+    assert _current(store)["call-024"]["01"].a == DIALOGS["call-024"].res["01"].a  # the newest row wins
+    assert _current(store)["call-024"]["04"].a == "na"
+    assert "04" not in evaluator.seen
+
+
+async def test_plain_start_skips_nothing_on_purpose(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(["call-024"], None)
+    await _drain(runner)
+    assert runner.progress(run_id)["skipped"] == 0
+    assert store.get_run(run_id).force is False  # type: ignore[union-attr]
+
+
+def test_list_runs_shows_recent_runs_newest_first(store: Store) -> None:
+    first = store.add_run(16, 0.0, model="qwen3-6", checklist_version=3)
+    store.record_progress(first, 16, 0.016, 16, ["p1-ru-003: timeout"])
+    store.finish_run(first, 9.0, "done")
+    second = store.add_run(8, 60.0, model="jev-latest", checklist_version=3, force=True, skipped=1)
+
+    assert list_runs(store) == [
+        {"id": second, "created": "1970-01-01T00:01:00+00:00", "status": "running", "model": "jev-latest",
+         "checklist_version": 3, "total": 8, "done": 0, "cost": 0.0, "errors_count": 0, "force": True,
+         "skipped": 1, "apply": "replace", "override": None},
+        {"id": first, "created": "1970-01-01T00:00:00+00:00", "status": "done", "model": "qwen3-6",
+         "checklist_version": 3, "total": 16, "done": 16, "cost": pytest.approx(0.016), "errors_count": 1,
+         "force": False, "skipped": 0, "apply": "replace", "override": None},
+    ]  # fmt: skip
+
+
+def test_compare_runs_takes_the_latest_answer_of_each_run(store: Store) -> None:
+    a = store.add_run(2, 0.0)
+    b = store.add_run(2, 1.0)
+    fp = fingerprint(CHECKLIST, CHECKLIST.criteria[0], "call")
+    store.add_result("call-024", "01", 3, fp, CriterionResult(a="no"), run_id=a)
+    store.add_result("call-024", "01", 3, fp, CriterionResult(a="yes"), run_id=a)  # restored copy
+    store.add_result("call-024", "01", 3, fp, CriterionResult(a="yes"), run_id=b)
+    store.add_result("call-024", "01", 3, fp, CriterionResult(a="no"))  # manual: no run
+
+    got = compare_runs(store, a, b)
+
+    assert (got["a"], got["b"], got["pairs"], got["agree"], got["diffs"]) == (a, b, 1, 1.0, [])
+
+
+def test_compare_with_an_unknown_run_is_not_found(store: Store) -> None:
+    a = store.add_run(0, 0.0)
+    with pytest.raises(NotFound, match="^Запуск 999 не найден$"):
+        compare_runs(store, a, 999)
+
+
+# --- статусы диалогов запуска, подтверждение большого перезапуска ---
+
+
+def _statuses(runner: Runner, run_id: int) -> list[tuple[str, str, int, int]]:
+    return [(d["id"], d["status"], d["done"], d["total"]) for d in runner.progress(run_id)["dialogs"]]
+
+
+async def test_progress_tells_each_dialog_status_while_the_run_goes(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    assert _statuses(runner, run_id) == [("call-024", "evaluating", 0, 8), ("p1-ru-003", "queued", 0, 8)]
+    gate.set()
+    await _drain(runner)
+    assert _statuses(runner, run_id) == [("call-024", "done", 8, 8), ("p1-ru-003", "done", 8, 8)]
+    assert {d["error"] for d in runner.progress(run_id)["dialogs"]} == {None}
+
+
+async def test_dialog_status_carries_the_error_and_missing_answers(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(fail_on={"p1-ru-003"}, skip={"04"}), parallel=1)
+    run_id = runner.start(None, None)
+    await _drain(runner)
+    call, chat = runner.progress(run_id)["dialogs"]
+    assert (call["status"], call["done"], call["total"], call["error"]) == (
+        "done", 7, 8, "нет ответа модели, ждёт оценки: 04",
+    )  # fmt: skip
+    assert (chat["status"], chat["done"], chat["error"]) == ("error", 0, "timeout")
+
+
+async def test_cancelled_run_marks_dialogs_that_never_started(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    runner.cancel(run_id)
+    gate.set()
+    await _drain(runner)
+    assert [d["status"] for d in runner.progress(run_id)["dialogs"]] == ["done", "cancelled"]
+
+
+async def test_forced_run_lists_a_dialog_a_human_holds_entirely_as_skipped(store: Store) -> None:
+    _answer_all(store)
+    _appeal(store, "p1-ru-003", "04", "pending")
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(None, ["04"], force=True)
+    await _drain(runner)
+    dialogs = runner.progress(run_id)["dialogs"]
+    assert [(d["id"], d["status"], d["skipped"]) for d in dialogs] == [
+        ("call-024", "done", 0), ("p1-ru-003", "skipped", 1),
+    ]  # fmt: skip
+
+
+async def test_forced_run_of_many_dialogs_without_a_list_needs_confirmation(store: Store) -> None:
+    store.add_dialogs([d for d in DIALOGS.values() if d.id not in ("call-024", "p1-ru-003")], {})
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    with pytest.raises(Invalid, match="^Подтвердите перезапуск 10 диалогов$"):
+        runner.start(None, ["01"], force=True)
+    assert store.list_runs() == []
+    listed = runner.start(list(DIALOGS), ["01"], force=True)  # an explicit list is the confirmation
+    await _drain(runner)
+    confirmed = runner.start(None, ["01"], force=True, confirm=True)
+    await _drain(runner)
+    assert [store.get_run(i).total for i in (listed, confirmed)] == [10, 10]  # type: ignore[union-attr]
+
+
+# --- перепроверка другой моделью: теневые ответы, принятие ---
+
+
+async def test_compare_run_keeps_new_answers_in_the_shadow(store: Store) -> None:
+    _answer_all(store)
+    _appeal(store, "call-024", "04", "pending")
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    other = FakeEvaluator(res={})  # "yes" / max step / no flags everywhere
+
+    run_id = runner.start(
+        ["call-024"], None, apply="compare", override={"llm_provider": "ds"}, evaluator=other, model="ds-pro"
+    )
+    await _drain(runner)
+
+    run = store.get_run(run_id)
+    assert run is not None
+    assert (run.apply, run.override, run.model, run.force, run.skipped) == (
+        "compare", {"llm_provider": "ds"}, "ds-pro", True, 1,
+    )  # fmt: skip
+    assert other.order == ["call-024"] and "04" not in other.seen
+    assert {r.a for r in _current(store)["call-024"].values()} == {"na"}  # current answers untouched
+    shadow = store.result_rows(run_id=run_id)
+    assert len(shadow) == 7 and all(r.shadow for r in shadow)
+
+
+async def test_override_evaluator_serves_one_run_only(store: Store) -> None:
+    usual, other = FakeEvaluator(), FakeEvaluator()
+    runner = Runner(store, usual, parallel=1)
+    runner.start(["call-024"], None, evaluator=other)
+    await _drain(runner)
+    runner.start(["p1-ru-003"], None)
+    await _drain(runner)
+    assert (other.order, usual.order) == (["call-024"], ["p1-ru-003"])
+
+
+async def test_override_alone_is_a_forced_re_check(store: Store) -> None:
+    _answer_all(store)
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(["call-024"], ["01"], override={"evaluator": "jev"}, evaluator=FakeEvaluator())
+    await _drain(runner)
+    run = store.get_run(run_id)
+    assert run is not None and (run.force, run.total, run.apply) == (True, 1, "replace")

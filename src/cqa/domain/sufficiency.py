@@ -11,8 +11,7 @@ from dataclasses import dataclass
 
 from cqa.domain.events import classify_event
 from cqa.domain.ingest import ts_seconds
-from cqa.domain.models import CriterionResult, Dialog, Line, Outcome, Reason, Sufficiency
-from cqa.domain.review import MANUAL
+from cqa.domain.models import MANUAL, CriterionResult, Dialog, Line, Outcome, Reason, Sufficiency
 
 # Наименьший обмен, на котором применим чек-лист: приветствие оператора, запрос клиента, ответ.
 MIN_LINES = 3
