@@ -2916,8 +2916,8 @@
     },
     "/api/sufficiency": {
       "get": {
-        "summary": "Get Sufficiency",
-        "description": "Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий.",
+        "summary": "Правила достаточности данных",
+        "description": "Что делать, если данных для оценки мало: текст правила, обоснование, исход по умолчанию и текущий.",
         "operationId": "get_sufficiency_api_sufficiency_get",
         "responses": {
           "200": {
@@ -2931,11 +2931,39 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
           }
-        }
+        },
+        "tags": [
+          "Чек-лист"
+        ]
       },
       "put": {
-        "summary": "Put Sufficiency",
+        "summary": "Изменить исход правил достаточности",
         "operationId": "put_sufficiency_api_sufficiency_put",
         "requestBody": {
           "content": {
@@ -2965,16 +2993,119 @@
             }
           },
           "422": {
-            "description": "Validation Error",
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
                 }
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Чек-лист"
+        ],
+        "description": "Новый исход по правилам; действует на следующие оценки."
       }
     },
     "/api/owners": {
@@ -10891,19 +11022,6 @@
         ],
         "title": "Fold"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "type": "array",
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "title": "HTTPValidationError"
-      },
       "JevQuestion": {
         "properties": {
           "type": {
@@ -11596,46 +11714,6 @@
           "text"
         ],
         "title": "TurnIn"
-      },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
-          },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
-          }
-        },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError"
       }
     },
     "securitySchemes": {
