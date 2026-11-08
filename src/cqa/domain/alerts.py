@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog, Line
+from cqa.domain.models import Answer, Appeal, Checklist, Criterion, CriterionResult, Dialog, Line
 from cqa.domain.prosody import LONG_PAUSE_S, RAISED_DB, RAISED_ST
 from cqa.domain.review import ASTANA, effective_answer, needs_review
 from cqa.domain.scoring import frac, r2, total
@@ -29,6 +29,8 @@ Kind = Literal[
     "appeal_overdue",
     "run_errors",
     "marker",
+    "long_silence",
+    "risk",
 ]
 SEVERITIES = ("info", "warning", "critical")
 STATUSES = ("new", "ack", "resolved")
@@ -40,7 +42,9 @@ LABEL = {
     "no_next_step": "Нет следующего шага",
     "raised_tone": "Клиент повысил тон",
     "long_pause": "Долгая пауза",
+    "needs_human": "Нужен человек",
     "needs_review": "Нужна проверка",
+    "long_silence": "Долгая тишина",
     "appeal": "Апелляция",
     "low_total": "Низкий итог",
 }
@@ -73,7 +77,10 @@ PARAMS: dict[str, dict[str, Param]] = {
     "appeal_overdue": {"hours": Param("Часов на рассмотрение", 24, 1, 8760)},
     "run_errors": {},
     "marker": {},  # label — строка из списка маркеров, проверяется отдельно
+    "long_silence": {"seconds": Param("Тишина дольше, с", 30, 1, 3600)},
+    "risk": {},  # k — ключ риска из Dialog.risks, проверяется отдельно
 }
+TEXT_PARAMS = {"marker": "label", "risk": "k"}  # строковый параметр вида правила
 
 
 class AlertRule(BaseModel):
@@ -151,6 +158,14 @@ DEFAULT_RULES = [
         severity="critical",
         why="Точное правило: маркер «Жалоба» поставлен вручную; жалобу разбирают в тот же день.",
     ),
+    AlertRule(
+        id="long-silence",
+        title="Долгая тишина",
+        kind="long_silence",
+        params={"seconds": 30},
+        severity="info",
+        why="Регламент удержания: дольше 30 с без звука оператор предупреждает клиента о паузе.",
+    ),
 ]
 
 
@@ -204,7 +219,7 @@ def check_rules(raw: Any, catalog: Sequence[str]) -> tuple[list[AlertRule], list
             continue
         spec, clean = PARAMS[kind], {}
         for k in params:
-            if k not in spec and not (kind == "marker" and k == "label"):
+            if k not in spec and k != TEXT_PARAMS.get(kind):
                 err("params", k, msg=f"У правила {kind} нет параметра {k}")
         for k, p in spec.items():
             v = params.get(k, p.default)
@@ -220,6 +235,12 @@ def check_rules(raw: Any, catalog: Sequence[str]) -> tuple[list[AlertRule], list
                 err("params", "label", msg=f"Маркера «{label}» нет в списке маркеров: {_join(catalog)}")
             else:
                 clean["label"] = label
+        if kind == "risk":
+            key = params.get("k")
+            if not isinstance(key, str) or not key.strip():
+                err("params", "k", msg="Ключ риска k — непустая строка")
+            else:
+                clean["k"] = key
         why = r.get("why", "")
         if not isinstance(why, str):
             err("why", msg="Обоснование — строка")
@@ -273,10 +294,14 @@ def dialog_view(
     *,
     prosody: Mapping[str, Any] | None,
     manual: Sequence[Mapping[str, str]],
-    low: AlertRule | None,
+    rules: Sequence[AlertRule] = (),
 ) -> DialogView:
-    """`appeals` — как в GET /api/state; `prosody` — сохранённая интонация звонка; `low` — правило
-    `low_total`, чей порог даёт маркер «Низкий итог» (нет правила — нет маркера)."""
+    """`appeals` — как в GET /api/state; `prosody` — сохранённая интонация звонка. Пороги маркеров
+    «Низкий итог» и «Долгая тишина» — у первого включённого правила `low_total` и `long_silence`
+    из `rules`: нет правила — нет маркера."""
+    low, silence = (
+        next((r for r in rules if r.kind == k and r.enabled), None) for k in ("low_total", "long_silence")
+    )
     mine = [a for a in appeals if a.dlg == d.id]
     ans = {cid: effective_answer(r, [a for a in mine if a.cid == cid]) for cid, r in d.res.items()}
     out: list[dict[str, Any]] = []
@@ -366,21 +391,42 @@ def dialog_view(
             )
         )
 
-    review = [
-        (c, r)
-        for c in checklist.criteria
-        if not d.reviewed
-        and (r := d.res.get(c.id)) is not None
-        and needs_review(c, r)
-        and _decision(mine, c.id) is None
-    ]
-    if review:
+    if silence is not None:
+        sec = float(silence.params["seconds"])
+        quiet = [ln for ln in (prosody or {}).get("lines", []) if (ln.get("pause") or 0) > sec]
+        if quiet:
+            ns, longest = [ln["n"] for ln in quiet], max(ln["pause"] for ln in quiet)
+            why = (
+                f"Почему: тишина до {_n(longest)} с перед репликами {_join(ns)} дольше {_n(sec)} с "
+                f"правила «{silence.title}»."
+            )
+            basis = {
+                "rule": silence.id,
+                "lines": ns,
+                "value": longest,
+                "threshold": silence.params["seconds"],
+            }
+            out.append(_auto("long_silence", {**basis, "why": why}))
+
+    def doubt(c: Criterion, r: CriterionResult) -> str:
+        if r.alt is not None and r.alt != r.a:
+            return f"{c.id} — модели расходятся: {r.a} и {r.alt}"
+        return f"{c.id} — основание не найдено в расшифровке"
+
+    # «Нужен человек» — точное правило: второе мнение расходится или основание не найдено; остаётся
+    # и после решения (история). «Нужна проверка» — то же, пока нет решения и диалог не проверен.
+    human = [(c, r) for c in checklist.criteria if (r := d.res.get(c.id)) is not None and needs_review(c, r)]
+    if human:
+        decided = {c.id: dec.id for c, _ in human if (dec := _decision(mine, c.id))}
         parts = "; ".join(
-            f"{c.id} — модели расходятся: {r.a} и {r.alt}"
-            if r.alt is not None and r.alt != r.a
-            else f"{c.id} — основание не найдено в расшифровке"
-            for c, r in review
+            f"{doubt(c, r)} ({f'решено: {decided[c.id]}' if c.id in decided else 'решения нет'})"
+            for c, r in human
         )
+        basis = {"criteria": [c.id for c, _ in human], "appeals": list(decided.values())}
+        out.append(_auto("needs_human", {**basis, "why": f"Почему: {parts}."}))
+    review = [(c, r) for c, r in human if not d.reviewed and _decision(mine, c.id) is None]
+    if review:
+        parts = "; ".join(doubt(c, r) for c, r in review)
         out.append(
             _auto(
                 "needs_review",
@@ -420,6 +466,25 @@ def dialog_view(
             )
         )
 
+    for risk in getattr(d, "risks", None) or []:  # Dialog.risks (products): {k, label, lines, basis}
+        rk = risk if isinstance(risk, Mapping) else risk.model_dump()
+        lines = list(rk.get("lines") or [])
+        where = f", реплики {_join(lines)}" if lines else ""
+        out.append(
+            {
+                "k": f"risk:{rk['k']}",
+                "label": rk["label"],
+                "auto": True,
+                # source — обоснование модели как есть (может цитировать реплики): в алерты не идёт
+                "basis": {
+                    "risk": rk["k"],
+                    "lines": lines,
+                    "source": rk.get("basis"),
+                    "why": f"Почему: модель отметила риск «{rk['label']}»{where}.",
+                },
+            }
+        )
+
     out += [
         {"k": m["label"], "label": m["label"], "auto": False, "by": m["by"], "at": m["at"]} for m in manual
     ]
@@ -454,12 +519,17 @@ def _fire(
         for v in views:
             m = next((m for m in v.markers if m["auto"] and m["k"] == k), None)
             if m is not None:
-                yield "dialog", v.id, f"диалог {v.id}", {"dialogs": [v.id], **m["basis"]}
+                basis = {k: x for k, x in m["basis"].items() if k != "source"}  # без текста модели
+                yield "dialog", v.id, f"диалог {v.id}", {"dialogs": [v.id], **basis}
 
     if rule.kind == "gross_error":
         yield from by_marker("gross")
     elif rule.kind == "raised_tone":
         yield from by_marker("raised_tone")
+    elif rule.kind == "long_silence":
+        yield from by_marker("long_silence")
+    elif rule.kind == "risk":
+        yield from by_marker(f"risk:{p['k']}")
     elif rule.kind == "marker":
         for v in views:
             m = next((m for m in v.markers if not m["auto"] and m["label"] == p["label"]), None)

@@ -233,9 +233,13 @@ JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {di
 | `no_next_step` | Нет следующего шага | у критерия `signal: "resolution"` доля ниже 1 (N/A — нет) | `criteria`, `answers`, `top` (верхняя ступень), `lines` |
 | `raised_tone` | Клиент повысил тон | в сохранённой интонации звонка флаг `raised` у реплики клиента | `lines` |
 | `long_pause` | Долгая пауза | в сохранённой интонации флаг `long_pause` | `lines`, `value` (самая долгая, с), `threshold` (5 с) |
-| `needs_review` | Нужна проверка | диалог не проверен, у пары расхождение моделей или `evFail` и нет решения | `criteria` |
+| `long_silence` | Долгая тишина | в сохранённой интонации `pause` реплики больше `seconds` первого включённого правила `long_silence`; нет правила — нет маркера | `rule`, `lines`, `value` (самая долгая, с), `threshold` |
+| `needs_human` | Нужен человек | точное правило: у пары второе мнение расходится (`alt` ≠ `a`) или `evFail`; остаётся и после решения | `criteria`, `appeals` (решения, если есть); `why` — «решено: r1» или «решения нет» |
+| `needs_review` | Нужна проверка | то же, пока у пары нет решения и диалог не отмечен проверенным | `criteria` |
 | `appeal` | Апелляция | апелляция на рассмотрении | `appeals`, `criteria` |
 | `low_total` | Низкий итог | итог с учётом решений ниже порога первого включённого правила `low_total`; нет такого правила — нет маркера | `rule`, `threshold`, `value` |
+
+Риски диалога: каждый элемент `Dialog.risks` `{k, label, lines, basis}` (llm-evaluation, products; пока поля нет — нет и маркеров) — автоматический маркер `k: "risk:<k>"`, `label` риска, `basis: {risk, lines, source, why}`; `source` — обоснование модели как есть, в алерты и события не попадает.
 
 Интонация не запрашивается: маркеры звука есть, только если она уже посчитана (`GET /api/dialogs/{id}/prosody`). Ручной маркер: `k` = `label`, ставится из каталога, снимается любой.
 
@@ -253,8 +257,10 @@ JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {di
 | `appeal_overdue` | `hours` 24, 1–8760 | `appeal` | апелляция на рассмотрении дольше `hours` с `at` (Астана, год текущий) |
 | `run_errors` | — | `run` | запуск `done` с ошибками; в `basis` только id диалогов и число ошибок |
 | `marker` | `label` из каталога | `dialog` | стоит ручной маркер `label` |
+| `long_silence` | `seconds` 30, 1–3600 | `dialog` | есть маркер `long_silence` (порог правила задаёт и маркер) |
+| `risk` | `k` — ключ риска, непустая строка | `dialog` | есть маркер `risk:<k>`; `source` в `basis` не копируется |
 
-Правила по умолчанию: `gross` (critical), `low-total` 60 (warning), `operator-avg` 5/70/3 (warning), `no-next-step` 30 %/5 (warning), `raised-tone` (info), `appeal-overdue` 24 ч (warning), `run-errors` (warning), `complaint` — маркер «Жалоба» (critical).
+Правила по умолчанию: `gross` (critical), `low-total` 60 (warning), `operator-avg` 5/70/3 (warning), `no-next-step` 30 %/5 (warning), `raised-tone` (info), `appeal-overdue` 24 ч (warning), `run-errors` (warning), `complaint` — маркер «Жалоба» (critical), `long-silence` 30 с (info, «регламент удержания: предупредить о паузе»).
 
 Alert: `{id, rule_id, severity, title, target_type: "dialog" | "operator" | "set" | "appeal" | "run", target_id, basis, created, status: "new" | "ack" | "resolved", assignee, acked_by, acked_at, resolved_by, resolved_at, note}`; время — ISO по Астане. Правила проверяются после каждого запуска оценки, после апелляции, решения и правки маркеров и по `POST /api/alerts/evaluate`. Пара (правило, цель) создаёт алерт один раз: повтор в любом статусе пропускается (уникальный ключ в базе). Сбой проверки после действия пишется в журнал и действие не отменяет.
 

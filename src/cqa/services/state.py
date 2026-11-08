@@ -72,11 +72,12 @@ def alert_rules(store: Store) -> list[AlertRule]:
 def dialog_views(
     store: Store, checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]
 ) -> list[DialogView]:
-    """Итог и маркеры каждого диалога; порог «Низкого итога» — у первого включённого правила low_total."""
-    low = next((r for r in alert_rules(store) if r.kind == "low_total" and r.enabled), None)
-    manual, prosody = store.markers(), store.all_prosody()
+    """Итог и маркеры каждого диалога; пороги маркеров — из правил алертов."""
+    rules, manual, prosody = alert_rules(store), store.markers(), store.all_prosody()
     return [
-        dialog_view(checklist, d, appeals, prosody=prosody.get(d.id), manual=manual.get(d.id, []), low=low)
+        dialog_view(
+            checklist, d, appeals, prosody=prosody.get(d.id), manual=manual.get(d.id, []), rules=rules
+        )
         for d in dialogs
     ]
 

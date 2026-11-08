@@ -38,8 +38,12 @@ def view(
     prosody: dict[str, Any] | None = None,
     manual: list[dict[str, str]] | None = None,
     low: AlertRule | None = None,
+    silence: AlertRule | None = None,
 ) -> DialogView:
-    return dialog_view(CHECKLIST, DIALOGS[dialog_id], appeals, prosody=prosody, manual=manual or [], low=low)
+    rules = [r for r in (low, silence) if r is not None]
+    return dialog_view(
+        CHECKLIST, DIALOGS[dialog_id], appeals, prosody=prosody, manual=manual or [], rules=rules
+    )
 
 
 def marker(v: DialogView, k: str) -> dict[str, Any] | None:
@@ -325,3 +329,68 @@ def test_check_rules_reports_every_bad_field_in_russian() -> None:
 
 def test_check_rules_rejects_non_list() -> None:
     assert check_rules({"id": "x"}, [])[1] == [{"loc": ["body"], "msg": "Нужен список правил"}]
+
+
+# --- «Нужен человек», «Долгая тишина», риски диалога ---
+
+
+def test_needs_human_marks_model_doubt_and_stays_after_decision() -> None:
+    decided = marker(view("call-024"), "needs_human")
+    open_ = marker(view("p1-en-008"), "needs_human")
+
+    assert decided is not None and decided["label"] == "Нужен человек"
+    assert decided["basis"]["criteria"] == ["04"] and decided["basis"]["appeals"] == ["r1"]
+    assert "решено: r1" in decided["basis"]["why"]
+    assert open_ is not None and "решения нет" in open_["basis"]["why"]
+    assert marker(view("p1-ru-003"), "needs_human") is None
+
+
+def test_long_silence_marker_and_rule_use_rule_seconds() -> None:
+    silence = rule("long_silence", seconds=30)
+    prosody = {"lines": [{"n": 3, "flags": [], "pause": 31.5}, {"n": 5, "flags": [], "pause": 12.0}]}
+
+    v = view("call-024", prosody=prosody, silence=silence)
+    m = marker(v, "long_silence")
+
+    assert m is not None and m["label"] == "Долгая тишина"
+    assert m["basis"] == {
+        "rule": "r-long_silence",
+        "lines": [3],
+        "value": 31.5,
+        "threshold": 30,
+        "why": m["basis"]["why"],
+    }
+    assert marker(view("call-024", prosody=prosody), "long_silence") is None  # нет правила — нет маркера
+    assert [h["target_id"] for h in fired(silence, [v])] == ["call-024"]
+
+
+def test_dialog_risks_become_markers_and_risk_rule_fires_without_model_text() -> None:
+    risky = DIALOGS["p1-ru-003"].model_copy(
+        update={
+            "risks": [
+                {
+                    "k": "churn",
+                    "label": "Угроза ухода",
+                    "lines": [4],
+                    "basis": {"why": "клиент: «уйду к конкурентам»"},
+                }
+            ]
+        }
+    )
+    v = dialog_view(CHECKLIST, risky, APPEALS, prosody=None, manual=[], rules=[])
+    m = marker(v, "risk:churn")
+
+    assert m is not None and m["label"] == "Угроза ухода" and m["basis"]["lines"] == [4]
+    assert m["basis"]["source"] == {"why": "клиент: «уйду к конкурентам»"}
+    hits = fired(rule("risk", k="churn"), [v])
+    assert [h["target_id"] for h in hits] == ["p1-ru-003"]
+    assert "конкурент" not in json.dumps(hits, ensure_ascii=False)
+    assert fired(rule("risk", k="boss"), [v]) == []
+
+
+def test_risk_rule_needs_risk_key() -> None:
+    raw = [{"id": "r", "title": "Риск", "kind": "risk", "severity": "info", "params": {}}]
+
+    assert check_rules(raw, [])[1] == [
+        {"loc": ["body", 0, "params", "k"], "msg": "Ключ риска k — непустая строка"}
+    ]

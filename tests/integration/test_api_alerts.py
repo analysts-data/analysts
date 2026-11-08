@@ -98,7 +98,7 @@ def test_rules_default_and_put_validates_fields_in_russian(client: TestClient) -
     rules = client.get("/api/alerts/rules").json()
     assert {r["kind"] for r in rules} == {
         "gross_error", "low_total", "operator_avg", "no_next_step_share",
-        "raised_tone", "appeal_overdue", "run_errors", "marker",
+        "raised_tone", "appeal_overdue", "run_errors", "marker", "long_silence",
     }  # fmt: skip
     assert all(r["why"] for r in rules)
 
