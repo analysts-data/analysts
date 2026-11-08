@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS runs (
   cost REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'cancelled')),
   started REAL NOT NULL, finished REAL);
+CREATE TABLE IF NOT EXISTS run_dialogs (
+  run_id INTEGER NOT NULL REFERENCES runs(id), dialog_id TEXT NOT NULL REFERENCES dialogs(id),
+  status TEXT NOT NULL
+    CHECK (status IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')),
+  total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, error TEXT,
+  PRIMARY KEY (run_id, dialog_id));
 CREATE TABLE IF NOT EXISTS appeals (
   n INTEGER PRIMARY KEY AUTOINCREMENT, dlg TEXT NOT NULL REFERENCES dialogs(id), cid TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('appeal', 'review')), fp TEXT NOT NULL,
@@ -62,7 +68,21 @@ CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit
   BEGIN SELECT RAISE(ABORT, 'журнал действий только дополняется'); END;
 """
 
+# Колонки, добавленные после первых баз: connect досоздаёт их в старой базе, прежние строки получают умолчание
+COLUMNS = [
+    ("dialogs", "operator", "TEXT"),  # сотрудник диалога (data/demo.db, data/cqa.db до колонки)
+    ("results", "run_id", "INTEGER"),  # запуск, давший ответ; NULL — ручной ответ или строка до колонки
+    ("runs", "model", "TEXT"),
+    ("runs", "checklist_version", "INTEGER"),
+    ("runs", "force", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "skipped", "INTEGER NOT NULL DEFAULT 0"),
+    ("runs", "apply", "TEXT NOT NULL DEFAULT 'replace'"),  # compare — ответы теневые, итог не меняют
+    ("runs", "override", "TEXT"),  # JSON настроек перепроверки поверх режима; NULL — режим как есть
+    ("results", "shadow", "INTEGER NOT NULL DEFAULT 0"),  # теневой ответ запуска compare: не текущий
+]
+
 RunStatus = Literal["running", "done", "cancelled"]
+DialogStatus = Literal["queued", "evaluating", "done", "error", "skipped", "cancelled"]
 
 
 @dataclass(frozen=True)
@@ -76,6 +96,25 @@ class RunRow:
     status: RunStatus
     started: float
     finished: float | None
+    model: str | None
+    checklist_version: int | None
+    force: bool
+    skipped: int
+    apply: str
+    override: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class ResultRow:
+    id: int
+    dialog_id: str
+    cid: str
+    version: int
+    fp: str
+    created: str
+    run_id: int | None
+    result: CriterionResult
+    shadow: bool
 
 
 def _now() -> str:
@@ -94,10 +133,10 @@ def connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    for table, column, decl in COLUMNS:
+        if column not in {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     conn.row_factory = sqlite3.Row
-    # миграция: сотрудник диалога появился после первых баз (data/demo.db, data/cqa.db)
-    if "operator" not in {row["name"] for row in conn.execute("PRAGMA table_info(dialogs)")}:
-        conn.execute("ALTER TABLE dialogs ADD COLUMN operator TEXT")
     return conn
 
 
@@ -161,6 +200,11 @@ class Store:
         """Интонация звонка, посчитанная раньше (`GET /api/dialogs/{id}/prosody`)."""
         row = self._conn.execute("SELECT body FROM prosody WHERE dialog_id = ?", (dialog_id,)).fetchone()
         return json.loads(row["body"]) if row is not None else None
+
+    def prosodies(self) -> dict[str, dict[str, Any]]:
+        """Все сохранённые разборы интонации по id звонка: нормы статистики разговора."""
+        rows = self._conn.execute("SELECT dialog_id, body FROM prosody ORDER BY rowid")
+        return {r["dialog_id"]: json.loads(r["body"]) for r in rows}
 
     def set_prosody(self, dialog_id: str, body: Mapping[str, Any]) -> None:
         with self._conn:
@@ -230,17 +274,57 @@ class Store:
 
     # --- результаты ---
 
-    def add_result(self, dialog_id: str, cid: str, version: int, fp: str, result: CriterionResult) -> None:
+    def add_result(
+        self,
+        dialog_id: str,
+        cid: str,
+        version: int,
+        fp: str,
+        result: CriterionResult,
+        run_id: int | None = None,
+        shadow: bool = False,
+    ) -> None:
+        body = _dump(result.model_dump(mode="json"))
         with self._conn:
             self._conn.execute(
-                "INSERT INTO results (dialog_id, cid, version, fp, body, created) VALUES (?, ?, ?, ?, ?, ?)",
-                (dialog_id, cid, version, fp, _dump(result.model_dump(mode="json")), _now()),
+                "INSERT INTO results (dialog_id, cid, version, fp, body, created, run_id, shadow) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (dialog_id, cid, version, fp, body, _now(), run_id, int(shadow)),
             )
 
+    @staticmethod
+    def _result_row(row: sqlite3.Row) -> ResultRow:
+        return ResultRow(
+            id=row["id"],
+            dialog_id=row["dialog_id"],
+            cid=row["cid"],
+            version=row["version"],
+            fp=row["fp"],
+            created=row["created"],
+            run_id=row["run_id"],
+            result=CriterionResult.model_validate(json.loads(row["body"])),
+            shadow=bool(row["shadow"]),
+        )
+
+    def result_rows(self, *, dialog_id: str | None = None, run_id: int | None = None) -> list[ResultRow]:
+        """Все строки результатов диалога или запуска по возрастанию id (история append-only)."""
+        rows = self._conn.execute(
+            "SELECT * FROM results WHERE (? IS NULL OR dialog_id = ?) AND (? IS NULL OR run_id = ?) "
+            "ORDER BY id",
+            (dialog_id, dialog_id, run_id, run_id),
+        ).fetchall()
+        return [self._result_row(row) for row in rows]
+
+    def get_result(self, result_id: int) -> ResultRow | None:
+        row = self._conn.execute("SELECT * FROM results WHERE id = ?", (result_id,)).fetchone()
+        return self._result_row(row) if row is not None else None
+
     def current_results(self, fps: Mapping[str, str]) -> dict[str, dict[str, CriterionResult]]:
-        """Для каждой пары — последний по id результат с отпечатком fps[cid]."""
+        """Для каждой пары — последний по id результат с отпечатком fps[cid]; теневые не в счёт."""
         latest: dict[tuple[str, str], CriterionResult] = {}
-        rows = self._conn.execute("SELECT id, dialog_id, cid, fp, body FROM results ORDER BY id").fetchall()
+        rows = self._conn.execute(
+            "SELECT id, dialog_id, cid, fp, body FROM results WHERE shadow = 0 ORDER BY id"
+        ).fetchall()
         for row in rows:
             fp = fps.get(row["cid"])
             if fp is None or row["fp"] != fp:
@@ -251,11 +335,47 @@ class Store:
             out.setdefault(dialog_id, {})[cid] = result
         return out
 
+    def results_between(self, start: float, end: float) -> list[tuple[str, int, CriterionResult]]:
+        """(cid, версия чек-листа, результат), записанные в [start, end] (секунды эпохи), по порядку.
+
+        ponytail: у результата нет run_id, запуск находится по времени; колонка run_id, если окна мало.
+        """
+        rows = self._conn.execute("SELECT cid, version, body, created FROM results ORDER BY id").fetchall()
+        return [
+            (row["cid"], row["version"], CriterionResult.model_validate(json.loads(row["body"])))
+            for row in rows
+            if start <= datetime.fromisoformat(row["created"]).timestamp() <= end
+        ]
+
     # --- запуски ---
 
-    def add_run(self, total: int, started: float) -> int:
+    def add_run(
+        self,
+        total: int,
+        started: float,
+        *,
+        model: str | None = None,
+        checklist_version: int | None = None,
+        force: bool = False,
+        skipped: int = 0,
+        apply: str = "replace",
+        override: Mapping[str, Any] | None = None,
+    ) -> int:
         with self._conn:
-            cur = self._conn.execute("INSERT INTO runs (total, started) VALUES (?, ?)", (total, started))
+            cur = self._conn.execute(
+                "INSERT INTO runs (total, started, model, checklist_version, force, skipped, apply, "
+                "override) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    total,
+                    started,
+                    model,
+                    checklist_version,
+                    int(force),
+                    skipped,
+                    apply,
+                    None if override is None else _dump(override),
+                ),
+            )
             if cur.lastrowid is None:
                 raise RuntimeError("sqlite не вернул id запуска")
             return cur.lastrowid
@@ -280,15 +400,58 @@ class Store:
                 "UPDATE runs SET finished = ?, status = ? WHERE id = ?",
                 (finished, status, run_id),
             )
+            if status == "cancelled":
+                self._cancel_dialogs("run_id = ?", (run_id,))
 
     def cancel_stale_runs(self) -> None:
         with self._conn:
+            self._cancel_dialogs("run_id IN (SELECT id FROM runs WHERE status = 'running')", ())
             self._conn.execute("UPDATE runs SET status = 'cancelled' WHERE status = 'running'")
 
-    def get_run(self, run_id: int) -> RunRow | None:
-        row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
-        if row is None:
-            return None
+    def _cancel_dialogs(self, where: str, args: tuple[object, ...]) -> None:
+        """Диалоги, которые так и не оценились, — cancelled. Вызывать внутри транзакции."""
+        self._conn.execute(
+            f"UPDATE run_dialogs SET status = 'cancelled' "  # noqa: S608 — where из кода, не от клиента
+            f"WHERE status IN ('queued', 'evaluating') AND {where}",
+            args,
+        )
+
+    # --- статусы диалогов запуска ---
+
+    def queue_dialogs(self, run_id: int, rows: Sequence[tuple[str, DialogStatus, int, int]]) -> None:
+        """Диалоги запуска в порядке очереди: (id, статус, критериев к оценке, пар держит человек)."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO run_dialogs (run_id, dialog_id, status, total, skipped) VALUES (?, ?, ?, ?, ?)",
+                [(run_id, *row) for row in rows],
+            )
+
+    def set_dialog_status(
+        self, run_id: int, dialog_id: str, status: DialogStatus, *, done: int = 0, error: str | None = None
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE run_dialogs SET status = ?, done = ?, error = ? WHERE run_id = ? AND dialog_id = ?",
+                (status, done, error, run_id, dialog_id),
+            )
+
+    @staticmethod
+    def _dialog_status(row: sqlite3.Row) -> dict[str, Any]:
+        return {k: row[k] for k in ("status", "error", "done", "total", "skipped")}
+
+    def run_dialogs(self, run_id: int) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM run_dialogs WHERE run_id = ? ORDER BY rowid", (run_id,)
+        ).fetchall()
+        return [{"id": row["dialog_id"], **self._dialog_status(row)} for row in rows]
+
+    def latest_dialog_status(self) -> dict[str, dict[str, Any]]:
+        """Диалог → статус в последнем запуске, где он был, с `run_id`."""
+        rows = self._conn.execute("SELECT * FROM run_dialogs ORDER BY run_id").fetchall()
+        return {row["dialog_id"]: {"run_id": row["run_id"], **self._dialog_status(row)} for row in rows}
+
+    @staticmethod
+    def _run_row(row: sqlite3.Row) -> RunRow:
         return RunRow(
             id=row["id"],
             total=row["total"],
@@ -299,7 +462,22 @@ class Store:
             status=row["status"],
             started=row["started"],
             finished=row["finished"],
+            model=row["model"],
+            checklist_version=row["checklist_version"],
+            force=bool(row["force"]),
+            skipped=row["skipped"],
+            apply=row["apply"],
+            override=None if row["override"] is None else json.loads(row["override"]),
         )
+
+    def get_run(self, run_id: int) -> RunRow | None:
+        row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return self._run_row(row) if row is not None else None
+
+    def list_runs(self, limit: int = 50) -> list[RunRow]:
+        """Последние запуски, новые первыми."""
+        rows = self._conn.execute("SELECT * FROM runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._run_row(row) for row in rows]
 
     # --- апелляции и решения ---
 
