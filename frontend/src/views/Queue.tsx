@@ -17,6 +17,7 @@ import { DIALOGS, hasFilters, markersOf, NO_OPERATOR, operatorOf, plural, produc
 import { RunPanel, scoring } from './queue/RunPanel';
 import { BulkBar, PickCell, PickHead } from './BulkRecheck';
 import { SufficiencyChip } from './SufficiencyChip';
+import { partialTip } from './card/util';
 
 const cut = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 
@@ -95,6 +96,20 @@ function Status({ d, c }: { d: any; c: any }) {
   return d.reviewed ? <Chip tone="ok">{t('Проверен')}</Chip> : null;
 }
 
+/** Итог без части критериев приглушён, в подсказке критерии, которые ждут оценки. */
+function Total({ x }: { x: Row }) {
+  const S = useS();
+  const tip = partialTip(x.d, S.checklist, S.appeals, x.c.total);
+  if (!tip) return <>{f2(x.c.total)}</>;
+  return (
+    <Tip content={tip}>
+      <span tabIndex={0} className="cursor-help text-muted" data-partial>
+        {f2(x.c.total)}
+      </span>
+    </Tip>
+  );
+}
+
 /** «Почему в очереди»: чип причины; у грубой ошибки ещё причина модели и ссылка на реплику. */
 function Why({ x, op }: { x: Row; op: boolean }) {
   const S = useS();
@@ -167,7 +182,7 @@ export function Queue() {
   const operators = withOp ? [...new Set<string>(S.dialogs.map(operatorOf))].sort((a, b) => (a === NO_OPERATOR ? 1 : b === NO_OPERATOR ? -1 : a.localeCompare(b, 'ru'))) : [];
   const products = [...new Map<string, string>(S.dialogs.map(productOf).filter(Boolean).map((x: any) => [x.id, x.name || x.id]))];
   const markers = [...new Map<string, string>(S.dialogs.flatMap(markersOf).map(m => [m.k, m.label || m.k]))];
-  const cols = (withOp ? 7 : 6) + (qa ? 1 : 0);
+  const cols = (withOp ? 6 : 5) + (qa ? 1 : 0);
   const sel = (id: string, label: string, k: string, vals: [string, string][]) => (
     <label className="flex items-center gap-2 text-[13px] text-muted">
       {label}
@@ -317,7 +332,6 @@ export function Queue() {
                   <th className="num !text-right">{t('Итог')}</th>
                   <th>{t('Почему в очереди')}</th>
                   <th className="hidden md:table-cell">{t('Где потеряны баллы')}</th>
-                  <th className="hidden md:table-cell">{t('Статус')}</th>
                 </tr>
               </thead>
               {groups(two).map(([g, title, tone, hint]) => {
@@ -353,7 +367,10 @@ export function Queue() {
                             {chOf(x.d)}, {x.d.lang}
                             {withOp && `, ${x.d.operator || t('Не указан')}`}
                           </span>
-                          <SufficiencyChip d={x.d} />
+                          <span className="mt-1 flex flex-wrap gap-1 empty:hidden">
+                            <Status d={x.d} c={x.c} />
+                            <SufficiencyChip d={x.d} />
+                          </span>
                           {markersOf(x.d).length > 0 && (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {markersOf(x.d).map(m => (
@@ -369,7 +386,9 @@ export function Queue() {
                           {chOf(x.d)}, {x.d.lang}
                           {productOf(x.d) && <span className="block text-xs text-muted">{productOf(x.d).name}</span>}
                         </td>
-                        <td className="num font-bold">{f2(x.c.total)}</td>
+                        <td className="num font-bold">
+                          <Total x={x} />
+                        </td>
                         <td>
                           <Why x={x} op={op} />
                         </td>
@@ -378,9 +397,6 @@ export function Queue() {
                             .slice(0, 3)
                             .map((r: any) => `${r.c.name}: ${ansTxt(r.c, r.a)}`)
                             .join(' · ') || '—'}
-                        </td>
-                        <td className="hidden md:table-cell">
-                          <Status d={x.d} c={x.c} />
                         </td>
                       </tr>
                     ))}

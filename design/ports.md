@@ -175,6 +175,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `markers` | `dialog_id`, `label`, `by`, `at`, PK (`dialog_id`, `label`) — ручные маркеры | eval-and-delivery (alerts) |
 | `lists` | `name TEXT PK` (`markers_catalog`, `alert_rules`), `body` JSON | eval-and-delivery (alerts) |
 | `alerts` | `id`, `rule_id`, `severity`, `title`, `target_type`, `target_id`, `basis` JSON, `created`, `status CHECK IN ('new', 'ack', 'resolved')`, `assignee`, `acked_by`, `acked_at`, `resolved_by`, `resolved_at`, `note`; `UNIQUE (rule_id, target_type, target_id)` | eval-and-delivery (alerts) |
+| `appeal_reasons` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON-список `{code, label, applies}`); нет строки — каталог по умолчанию | eval-and-delivery (reason-codes) |
 | `telemetry` | `id`, `at` (ISO UTC, мс), `actor`, `role`, `event`, `page`, `props` (JSON после `clean_props`); `UPDATE` запрещён триггером, `DELETE` — только очистка старше `telemetry_retention_days` в `create_app` | eval-and-delivery (`src/cqa/services/telemetry.py`) |
 | `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
 | `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |

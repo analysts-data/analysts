@@ -24,7 +24,7 @@ from pydantic import (
 
 from cqa.compose import build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
-from cqa.domain.models import Answer, Appeal, Checklist
+from cqa.domain.models import Answer, Appeal, Checklist, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.domain.usage import TOKEN, Event
@@ -32,7 +32,7 @@ from cqa.http.actor import actor_from, signed
 from cqa.services import alerts, reports
 from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
-from cqa.services.appeals import decide, file_appeal, record_review
+from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
 from cqa.services.checklists import (
     DiffFormat,
@@ -414,6 +414,7 @@ class DecisionIn(BaseModel):
     to: AppealValue
     reason: str
     reviewer: str
+    reason_code: str | None = None  # код из GET /api/appeals/reasons; пусто — без кода
 
 
 class ReviewIn(BaseModel):
@@ -423,6 +424,7 @@ class ReviewIn(BaseModel):
     to: AppealValue
     reason: str
     reviewer: str
+    reason_code: str | None = None
 
 
 def _appeal_out(appeal: Appeal) -> dict[str, Any]:
@@ -435,6 +437,24 @@ async def _after_change(request: Request) -> None:
         await request.app.state.alerts()
     except Exception:
         log.exception("проверка алертов")
+
+
+@router.get("/appeals/reasons", summary="Каталог кодов причин решений")
+async def get_reasons(request: Request) -> list[ReasonCode]:
+    return reasons(request.app.state.store)
+
+
+@router.put("/appeals/reasons", summary="Заменить каталог кодов причин решений")
+async def put_reasons(body: list[ReasonCode], request: Request) -> list[ReasonCode]:
+    saved = save_reasons(request.app.state.store, body)
+    _log(request, "reasons.save", "appeal_reasons", "", {"codes": [r.code for r in saved]})
+    return saved
+
+
+@router.get("/appeals/stats", summary="Решения по кодам причин и доля изменённых людьми")
+async def get_appeal_stats(request: Request) -> dict[str, Any]:
+    """Решения по кодам причин × критерий × исход и доля пар, изменённых людьми, по критериям и языкам."""
+    return stats(request.app.state.store)
 
 
 @router.post("/appeals", summary="Подать апелляцию на ответ по критерию")
@@ -452,7 +472,8 @@ async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> d
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(), "reviewer": signed(actor, body.reviewer)}
     appeal = decide(request.app.state.store, appeal_id, **fields, now=datetime.now(ASTANA))
-    _log(request, "appeal.decide", "appeal", appeal.id, {"status": appeal.status}, actor)
+    details = {"status": appeal.status} | ({"reason_code": appeal.reason_code} if appeal.reason_code else {})
+    _log(request, "appeal.decide", "appeal", appeal.id, details, actor)
     await _after_change(request)
     return _appeal_out(appeal)
 
