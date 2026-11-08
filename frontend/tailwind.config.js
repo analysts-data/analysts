@@ -11,7 +11,7 @@ export default {
       ),
       fontFamily: { sans: 'var(--font)' },
       borderRadius: { card: 'var(--r)' },
-      boxShadow: { card: 'var(--shadow)', pop: '0 20px 60px rgba(23,32,28,.25)' },
+      boxShadow: { card: 'var(--shadow)', pop: 'var(--shadow-pop)' },
     },
   },
 };
