@@ -88,12 +88,15 @@ def report(
     ch: str | None,
     now: datetime,
     operator: str | None = None,
+    source: str | None = None,
 ) -> dict[str, Any] | str:
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
+    names = {s["id"]: s["name"] for s in store.sources()}
     rep = build_report(
-        checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator
-    )
+        checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator,
+        source=source, source_names=names,
+    )  # fmt: skip
     return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 
 
@@ -151,4 +154,10 @@ def build_state(store: Store, mode: Mode) -> dict[str, Any]:
         ],
         "owners": store.get_owners(),
         "mode": mode.model_dump(mode="json"),
+        # подписи для фильтра и плашки источника; полный реестр — GET /api/sources
+        "sources": [
+            {"id": s["id"], "name": s["name"], "kind": s["kind"], "service": s["service"]}
+            for s in store.sources()
+            if not s["archived"]
+        ],
     }
