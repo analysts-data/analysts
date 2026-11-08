@@ -184,9 +184,9 @@ export function Queue() {
   const markers = [...new Map<string, string>(S.dialogs.flatMap(markersOf).map(m => [m.k, m.label || m.k]))];
   const cols = (withOp ? 6 : 5) + (qa ? 1 : 0);
   const sel = (id: string, label: string, k: string, vals: [string, string][]) => (
-    <label className="flex items-center gap-2 text-[13px] text-muted">
-      {label}
-      <select id={id} className="fld" data-act={id} value={p[k] || ''} onChange={e => go(setParam(p, k, e.target.value))}>
+    <label className="flex min-w-0 max-w-full items-center gap-2 text-[13px] text-muted max-sm:w-full">
+      <span className="shrink-0">{label}</span>
+      <select id={id} className="fld min-w-0 max-w-[240px] max-sm:max-w-none max-sm:flex-1" data-act={id} value={p[k] || ''} onChange={e => go(setParam(p, k, e.target.value))}>
         {vals.map(([v, label]) => (
           <option key={v} value={v}>
             {label}
