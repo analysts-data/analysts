@@ -12,7 +12,7 @@ from playwright.sync_api import Page, expect
 
 WEB = Path(__file__).resolve().parents[3] / "web"
 # все разделы, которые объявляет сервер (frontend/src/pages.tsx): экраны тестируются на заглушках API
-FEATURES = ["alerts", "employees", "audit", "reports", "usage", "telemetry", "docs"]
+FEATURES = ["alerts", "employees", "audit", "reports", "usage", "telemetry", "docs", "sources", "automation"]
 STATE = Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json"
 
 
