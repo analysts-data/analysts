@@ -10,8 +10,9 @@ from typing import Any
 
 from cqa.domain.checklist_export import CSS as MEMO_CSS
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
-from cqa.domain.review import effective_answer, needs_review
+from cqa.domain.review import effective_answers, needs_review
 from cqa.domain.scoring import frac, r2, total
+from cqa.domain.tuning import Band, band_of
 
 TOP = 10
 CHANNEL = {"chat": "Чат", "call": "Звонок"}
@@ -51,8 +52,10 @@ def build_report(
     at: str,
     lang: str | None = None,
     ch: str | None = None,
+    bands: Sequence[Band] = (),
 ) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны."""
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны.
+    `bands` — шкала оценок: сколько оценённых диалогов в каждой оценке."""
     lang = lang.upper() if lang else None
     picked = [d for d in dialogs if lang in (None, d.lang.upper()) and ch in (None, d.ch)]
     ids = {d.id for d in picked}
@@ -63,10 +66,7 @@ def build_report(
 
     rows: list[tuple[Dialog, dict[str, Answer], float]] = []
     for d in picked:
-        answers = {
-            cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
-            for cid, r in d.res.items()
-        }
+        answers = effective_answers(d, appeals)
         if (t := total(checklist, answers)) is not None:
             rows.append((d, answers, t))
     n = len(rows)
@@ -88,6 +88,7 @@ def build_report(
         for d, _, _ in rows
     )
     costs = [d.cost for d, _, _ in rows if d.cost]
+    in_band = [b.label for _, _, t in rows if (b := band_of(bands, t))]
 
     criteria: list[dict[str, Any]] = []
     for c in scored_cs:
@@ -128,6 +129,16 @@ def build_report(
             "no_next_step": {"dialogs": no_next, "share": _share(no_next, n)},
             "needs_review": review,
             "open_appeals": sum(a.status == "pending" for a in appeals),
+            "bands": [
+                {
+                    "label": b.label,
+                    "tone": b.tone,
+                    "min": b.min,
+                    "n": (k := in_band.count(b.label)),
+                    "share": _share(k, n),
+                }
+                for b in bands
+            ],  # fmt: skip
             "cost": {
                 "dialogs": len(costs),
                 "avg_usd": round(sum(c.usd for c in costs) / len(costs), 4) if costs else None,
@@ -236,6 +247,10 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
                 ([r["tag"], str(r["dialogs"]), r["owner"], ", ".join(r["criteria"])], r["dialogs"] / most)
                 for r in rep["reasons"]
             ],
+        ),
+        (
+            "По шкале оценок", ["Оценка", "Итог от", "Диалогов"], {1, 2},
+            [([b["label"], _d(b["min"]), str(b["n"])], b["share"] or 0) for b in rep["summary"]["bands"]],
         ),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),

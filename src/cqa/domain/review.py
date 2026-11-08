@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from cqa.domain.models import Answer as ResultAnswer
-from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
 
 ASTANA = timezone(timedelta(hours=5))
 Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true | false}
@@ -90,6 +90,14 @@ def effective_answer(result: CriterionResult, decided: Sequence[Appeal]) -> Resu
     """`to` последнего решения пары (appeal или review, confirmed или changed), иначе ответ модели."""
     tos = [d.to for d in decided if d.status in ("confirmed", "changed") and d.to is not None]
     return tos[-1] if tos else result.a
+
+
+def effective_answers(d: Dialog, appeals: Sequence[Appeal]) -> dict[str, ResultAnswer]:
+    """Ответы диалога с учётом решений: из них считают итог отчёт и «что если»."""
+    return {
+        cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
+        for cid, r in d.res.items()
+    }
 
 
 def needs_review(c: Criterion, r: CriterionResult) -> bool:

@@ -1,13 +1,23 @@
-"""Сохранение черновика чек-листа: проверки, новая версия, закрытие апелляций (решение 11)."""
+"""Сохранение черновика чек-листа: проверки, новая версия, закрытие апелляций (решение 11).
+Настройка без сохранения: «что если», нормировка весов, шаблоны критериев, готовые чек-листы."""
 
+import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Literal
 
 from cqa.adapters.store import Store
+from cqa.catalog import load
 from cqa.domain.checklist_export import diff, diff_markdown, to_csv, to_html, to_markdown
 from cqa.domain.models import Checklist
-from cqa.domain.review import diff_checklists, version_note
+from cqa.domain.review import diff_checklists, effective_answers, version_note
+from cqa.domain.tuning import normalize, simulate
+from cqa.services.bands import current_bands
 from cqa.services.errors import Conflict, Invalid, NotFound
+from cqa.services.state import state_for
+
+# ponytail: seed is the test fixture; a separate product file if the two ever diverge
+SEED_CHECKLIST = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "checklist_v3.json"
 
 ExportFormat = Literal["json", "csv", "md", "html"]
 DiffFormat = Literal["json", "md"]
@@ -56,23 +66,8 @@ def save_checklist(store: Store, draft: Checklist) -> dict[str, Any]:
         raise Conflict(
             f"Черновик основан на v{draft.version}, текущая версия v{cur.version}. Обновите страницу."
         )
-    seen: set[str] = set()
-    for c in draft.criteria:
-        if c.id in seen:
-            raise Invalid(f"Повторяется id критерия {c.id}")
-        seen.add(c.id)
-        if not 0 <= c.sec < len(draft.sections):
-            raise Invalid(f"Критерий {c.id}: секции {c.sec} нет")
-        if c.type == "scale" and not c.steps:
-            raise Invalid(f"Критерий {c.id}: у шкалы нет ступеней")
-        if c.channel in ("chat", "call") and not c.na:
-            raise Invalid(f"Критерий {c.id}: для канала {c.channel} нужен na: true")
-        if c.type == "scale" and not c.steps:
-            raise Invalid(f"Критерий {c.id}: у шкалы нет ступеней")
-        if c.type == "scale" and (
-            missing := [str(s) for s in c.steps or [] if not (c.stepText or {}).get(str(s))]
-        ):
-            raise Invalid(f"Критерий {c.id}: нет текста ступени {', '.join(missing)}")
+    if errors := draft_errors(draft):
+        raise Invalid("; ".join(errors.values()), fields=errors)
     diff = diff_checklists(cur, draft)
     if not diff.changed:
         return {"version": cur.version, "pending": []}
@@ -80,3 +75,79 @@ def save_checklist(store: Store, draft: Checklist) -> dict[str, Any]:
     store.add_checklist(new, version_note(diff))
     store.close_pending_appeals([*diff.pending, *diff.removed])
     return {"version": new.version, "pending": diff.pending}
+
+
+def draft_errors(draft: Checklist) -> dict[str, str]:
+    """Что не даст сохранить черновик: путь поля -> текст по-русски, пусто — можно сохранять."""
+    errors: dict[str, str] = {}
+    seen: set[str] = set()
+    for i, c in enumerate(draft.criteria):
+        p = f"criteria.{i}"
+        if c.id in seen:
+            errors[f"{p}.id"] = f"Повторяется id критерия {c.id}"
+        seen.add(c.id)
+        if not 0 <= c.sec < len(draft.sections):
+            errors[f"{p}.sec"] = f"Критерий {c.id}: секции {c.sec} нет"
+        if c.w < 0:
+            errors[f"{p}.w"] = f"Критерий {c.id}: вес {c.w:g} меньше нуля"
+        if c.channel in ("chat", "call") and not c.na:
+            errors[f"{p}.na"] = f"Критерий {c.id}: для канала {c.channel} нужен na: true"
+        if c.type == "scale" and not c.steps:
+            errors[f"{p}.steps"] = f"Критерий {c.id}: у шкалы нет ступеней"
+        elif c.type == "scale" and (
+            missing := [str(s) for s in c.steps or [] if not (c.stepText or {}).get(str(s))]
+        ):
+            errors[f"{p}.stepText"] = f"Критерий {c.id}: нет текста ступени {', '.join(missing)}"
+    return errors
+
+
+def simulate_draft(store: Store, draft: Checklist) -> dict[str, Any]:
+    """«Что если»: итоги, если сохранить черновик, без сохранения. Ответы берутся по смыслу критериев
+    черновика — как в состоянии сразу после сохранения; `save_errors` — что не даст сохранить."""
+    cur = checklist_version(store, None)
+    before, appeals0 = state_for(store, cur)
+    after, appeals1 = state_for(store, draft)
+    sim = simulate(
+        cur,
+        draft,
+        before,
+        {d.id: effective_answers(d, appeals0) for d in before},
+        {d.id: effective_answers(d, appeals1) for d in after},
+        current_bands(store),
+    )
+    return {**sim, "save_errors": draft_errors(draft)}
+
+
+def normalize_draft(draft: Checklist) -> dict[str, Any]:
+    """Черновик с весами, приведёнными к сумме 100, доли критериев в итоге и объяснение. Не сохраняет."""
+    out = normalize(draft)
+    return {**out, "checklist": out["checklist"].model_dump(mode="json", exclude_none=True)}
+
+
+def criteria_templates(tag: str | None) -> dict[str, Any]:
+    """Шаблоны критериев (src/cqa/catalog/criteria_templates.json); `tag` — только с этим тегом."""
+    templates: list[dict[str, Any]] = load("criteria_templates.json")["templates"]
+    return {
+        "tags": sorted({t for x in templates for t in x["tags"]}),
+        "templates": [t for t in templates if tag is None or tag in t["tags"]],
+    }
+
+
+def checklist_presets() -> list[dict[str, Any]]:
+    """Готовые чек-листы целиком для импорта в черновик: первым — официальный, затем из
+    src/cqa/catalog/checklist_presets.json."""
+    official = json.loads(SEED_CHECKLIST.read_text(encoding="utf-8"))
+    presets = [
+        {
+            "key": "official",
+            "name": f"Официальный чек-лист v{official['version']}",
+            "description": (
+                "Чек-лист из задания организаторов: по нему считается файл результатов. Если правила и "
+                "смысл критериев совпадут с сохранёнными ответами, они вернутся без новой оценки."
+            ),
+            "official": True,
+            "checklist": official,
+        },
+        *({**p, "official": False} for p in load("checklist_presets.json")["presets"]),
+    ]
+    return [{**p, "criteria": len(p["checklist"]["criteria"])} for p in presets]

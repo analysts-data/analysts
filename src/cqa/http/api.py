@@ -11,15 +11,21 @@ from pydantic import BaseModel, Field, StrictBool
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.domain.tuning import Bands
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
+from cqa.services.bands import bands_view, save_bands
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
+    checklist_presets,
+    criteria_templates,
     diff_draft,
     diff_versions,
     export_checklist,
+    normalize_draft,
     save_checklist,
+    simulate_draft,
 )
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
@@ -175,6 +181,37 @@ async def post_checklist_diff(
     draft: Checklist, request: Request, fmt: Annotated[DiffFormat, Query(alias="format")] = "json"
 ) -> Response:
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
+
+
+@router.post("/checklist/simulate")
+async def post_checklist_simulate(draft: Checklist, request: Request) -> dict[str, Any]:
+    """«Что если»: итоги по черновику без сохранения, с объяснением каждого изменения."""
+    return simulate_draft(request.app.state.store, draft)
+
+
+@router.post("/checklist/normalize")
+async def post_checklist_normalize(draft: Checklist) -> dict[str, Any]:
+    return normalize_draft(draft)
+
+
+@router.get("/checklist/presets")
+async def get_checklist_presets() -> list[dict[str, Any]]:
+    return checklist_presets()
+
+
+@router.get("/criteria/templates")
+async def get_criteria_templates(tag: str | None = None) -> dict[str, Any]:
+    return criteria_templates(tag)
+
+
+@router.get("/bands")
+async def get_bands(request: Request) -> dict[str, Any]:
+    return bands_view(request.app.state.store)
+
+
+@router.put("/bands")
+async def put_bands(body: Bands, request: Request) -> dict[str, Any]:
+    return save_bands(request.app.state.store, body)
 
 
 @router.put("/owners")

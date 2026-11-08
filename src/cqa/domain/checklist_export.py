@@ -33,7 +33,7 @@ def _section(cl: Checklist, sec: int) -> str:
     return cl.sections[sec] if 0 <= sec < len(cl.sections) else str(sec)
 
 
-def _shares(cl: Checklist) -> dict[str, float]:
+def shares_of(cl: Checklist) -> dict[str, float]:
     """Доля веса оценочного критерия в итоге, %, если применимы все. Флаг баллов не даёт."""
     scored = [c for c in cl.criteria if c.type != "flag"]
     total = sum(c.w for c in scored)
@@ -67,7 +67,7 @@ def _cell(s: str) -> str:
 
 def to_csv(cl: Checklist) -> str:
     """UTF-8 с BOM и «;»: русский Excel открывает файл сразу. Строка на критерий, правил нет."""
-    shares = _shares(cl)
+    shares = shares_of(cl)
     buf = io.StringIO()
     out = csv.writer(buf, delimiter=";")
     out.writerow(HEADER)
@@ -86,7 +86,7 @@ def to_csv(cl: Checklist) -> str:
 
 
 def to_markdown(cl: Checklist) -> str:
-    shares = _shares(cl)
+    shares = shares_of(cl)
     total = sum(c.w for c in cl.criteria if c.id in shares)
     out = [f"# Чек-лист v{cl.version}", "", "## Общие правила", "", cl.rules.strip() or "—", ""]
     out += [
@@ -164,7 +164,7 @@ def _html_criterion(c: Criterion, shares: dict[str, float]) -> str:
 
 def to_html(cl: Checklist) -> str:
     """Самодостаточная страница A4: стили внутри, внешних ссылок нет, весь текст экранирован."""
-    shares = _shares(cl)
+    shares = shares_of(cl)
     sections = "".join(
         f"<section><h2>{si + 1}. {escape(sec)}</h2>"
         + "".join(_html_criterion(c, shares) for c in cl.criteria if c.sec == si)

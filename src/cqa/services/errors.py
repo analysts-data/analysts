@@ -6,7 +6,9 @@ class NotFound(Exception):  # 404
 
 
 class Invalid(Exception):  # 422
-    pass
+    def __init__(self, message: str, fields: dict[str, str] | None = None) -> None:
+        super().__init__(message)
+        self.fields = fields or {}  # путь поля ("criteria.4.na") -> текст; в ответе — "fields"
 
 
 class Conflict(Exception):  # 409

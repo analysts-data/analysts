@@ -117,6 +117,11 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
+| `POST /api/checklist/simulate` | черновик Checklist | «что если» без сохранения (раздел «Настройка чек-листа») |
+| `POST /api/checklist/normalize` | черновик Checklist | `{checklist, changes, shares, explanation}`: веса к сумме 100, ничего не сохраняет |
+| `GET /api/checklist/presets` | — | `[{key, name, description, official, criteria, checklist}]`: готовые чек-листы для импорта в черновик |
+| `GET /api/criteria/templates?tag=<тег>` | — | `{tags, templates: [{key, tags, section, why, criterion}]}`; без `tag` — все |
+| `GET /api/bands`, `PUT /api/bands` | — или `{bands, why}` | `{bands: [{min, label, tone}], why, source: "default" \| "saved", saved_at}`; ошибка — 422 с `fields` |
 | `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
@@ -207,6 +212,40 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Настройка чек-листа (eval-and-delivery, checklist-flex)
+
+Ничего из раздела не меняет формулу «Итог», векторы и отпечаток смысла: шкала — отдельная настройка, «что если» и нормировка не сохраняют версию.
+
+### Шкала оценок
+
+`{"bands": [{"min": 90, "label": "Отлично", "tone": "ok"}, {"min": 75, "label": "Хорошо", "tone": null}, {"min": 60, "label": "Требует внимания", "tone": "warn"}, {"min": 0, "label": "Критично", "tone": "risk"}], "why": "обоснование границ", "source": "default", "saved_at": null}`
+
+- Оценка диалога (`bandOf`): первая из `bands` с `total >= min`, где `total` — итог из «Итог» (уже округлён до сотых); итога нет — оценки нет. Интерфейс считает её сам по `GET /api/bands`.
+- По умолчанию — `src/cqa/catalog/bands.json` с обоснованием (`source: "default"`); `PUT` сохраняет в базе (`source: "saved"`, `saved_at` ISO). Шкала не входит в чек-лист и переживает смену версий.
+- `PUT` проверяет: `why` не пустой; оценки есть; `min` в 0–100 и строго по убыванию (без пересечений); последняя `min` — 0; `label` не пустой и не повторяется; `tone` — `ok`, `warn`, `risk` или `null`. Ошибка — 422 `{"detail": "…; …", "fields": {"bands.1.min": "Оценка 2: граница 90 должна быть меньше границы оценки 1 (75) — …", "why": "…"}}`.
+- Отчёт для руководства: `summary.bands: [{label, tone, min, n, share}]` по оценённым диалогам и таблица «По шкале оценок».
+
+### «Что если»
+
+`POST /api/checklist/simulate` с черновиком считает итоги так, как они будут сразу после сохранения: ответы берутся по отпечаткам черновика (критерий с прежним смыслом сохраняет ответ, с новым — ждёт оценки, вернувшийся к прежнему смыслу — получает прежний ответ), решения по апелляциям — как в `GET /api/state`. Ответ:
+
+`{summary: {dialogs, scored_before, scored_after, avg_before, avg_after, delta, changed, up, down, lost_total}, groups: {ch: [G], lang: [G]}, bands: [{label, tone, min, before, after}], moves: [{from, to, n, text}], weights: [{id, name, from, to, share_from, share_to}], pending: [{id, name, why, dialogs}], removed: [{id, name}], dialogs: [{id, title, ch, lang, before, after, delta, band_before, band_after, why: [строка], text}], findings: [строка], save_errors: {путь: текст}}`, `G = {key, label, n, avg_before, avg_after, delta}`.
+
+- `why` диалога — только критерии, входящие в его итог до или после: «вес «…» 15 → 30», ««…» ждёт новой оценки (изменено: текст), до неё не входит в итог», ««…» удалён: ответ «Нет» больше не входит в итог», ««…»: ответ «Да» → «Нет»», при смене правил — «изменены общие правила: все критерии ждут новой оценки». Вес N/A-критерия итог этого диалога не меняет и в `why` не попадает. `text` — «Итог: 41,00 → 35,65, потому что вес «…» 15 → 30» или «Итог не меняется: 100,00».
+- `moves[].text` — «12 диалогов перейдут из „Хорошо“ в „Требует внимания“»; `to: null` — итога не будет до новой оценки. `findings` — средний итог до и после с числом оценённых диалогов, сколько итогов изменится, переходы между оценками, что ждёт оценки, удалённое.
+- `pending[].dialogs` — у скольких диалогов не будет ответа по критерию; `why` — «новый критерий», «изменено: текст, ступени» или «изменены общие правила».
+- `save_errors` — что не даст сохранить черновик (те же тексты, что 422 у `PUT /api/checklist`); «что если» считается и с ними.
+- Операторов и продуктов в данных нет: группы — канал и язык.
+
+### Нормировка весов
+
+`POST /api/checklist/normalize` → черновик с целыми весами оценочных критериев, сумма ровно 100: вес × 100 / Σ, вниз до целого, остаток по одному — наибольшим дробным частям, при равенстве — большему исходному весу, затем по порядку. Сумма 0 — поровну. Флаги не меняются. `changes: [{id, name, from, to, exact}]` (`exact` — до округления), `shares: {id: доля в итоге, % при всех применимых}`, `explanation` — как получены веса и почему итоги меняются лишь на сдвиг от округления.
+
+### Шаблоны критериев и готовые чек-листы
+
+- `src/cqa/catalog/criteria_templates.json`: `{key, tags, section, why, criterion}`; `criterion` — поля Criterion без `id` и `sec` (`w` — предлагаемый вес), проходит правила `PUT /api/checklist`; `section` — подсказка раздела по названию; `why` — какой риск бизнеса закрывает. Интерфейс «Добавить критерий» → «Из шаблона» даёт `id` и `sec`.
+- `src/cqa/catalog/checklist_presets.json` и официальный (`tests/fixtures/checklist_v3.json`) первым: `checklist` целиком импортируется в черновик как файл JSON (`version` заменяется текущей). Пресеты сохраняют общие правила и `id` критериев официального, поэтому их ответы переживают импорт; веса — сумма 100.
 
 ## Доступ по токену (eval-and-delivery)
 

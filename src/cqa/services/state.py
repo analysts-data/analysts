@@ -9,6 +9,7 @@ from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.report import build_report, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
+from cqa.services.bands import current_bands
 from cqa.services.errors import Unavailable
 from cqa.settings import Settings
 
@@ -36,6 +37,12 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
     checklist = store.current_checklist()
     if checklist is None:
         raise Unavailable("Чек-лист не загружен")
+    return checklist, *state_for(store, checklist)
+
+
+def state_for(store: Store, checklist: Checklist) -> tuple[list[Dialog], list[Appeal]]:
+    """Dialogs and appeals as they would be with `checklist` current: results by its fingerprints.
+    For a draft that is the state right after saving it (what «Что если» compares)."""
     fps = fingerprints(checklist)
     stored = store.list_dialogs()
     results = current_results(store, checklist, stored)
@@ -47,7 +54,7 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
         for a, fp in store.list_appeals()
         if a.status in ("pending", "closed") or fp == fps[ch[a.dlg]].get(a.cid)
     ]
-    return checklist, dialogs, appeals
+    return dialogs, appeals
 
 
 ReportFormat = Literal["html", "json", "md"]
@@ -58,7 +65,10 @@ def report(
 ) -> dict[str, Any] | str:
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
-    rep = build_report(checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch)
+    rep = build_report(
+        checklist, dialogs, appeals, store.get_owners(),
+        at=stamp(now), lang=lang, ch=ch, bands=current_bands(store),
+    )  # fmt: skip
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
 
 

@@ -90,7 +90,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |
 | `PayloadError`, `OrgApiError` | dialog-ingest | — | только внутри трека: `OrgDialogSource` переводит их в `Invalid` или `Upstream` |
 
-Обработчики в `create_app` (`bootstrap-harness`) отвечают `{"detail": str(exc)}`. Текст по-русски, с идентификатором, без адресов и подписей.
+Обработчики в `create_app` (`bootstrap-harness`) отвечают `{"detail": str(exc)}`. Текст по-русски, с идентификатором, без адресов и подписей. `Invalid(message, fields={"<путь поля>": "<текст>"})` добавляет в ответ `"fields"`: путь через точку от корня тела (`criteria.4.na`, `bands.1.min`, `why`), `detail` — все тексты через «; ». Так отвечают `PUT /api/checklist` (`draft_errors`) и `PUT /api/bands` (`band_errors`).
 
 ## `create_app` и `app.state`
 
@@ -149,6 +149,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `bands` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON `{bands, why}`), `saved` (ISO); `Store.bands() -> (body, saved) \| None`, `Store.set_bands(body)` | eval-and-delivery (`src/cqa/services/bands.py`) |
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 
@@ -252,3 +253,16 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
+
+## Настройка чек-листа (eval-and-delivery, checklist-flex)
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `Band`, `Bands`, `band_of`, `band_errors` | `src/cqa/domain/tuning.py` | `band_of(bands, total) -> Band \| None` — первая оценка с `total >= min`; `band_errors(Bands) -> dict[путь, текст]` |
+| `simulate`, `normalize` | там же | `simulate(old, new, dialogs, before, after, bands) -> dict` — тело `POST /api/checklist/simulate` без `save_errors`; `normalize(checklist) -> dict` с `checklist: Checklist` |
+| `effective_answers` | `src/cqa/domain/review.py` | `effective_answers(dialog, appeals) -> {cid: Answer}` с учётом решений; общий для отчёта и «что если» |
+| `state_for` | `src/cqa/services/state.py` | `state_for(store, checklist) -> (dialogs, appeals)` — как в `GET /api/state`, но по отпечаткам `checklist` (для черновика — состояние сразу после сохранения) |
+| `draft_errors`, `simulate_draft`, `normalize_draft`, `criteria_templates`, `checklist_presets` | `src/cqa/services/checklists.py` | `draft_errors(draft) -> dict[путь, текст]` — правила `save_checklist`; остальное — тела ответов из контракта |
+| `bands_view`, `current_bands`, `save_bands` | `src/cqa/services/bands.py` | шкала из таблицы `bands` или `src/cqa/catalog/bands.json` |
+| `cqa.catalog.load` | `src/cqa/catalog/__init__.py` | `load(name) -> Any` — JSON рядом: `bands.json`, `criteria_templates.json`, `checklist_presets.json` |
+| `SEED_CHECKLIST` | `src/cqa/services/checklists.py` | `tests/fixtures/checklist_v3.json`: начальная версия (`seed_checklist`) и пресет «Официальный» |
