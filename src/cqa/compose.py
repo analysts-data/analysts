@@ -1,5 +1,6 @@
 """Сборка реализаций портов из `Settings`; без запросов наружу."""
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JEV_MODEL, JevVerifier
 from cqa.adapters.llm import ChatClient, ping
 from cqa.adapters.org_api import OrgApi
+from cqa.domain.models import RiskKind
 from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Prosody, Verifier
 from cqa.services.ingest import OrgDialogSource
 from cqa.services.llm_config import as_llm, config_error
@@ -17,6 +19,8 @@ from cqa.services.products import Classifier
 from cqa.settings import Provider, Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
+# маркеры риска брокера — данные, как чек-лист; ponytail: файл без API, PUT — когда их захотят править
+RISKS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "risks.json"
 CHECK_TIMEOUT_S = 20
 
 
@@ -90,6 +94,7 @@ def build_classifier(settings: Settings) -> Classifier:
         jev=_jev(settings) if settings.jev_api_key is not None else None,
         model=ChatClient(llm, _http(settings, "llm")),
         model_name=settings.llm_model,
+        risks=[RiskKind.model_validate(r) for r in json.loads(RISKS.read_text(encoding="utf-8"))],
         anonymize=settings.anonymize,
         sends_real_data=settings.llm_mode == "live",
         allow_real_data=settings.allow_real_data,

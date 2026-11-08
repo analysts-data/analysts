@@ -148,6 +148,20 @@ class ProductTag(BaseModel):  # Dialog.product
     cost: float = 0.0
 
 
+class RiskKind(BaseModel):  # маркер риска брокера: данные (tests/fixtures/risks.json), как чек-лист
+    k: str
+    label: str
+    text: str
+
+
+class RiskMark(BaseModel):  # Dialog.risks: найденный маркер с основанием
+    k: str
+    label: str
+    lines: list[int] = []  # реплики-основания; Jev их не возвращает
+    basis: str  # причина от модели или вероятность Jev с порогом
+    p: float | None = None  # Jev: вероятность
+
+
 class Dialog(BaseModel):
     id: str
     title: str | None = None
@@ -160,6 +174,7 @@ class Dialog(BaseModel):
     reviewed: bool = False
     cost: Cost | None = None
     product: ProductTag | None = None
+    risks: list[RiskMark] | None = None  # None — ещё не определены, [] — не найдены
 
 
 class Appeal(BaseModel):

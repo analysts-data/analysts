@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Product, ProductTag
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Product, ProductTag, RiskMark
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS org_source (
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS dialog_products (
-  dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), key TEXT NOT NULL, body TEXT NOT NULL);
+  dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), key TEXT NOT NULL, body TEXT NOT NULL, risks TEXT);
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -142,10 +142,11 @@ class Store:
         else:
             data["cost"] = None
         data["product"] = json.loads(row["product"]) if row["product"] is not None else None
+        data["risks"] = json.loads(row["risks"]) if row["risks"] is not None else None
         return Dialog.model_validate(data)
 
     _DIALOG = (
-        "SELECT d.body, d.reviewed, d.cost, p.body AS product FROM dialogs d "
+        "SELECT d.body, d.reviewed, d.cost, p.body AS product, p.risks FROM dialogs d "
         "LEFT JOIN dialog_products p ON p.dialog_id = d.id"
     )
 
@@ -173,12 +174,16 @@ class Store:
                 (body,),
             )
 
-    def set_product(self, dialog_id: str, tag: ProductTag, key: str) -> None:
-        """Тема диалога и ключ кэша (`product_key`; пусто — спросить снова при следующем запуске)."""
+    def set_product(
+        self, dialog_id: str, tag: ProductTag, key: str, risks: Sequence[RiskMark] | None = None
+    ) -> None:
+        """Тема диалога, маркеры риска (None — не определены) и ключ кэша (`product_key`; пусто — спросить
+        снова при следующем запуске)."""
+        found = None if risks is None else _dump([r.model_dump(mode="json") for r in risks])
         with self._conn:
             self._conn.execute(
-                "INSERT OR REPLACE INTO dialog_products (dialog_id, key, body) VALUES (?, ?, ?)",
-                (dialog_id, key, _dump(tag.model_dump(mode="json"))),
+                "INSERT OR REPLACE INTO dialog_products (dialog_id, key, body, risks) VALUES (?, ?, ?, ?)",
+                (dialog_id, key, _dump(tag.model_dump(mode="json")), found),
             )
 
     def product_keys(self) -> dict[str, str]:

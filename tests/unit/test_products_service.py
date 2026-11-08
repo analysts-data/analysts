@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Dialog, Line, Product, ProductTag
+from cqa.domain.models import Dialog, Line, Product, ProductTag, RiskKind, RiskMark
 from cqa.domain.prompt import Message
 from cqa.services.errors import Invalid, NotFound
 from cqa.services.evaluation import RealDataBlocked, Reply
@@ -16,8 +16,17 @@ from cqa.services.runs import Runner, plan_run
 from fakes import FIXTURES, FakeEvaluator, prototype_checklist
 
 PRODUCTS = [Product.model_validate(p) for p in json.loads((FIXTURES / "products.json").read_text("utf-8"))]
+RISKS = [RiskKind.model_validate(r) for r in json.loads((FIXTURES / "risks.json").read_text("utf-8"))]
 CHECKLIST = prototype_checklist()
-REPLY = '{"reason_ru": "Клиент спрашивает о выводе (реплика 2)", "turn_ids": [2], "answer": "funding"}'
+REPLY = json.dumps(
+    {
+        "reason_ru": "Клиент спрашивает о выводе (реплика 2)",
+        "turn_ids": [2],
+        "answer": "funding",
+        "risks": [{"k": "callback", "turn_ids": [2], "reason_ru": "Оператор вернётся с ответом (реплика 2)"}],
+    },
+    ensure_ascii=False,
+)
 
 
 class FakeChat:
@@ -33,27 +42,37 @@ class FakeChat:
 class FakeJev:
     def __init__(self) -> None:
         self.asked: list[Mapping[str, str]] = []
+        self.flags: list[Mapping[str, str]] = []
 
-    async def pick(self, dialog_text: str, options: Mapping[str, str]) -> Pick:
+    async def pick(self, dialog_text: str, options: Mapping[str, str], flags: Mapping[str, str]) -> Pick:
         self.asked.append(options)
-        return Pick(choice="funding", probs={"funding": 0.8, "account": 0.2}, p=0.8, cost=0.00005)
+        self.flags.append(flags)
+        probs = {"funding": 0.8, "account": 0.2}
+        return Pick(choice="funding", probs=probs, p=0.8, cost=0.00005, flags={"churn": 0.7, "manager": 0.1})
+
+
+MARK = RiskMark(k="churn", label="Угроза ухода", lines=[1], basis="Грозит уйти (реплика 1)")
 
 
 class FakeClassifier:
+    risks: Sequence[RiskKind] = ()
+
     def __init__(self, fail: Sequence[str] = ()) -> None:
         self.fail = set(fail)
         self.seen: list[str] = []
 
-    async def classify(self, dialog: Dialog, products: Sequence[Product]) -> ProductTag:
+    async def classify(
+        self, dialog: Dialog, products: Sequence[Product]
+    ) -> tuple[ProductTag, list[RiskMark]]:
         self.seen.append(dialog.id)
         if dialog.id in self.fail:
             raise RuntimeError("нет записи")
-        return ProductTag(status="done", id="funding", name="Пополнение", by="m", cost=0.0001)
+        return ProductTag(status="done", id="funding", name="Пополнение", by="m", cost=0.0001), [MARK]
 
 
 def _classifier(chat: FakeChat | None = None, jev: FakeJev | None = None, **kw: object) -> Classifier:
     args: dict[str, object] = {"anonymize": True, "sends_real_data": False, "allow_real_data": False} | kw
-    return Classifier(jev=jev, model=chat or FakeChat(), model_name="qwen3-6", **args)  # type: ignore[arg-type]
+    return Classifier(jev=jev, model=chat or FakeChat(), model_name="qwen3-6", risks=RISKS, **args)  # type: ignore[arg-type]
 
 
 def _dialog(ch: str = "chat") -> Dialog:
@@ -122,18 +141,24 @@ def test_plan_skips_topics_of_the_same_taxonomy_and_text_and_retries_errors(stor
 
 async def test_without_jev_one_model_call_with_anonymized_dialog() -> None:
     chat = FakeChat()
-    tag = await _classifier(chat).classify(_dialog(), PRODUCTS)
+    tag, risks = await _classifier(chat).classify(_dialog(), PRODUCTS)
     assert (tag.status, tag.id, tag.by, tag.basis.ev, tag.cost) == ("done", "funding", "qwen3-6", [2], 0.0003)
+    assert [(r.k, r.lines, r.basis) for r in risks] == [
+        ("callback", [2], "Оператор вернётся с ответом (реплика 2)")
+    ]
     (messages,) = chat.sent
     assert "+7 701" not in messages[1]["content"] and "[ТЕЛЕФОН]" in messages[1]["content"]
+    assert "- churn: " in messages[1]["content"]
 
 
 async def test_with_jev_one_choice_question_and_no_model_call() -> None:
     chat, jev = FakeChat(), FakeJev()
-    tag = await _classifier(chat, jev).classify(_dialog(), PRODUCTS)
+    tag, risks = await _classifier(chat, jev).classify(_dialog(), PRODUCTS)
     assert (tag.by, tag.confidence, tag.basis.probs) == ("jev", 0.8, {"funding": 0.8, "account": 0.2})
+    assert [(r.k, r.p) for r in risks] == [("churn", 0.7)]
     assert chat.sent == []
     assert list(jev.asked[0]) == [p.id for p in PRODUCTS]
+    assert jev.flags[0] == {r.k: r.text for r in RISKS}
 
 
 async def test_real_call_is_not_sent_to_any_model_without_permission() -> None:
@@ -143,7 +168,7 @@ async def test_real_call_is_not_sent_to_any_model_without_permission() -> None:
     with pytest.raises(RealDataBlocked):
         await _classifier(chat, jev, sends_real_data=True).classify(_dialog("call"), PRODUCTS)
     assert (chat.sent, jev.asked) == ([], [])
-    allowed = await _classifier(chat, sends_real_data=True, allow_real_data=True).classify(
+    allowed, _ = await _classifier(chat, sends_real_data=True, allow_real_data=True).classify(
         _dialog("call"), PRODUCTS
     )
     assert allowed.status == "done"

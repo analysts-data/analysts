@@ -3,10 +3,12 @@
 import json
 from typing import Any
 
-from cqa.domain.models import Appeal, Checklist, Dialog, Product, ProductTag
+from cqa.domain.models import Appeal, Checklist, Dialog, Product, ProductTag, RiskKind, RiskMark
 from cqa.domain.products import (
     PRODUCT_SURE,
+    jev_risks,
     jev_tag,
+    model_risks,
     model_tag,
     product_key,
     product_messages,
@@ -172,9 +174,13 @@ def test_stats_per_topic_match_the_report_on_the_same_dialogs() -> None:
 
 def test_stats_count_dialogs_whose_topic_needs_review() -> None:
     checklist, dialogs, appeals, owners = _state({})
-    first = dialogs[0].model_copy(update={"product": jev_tag("ipo", {"ipo": 0.3}, 0.3, PRODUCTS, cost=0)})
+    mark = RiskMark(k="churn", label="Угроза ухода", lines=[1], basis="…")
+    first = dialogs[0].model_copy(
+        update={"product": jev_tag("ipo", {"ipo": 0.3}, 0.3, PRODUCTS, cost=0), "risks": [mark, mark]}
+    )
     stats = {s["id"]: s for s in product_stats(checklist, [first], appeals, owners, PRODUCTS)}
     assert (stats["ipo"]["dialogs"], stats["ipo"]["needs_review"]) == (1, 1)
+    assert stats["ipo"]["risks"] == [{"k": "churn", "label": "Угроза ухода", "dialogs": 1}]
 
 
 def test_report_has_a_by_topic_section_in_json_markdown_and_html() -> None:
@@ -185,3 +191,54 @@ def test_report_has_a_by_topic_section_in_json_markdown_and_html() -> None:
     assert "## По продуктам" in md and f"| {NAMES['funding']} | 6 |" in md
     assert "<h2>По продуктам</h2>" in to_html(rep)
     assert "products" not in build_report(checklist, dialogs, appeals, owners, at="")
+
+
+# --- маркеры риска в том же запросе ---
+
+RISKS = [RiskKind.model_validate(r) for r in json.loads((FIXTURES / "risks.json").read_text("utf-8"))]
+LABELS = {r.k: r.label for r in RISKS}
+
+
+def test_prompt_lists_risk_markers_with_codes() -> None:
+    _, user = product_messages("[1 · 00:01] client: Закрою счёт!", PRODUCTS, RISKS)
+    for r in RISKS:
+        assert f"- {r.k}: {r.text}" in user["content"]
+
+
+def test_model_risks_carry_lines_and_the_model_reason_unknown_codes_dropped() -> None:
+    reply = json.dumps(
+        {
+            "reason_ru": "…",
+            "turn_ids": [1],
+            "answer": "funding",
+            "risks": [
+                {"k": "churn", "turn_ids": [3, 99], "reason_ru": "Грозит закрыть счёт (реплика 3)"},
+                {"k": "nope", "turn_ids": [1], "reason_ru": "x"},
+                {"k": "callback", "turn_ids": "1", "reason_ru": None},
+            ],
+        },
+        ensure_ascii=False,
+    )
+    assert model_risks(reply, RISKS, LINES) == [
+        RiskMark(k="churn", label=LABELS["churn"], lines=[3], basis="Грозит закрыть счёт (реплика 3)"),
+        RiskMark(k="callback", label=LABELS["callback"], lines=[], basis="модель не указала причину"),
+    ]
+    assert model_risks("не JSON", RISKS, LINES) == []
+
+
+def test_jev_risks_above_half_with_probability_as_basis() -> None:
+    marks = jev_risks({"churn": 0.82, "manager": 0.2, "nope": 0.9}, RISKS)
+    assert marks == [
+        RiskMark(
+            k="churn",
+            label=LABELS["churn"],
+            lines=[],
+            p=0.82,
+            basis="Jev: вероятность 0,82 при пороге 0,5; номера реплик Jev не возвращает",
+        )
+    ]
+
+
+def test_cache_key_changes_with_risk_markers() -> None:
+    d = prototype_dialogs()[0]
+    assert product_key(PRODUCTS, d, RISKS) != product_key(PRODUCTS, d, RISKS[:1])

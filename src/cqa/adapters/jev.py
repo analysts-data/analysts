@@ -179,18 +179,22 @@ class JevVerifier:
             confidence=_confidence(raw, criteria),
         )
 
-    async def pick(self, dialog_text: str, options: Mapping[str, str]) -> Pick:
-        """Тема обращения: один вопрос choice по справочнику тем, вероятность каждой темы из ответа."""
-        body = {
-            "model": JEV_MODEL,
-            "state": {"dialog": dialog_text},
-            "questions": {"q0": {"type": "choice", "instructions": _PICK, "criteria": dict(options)}},
+    async def pick(self, dialog_text: str, options: Mapping[str, str], flags: Mapping[str, str]) -> Pick:
+        """Один запрос: choice q0 по справочнику тем и noul r{i} на маркер риска (`flags`: код → текст)."""
+        questions: dict[str, Any] = {
+            "q0": {"type": "choice", "instructions": _PICK, "criteria": dict(options)}
         }
+        questions |= {
+            f"r{i}": {"type": "noul", "instructions": text} for i, text in enumerate(flags.values())
+        }
+        body = {"model": JEV_MODEL, "state": {"dialog": dialog_text}, "questions": questions}
         async with self._gate:
             response = await post_json(self._http, JEV_URL, body, self._headers)
         used = int((response.get("usage") or {}).get("input_tokens") or 0)
-        answer = (response.get("answers") or {}).get("q0")
+        answers = response.get("answers") or {}
+        answer = answers.get("q0")
         answer = answer if isinstance(answer, dict) else {}
+        found = {k: _number(_field(answers, f"r{i}", "noul")) for i, k in enumerate(flags)}
         raw = answer.get("probabilities")
         probs = (
             {str(k): p for k, v in raw.items() if (p := _number(v)) is not None}
@@ -203,4 +207,5 @@ class JevVerifier:
             probs=probs,
             p=_sure(answer),
             cost=used * JEV_PRICE_IN / 1_000_000,
+            flags={k: p for k, p in found.items() if p is not None},
         )

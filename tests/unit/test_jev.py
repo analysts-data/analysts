@@ -451,16 +451,21 @@ async def test_jev_only_blocks_real_call_and_config_error_before_any_request():
 
 async def test_topic_pick_is_one_choice_question_with_probability_of_every_topic():
     options = {"funding": "Пополнение и вывод: деньги", "account": "Счёт: открытие"}
+    flags = {"churn": "Грозит закрыть счёт", "manager": "Просит руководителя"}
     answer = {"type": "choice", "choice": "funding", "probabilities": {"funding": 0.83, "account": "0.17"}}
+    answers = {"q0": answer, "r0": {"type": "noul", "noul": 0.7}, "r1": {"type": "noul", "noul": "x"}}
     with respx.mock(assert_all_called=False) as mock:
-        route = mock.post(JEV_URL).respond(
-            200, json={"answers": {"q0": answer}, "usage": {"input_tokens": 1000}}
-        )
+        route = mock.post(JEV_URL).respond(200, json={"answers": answers, "usage": {"input_tokens": 1000}})
         async with httpx.AsyncClient() as http:
-            pick = await JevVerifier(KEY, http).pick(DIALOG_TEXT, options)
+            pick = await JevVerifier(KEY, http).pick(DIALOG_TEXT, options, flags)
     body = json.loads(route.calls[0].request.content)
     assert body["state"] == {"dialog": DIALOG_TEXT}
-    (question,) = body["questions"].values()
-    assert (question["type"], question["criteria"]) == ("choice", options)
+    q = body["questions"]
+    assert (q["q0"]["type"], q["q0"]["criteria"]) == ("choice", options)
+    assert [(q[k]["type"], q[k]["instructions"]) for k in ("r0", "r1")] == [
+        ("noul", "Грозит закрыть счёт"),
+        ("noul", "Просит руководителя"),
+    ]
     assert (pick.choice, pick.probs, pick.p) == ("funding", {"funding": 0.83, "account": 0.17}, 0.83)
+    assert pick.flags == {"churn": 0.7}
     assert pick.cost == pytest.approx(1000 * JEV_PRICE_IN / 1_000_000)

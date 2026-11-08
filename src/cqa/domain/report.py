@@ -171,6 +171,10 @@ def product_stats(
         subset = [d for d in dialogs if topic(d) == pid]
         rep = build_report(checklist, subset, appeals, owners, at="")
         s = rep["summary"]
+        marks: dict[str, tuple[str, set[str]]] = {}  # код маркера риска -> (подпись, диалоги)
+        for d in subset:
+            for r in d.risks or []:
+                marks.setdefault(r.k, (r.label, set()))[1].add(d.id)
         out.append(
             {
                 "id": pid,
@@ -189,6 +193,7 @@ def product_stats(
                     for c in rep["criteria"][:TOP_TOPIC]
                     if c["share"] < 1
                 ],
+                "risks": [{"k": k, "label": label, "dialogs": len(ds)} for k, (label, ds) in marks.items()],
             }
         )
     return out

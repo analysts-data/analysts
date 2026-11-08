@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 from cqa.adapters.store import RunRow, Store
-from cqa.domain.models import Checklist, Cost, Criterion, Dialog, Product, ProductTag
+from cqa.domain.models import Checklist, Cost, Criterion, Dialog, Product, ProductTag, RiskKind, RiskMark
 from cqa.domain.review import fingerprints
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.ports import Evaluator
@@ -15,7 +15,11 @@ from cqa.services.state import current_results
 
 
 class Classifier(Protocol):  # services.products.Classifier
-    async def classify(self, dialog: Dialog, products: Sequence[Product]) -> ProductTag: ...
+    risks: Sequence[RiskKind]
+
+    async def classify(
+        self, dialog: Dialog, products: Sequence[Product]
+    ) -> tuple[ProductTag, list[RiskMark]]: ...
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -104,7 +108,7 @@ class Runner:
         plan = plan_run(self._store, checklist, dialogs, criteria)
         products = self._store.products() or []
         todo = (
-            classify_plan(self._store, products, _selected(self._store, dialogs))
+            classify_plan(self._store, products, _selected(self._store, dialogs), self._classifier.risks)
             if self._classifier and products
             else []
         )
@@ -196,11 +200,12 @@ class Runner:
     async def _classify(self, run_id: int, dialog: Dialog, key: str, products: Sequence[Product]) -> None:
         """Тема диалога; сбой — статус error с текстом у темы, оценку и `errors` запуска не трогает."""
         assert self._classifier is not None, "todo строится только с классификатором"
+        risks: list[RiskMark] | None
         try:
-            tag = await self._classifier.classify(dialog, products)
+            tag, risks = await self._classifier.classify(dialog, products)
         except Exception as exc:
-            tag = ProductTag(status="error", error=str(exc) or type(exc).__name__)
-        self._store.set_product(dialog.id, tag, key if tag.status == "done" else "")
+            tag, risks = ProductTag(status="error", error=str(exc) or type(exc).__name__), None
+        self._store.set_product(dialog.id, tag, key if tag.status == "done" else "", risks)
         counts = self._products.setdefault(run_id, _no_products())
         counts["done"] += 1
         counts["errors"] += tag.status == "error"

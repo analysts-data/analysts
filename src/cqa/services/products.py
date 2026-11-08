@@ -5,12 +5,20 @@
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Dialog, Line, Product, ProductBasis, ProductTag
-from cqa.domain.products import MANUAL, jev_tag, model_tag, product_key, product_messages
+from cqa.domain.models import Dialog, Line, Product, ProductBasis, ProductTag, RiskKind, RiskMark
+from cqa.domain.products import (
+    MANUAL,
+    jev_risks,
+    jev_tag,
+    model_risks,
+    model_tag,
+    product_key,
+    product_messages,
+)
 from cqa.domain.prompt import render_dialog
 from cqa.services.errors import Invalid, NotFound
 from cqa.services.evaluation import ChatModel, _Gate
@@ -22,10 +30,11 @@ class Pick:
     probs: dict[str, float]  # вероятность каждой темы
     p: float | None  # вероятность выбранной
     cost: float
+    flags: dict[str, float] = field(default_factory=dict)  # код маркера риска → вероятность noul
 
 
 class Picker(Protocol):  # JevVerifier.pick
-    async def pick(self, dialog_text: str, options: Mapping[str, str]) -> Pick: ...
+    async def pick(self, dialog_text: str, options: Mapping[str, str], flags: Mapping[str, str]) -> Pick: ...
 
 
 def save_products(store: Store, products: Sequence[Product]) -> list[Product]:
@@ -60,9 +69,9 @@ def set_manual(store: Store, dialog_id: str, pid: str, reason: str) -> ProductTa
 
 
 def classify_plan(
-    store: Store, products: Sequence[Product], dialogs: Sequence[Dialog]
+    store: Store, products: Sequence[Product], dialogs: Sequence[Dialog], risks: Sequence[RiskKind] = ()
 ) -> list[tuple[Dialog, str]]:
-    """Диалоги без темы для этого справочника и текста, с ключом кэша. Ручная тема из справочника остаётся."""
+    """Диалоги без темы для этого справочника, маркеров и текста, с ключом кэша. Ручная тема остаётся."""
     keys = store.product_keys()
     ids = {p.id for p in products}
     plan = []
@@ -70,14 +79,17 @@ def classify_plan(
         tag = d.product
         if tag is not None and tag.by == MANUAL and tag.id in ids:
             continue
-        key = product_key(products, d)
+        key = product_key(products, d, risks)
         if keys.get(d.id) != key:
             plan.append((d, key))
     return plan
 
 
 class Classifier(_Gate):
-    """Тема диалога: Jev, если есть `jev`, иначе `model`. Бросает ошибки `_admit` и модели."""
+    """Тема и маркеры риска диалога одним вызовом: Jev, если есть `jev`, иначе `model`.
+
+    Бросает ошибки `_admit` и модели.
+    """
 
     def __init__(
         self,
@@ -85,6 +97,7 @@ class Classifier(_Gate):
         jev: Picker | None,
         model: ChatModel,
         model_name: str,
+        risks: Sequence[RiskKind],
         anonymize: bool,
         sends_real_data: bool,
         allow_real_data: bool,
@@ -92,6 +105,7 @@ class Classifier(_Gate):
     ) -> None:
         self.jev = jev
         self.model = model
+        self.risks = risks
         self.model_name = model_name
         self.anonymize = anonymize
         self.sends_real_data = sends_real_data
@@ -99,12 +113,17 @@ class Classifier(_Gate):
         self.config_error = None if jev else config_error  # Jev не нужен адрес и ключ языковой модели
         self.prosody = None
 
-    async def classify(self, dialog: Dialog, products: Sequence[Product]) -> ProductTag:
+    async def classify(
+        self, dialog: Dialog, products: Sequence[Product]
+    ) -> tuple[ProductTag, list[RiskMark]]:
         dialog = self._admit(dialog)
         text = render_dialog(dialog)
         if self.jev is not None:
-            pick = await self.jev.pick(text, {p.id: f"{p.name}: {p.description}" for p in products})
-            return jev_tag(pick.choice, pick.probs, pick.p, products, cost=pick.cost)
-        reply = await self.model.complete(product_messages(text, products))
+            options = {p.id: f"{p.name}: {p.description}" for p in products}
+            pick = await self.jev.pick(text, options, {r.k: r.text for r in self.risks})
+            tag = jev_tag(pick.choice, pick.probs, pick.p, products, cost=pick.cost)
+            return tag, jev_risks(pick.flags, self.risks)
+        reply = await self.model.complete(product_messages(text, products, self.risks))
         lines = {x.n for x in dialog.lines or [] if isinstance(x, Line)}
-        return model_tag(reply.text, products, lines, by=self.model_name, cost=reply.cost)
+        tag = model_tag(reply.text, products, lines, by=self.model_name, cost=reply.cost)
+        return tag, model_risks(reply.text, self.risks, lines)

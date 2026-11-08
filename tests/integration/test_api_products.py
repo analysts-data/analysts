@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from cqa.adapters.store import Store
 from cqa.compose import build_classifier
-from cqa.domain.models import Dialog, Product, ProductTag
+from cqa.domain.models import Dialog, Product, ProductTag, RiskKind, RiskMark
 from cqa.http.app import create_app
 from cqa.services.runs import Classifier
 from cqa.settings import Settings
@@ -22,8 +22,15 @@ SEED = json.loads((FIXTURES / "products.json").read_text(encoding="utf-8"))
 
 
 class OneTopic:
-    async def classify(self, dialog: Dialog, products: Sequence[Product]) -> ProductTag:
-        return ProductTag(status="done", id="funding", name="Пополнение и вывод средств", by="m", cost=0.0001)
+    risks: Sequence[RiskKind] = ()
+
+    async def classify(
+        self, dialog: Dialog, products: Sequence[Product]
+    ) -> tuple[ProductTag, list[RiskMark]]:
+        mark = RiskMark(k="churn", label="Угроза ухода", lines=[1], basis="Грозит уйти (реплика 1)")
+        return ProductTag(
+            status="done", id="funding", name="Пополнение и вывод средств", by="m", cost=0.0001
+        ), [mark]
 
 
 def _client(settings: Settings, conn: sqlite3.Connection, classifier: Classifier | None) -> TestClient:
@@ -67,6 +74,10 @@ def test_run_classifies_dialogs_and_state_carries_the_topic(api: TestClient) -> 
         "call-024": ("done", "funding", "m"),
         "p1-ru-003": ("done", "funding", "m"),
     }
+    risks = {d["id"]: d["risks"] for d in api.get("/api/state").json()["dialogs"]}
+    assert risks["call-024"] == [
+        {"k": "churn", "label": "Угроза ухода", "lines": [1], "basis": "Грозит уйти (реплика 1)"}
+    ]
 
 
 def test_manual_topic_overrides_the_model_and_is_kept(api: TestClient) -> None:
@@ -91,7 +102,7 @@ def test_stats_and_report_by_topic(api: TestClient) -> None:
     assert (funding["dialogs"], funding["scored"]) == (2, 2)
     assert set(funding) == {
         "id", "name", "dialogs", "scored", "avg_total", "risk_share", "no_next_step_share",
-        "needs_review", "reasons", "weakest",
+        "needs_review", "reasons", "weakest", "risks",
     }  # fmt: skip
     rep = api.get("/api/report?format=json").json()
     assert [p["id"] for p in rep["products"]] == ["funding"]
@@ -102,7 +113,9 @@ def test_real_call_is_not_sent_for_a_topic_without_permission(store: Store, conn
     settings = Settings(
         _env_file=None, db_path=":memory:", llm_mode="live", llm_api_key="k", llm_base_url="https://llm.test"
     )
-    reply = '{"reason_ru": "Клиент ждёт вывод (реплика 2)", "turn_ids": [2], "answer": "funding"}'
+    reply = (
+        '{"reason_ru": "Клиент ждёт вывод (реплика 2)", "turn_ids": [2], "answer": "funding", "risks": []}'
+    )
     with respx.mock(assert_all_called=False) as mock:
         route = mock.post("https://llm.test/chat/completions").respond(
             200, json={"choices": [{"message": {"content": reply}}], "usage": {}}
