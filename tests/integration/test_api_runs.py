@@ -60,6 +60,7 @@ def test_whole_set_is_evaluated_with_progress(api: TestClient) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
         "skipped": 0,
         "insufficient": 0,
         "dialogs": [
@@ -126,7 +127,10 @@ def test_second_run_while_one_is_active_is_409(
     with _client(settings, conn, FakeEvaluator(gate=gate)) as client:
         run_id = _run(client)
         response = client.post("/api/runs", json={"dialogs": None, "criteria": None})
-        assert (response.status_code, response.json()) == (409, {"detail": f"Запуск {run_id} ещё идёт"})
+        assert (response.status_code, response.json()) == (
+            409,
+            {"detail": f"Запуск {run_id} ещё идёт", "run_id": run_id, "done": 0, "total": 16, "eta_s": None},
+        )
         client.portal.call(gate.set)  # type: ignore[union-attr]
         assert _wait(client, run_id)["status"] == "done"
 

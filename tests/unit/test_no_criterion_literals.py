@@ -14,6 +14,9 @@ def test_source_strings_have_no_criterion_names_labels_or_keys() -> None:
     literals = {c["name"] for c in criteria} | {
         q[field] for c in criteria for q in c.get("questions") or [] for field in ("label", "k")
     }
+    # темы обращений и маркеры риска — тоже данные
+    literals |= {p["name"] for p in json.loads((ROOT / "tests/fixtures/products.json").read_text("utf-8"))}
+    literals |= {r["label"] for r in json.loads((ROOT / "tests/fixtures/risks.json").read_text("utf-8"))}
     pattern = re.compile("|".join(rf"(?<!\w){re.escape(s)}(?!\w)" for s in literals))
     hits = [
         f"{path.relative_to(ROOT)}:{node.lineno}: {node.value!r}"

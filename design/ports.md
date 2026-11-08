@@ -87,11 +87,15 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | --- | --- | --- | --- |
 | `NotFound` | `src/cqa/services/errors.py` | 404 | неизвестный диалог, критерий, апелляция, запуск; `/audio` и `/player` для чата |
 | `Invalid` | там же | 422 | недопустимый ответ, пустая причина, плохой `group_id`, файл не в формате организаторов |
-| `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция |
+| `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция; `Conflict(msg, **extra)` — поля `extra` идут в тело рядом с `detail` (`Runner.ensure_idle`: `run_id`, `done`, `total`, `eta_s`) |
 | `Upstream` | там же | 502 | API организаторов не ответил или вернул ошибку; ссылку на запись получить не удалось |
 | `Unauthorized` | там же | 401 | неверный токен источника (`POST /api/sources/{id}/ingest`) |
 | `Unavailable` | там же | 503 | источник или оценщик не подключён (`app.state.source is None`, `app.state.runner is None`) |
 | `ConfigError` | там же | — | нет ключа или неизвестный профиль; бросает `evaluate`, попадает строкой в `errors` запуска |
+
+Ошибка проверки тела или параметров FastAPI (`RequestValidationError`) — 422 `{"detail": "Запрос не прошёл проверку: …", "errors": [{path, message, expected}]}` (`src/cqa/http/validation.py`).
+
+`Runner(store, evaluator, *, parallel, clock=time.time, on_finish=None)`: `on_finish(run)` получает `{run_id, status, done, total, errors, dialog_ids}` по каждому запуску (в `execute` и сразу у запуска без работы); `create_app` проверяет по нему алерты и шлёт `run.finished` на вебхук, сбой пишется в журнал; `ensure_idle()` — Conflict при активном запуске.
 
 Примеры 422 из `save_checklist`: `Критерий 05: для канала chat нужен na: true`, `Повторяется id критерия 04`.
 | `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |
@@ -120,6 +124,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `GET /api/health`, обработчики ошибок, раздача `web/` на `/` — последней строкой, иначе статика перекроет роутеры | bootstrap-harness |
 | `include_router(cqa.http.api.router)` — все пути контракта, кроме `/audio` и `/player`; сид чек-листа на пустой базе | review-workflow |
 | `include_router(cqa.http.audio.router)` — `/api/dialogs/{id}/audio`, `/player` | dialog-ingest |
+| `include_router(cqa.http.integration.router)` — `/api/evaluate`, `/evaluate/batch`, `/dialogs/{id}`, `/results`; обработчик 422 `cqa.http.validation`; `document(app)` из `cqa.http.openapi` — разделы и описания схемы `/api/openapi.json` | eval-and-delivery |
 | `include_router(cqa.http.docs.router)` — документация `/docs/` из `docs/site/*.md` и справочник по `app.openapi()`; Swagger и ReDoc выключены, схема — `/api/openapi.json` | eval-and-delivery |
 
 ## Settings (`src/cqa/settings.py`, `CQA_*` и `.env`)
@@ -156,6 +161,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
 | `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
+| `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (пусто — без вебхука) | eval-and-delivery (`create_app` → `Runner(on_finish=...)`) |
+| `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (пусто — без подписи) | eval-and-delivery (`src/cqa/adapters/webhook.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
 
@@ -225,6 +232,7 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `make eval` | `CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)` | `ARGS="--checklist PATH"`, `ARGS=--accept` |
 | `make eval-holdout` | то же с `--holdout` | `CQA_HOLDOUT_DIR` вне репозитория |
 | `make backup` | `scripts/backup_db.py` → `data/backup/cqa-<HHMM>.db` | `CQA_DB_PATH` |
+| `make openapi` | снимок схемы `/api/openapi.json` в `docs/openapi.json`; `tests/integration/test_openapi.py` сверяет его с кодом | — |
 
 | Файл | Формат | Владелец |
 | --- | --- | --- |
@@ -290,6 +298,20 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `Store.prosodies` | `src/cqa/adapters/store.py` | `prosodies() -> dict[str, dict]`: все сохранённые разборы по id звонка для норм |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
+
+## Темы обращений и маркеры риска (llm-evaluation, products)
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `Product`, `ProductTag`, `ProductBasis`, `RiskKind`, `RiskMark` | `src/cqa/domain/models.py` | форма раздела «Темы обращений» в `contract.md`; `Dialog.product: ProductTag \| None`, `Dialog.risks: list[RiskMark] \| None` |
+| `product_messages`, `model_tag`, `model_risks`, `jev_tag`, `jev_risks`, `product_key` | `src/cqa/domain/products.py` | чистые функции запроса, разбора ответа и ключа кэша; `PRODUCT_SURE = 0.6`, `RISK_SURE = 0.5`, `MANUAL = "вручную"` |
+| `product_stats` | `src/cqa/domain/report.py` | `product_stats(checklist, dialogs, appeals, owners, products) -> list[dict]`; `build_report(..., products=())` добавляет `products` |
+| `Classifier` | `src/cqa/services/products.py` | `_Gate`: `classify(dialog, products) -> (ProductTag, list[RiskMark])`, `risks` — список маркеров; Jev (`Picker.pick(text, options, flags) -> Pick`) или `ChatModel` |
+| `save_products`, `set_manual`, `classify_plan`, `taxonomy` | там же | `PUT /api/products`, `PUT /api/dialogs/{id}/product`, план диалогов для темы с ключом |
+| `JevVerifier.pick` | `src/cqa/adapters/jev.py` | один POST: choice `q0` и noul `r{i}` |
+| `build_classifier(settings)` | `src/cqa/compose.py` | Jev при `jev_api_key`, иначе основная модель с `llm_reasoning="off"`; маркеры — `tests/fixtures/risks.json` |
+| `Runner(..., classifier=None)`, `Runner.use(evaluator, classifier=None)` | `src/cqa/services/runs.py` | `create_app(..., classifier=None)` собирает `build_classifier`, только если оценщик не подставлен (тесты с `FakeEvaluator` идут без тем) |
+| Таблицы `products`, `dialog_products` | `data/cqa.db` | `products(id = 1, body)` — справочник JSON; `dialog_products(dialog_id PK, key, body, risks)` — тема (`ProductTag`), маркеры, ключ кэша (`""` — спросить снова, `"вручную"`); `pending` удаляются в конце запуска и при старте |
 
 ## Настройка чек-листа (eval-and-delivery, checklist-flex)
 

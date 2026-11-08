@@ -5,7 +5,7 @@
 """
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -13,6 +13,7 @@ import httpx
 from cqa.adapters.llm import post_json
 from cqa.domain.models import Criterion
 from cqa.services.evaluation import Verdict
+from cqa.services.products import Pick
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODEL = "jev-latest"
@@ -22,6 +23,12 @@ _MAX_PARALLEL = 8
 _INSTRUCTION = (
     "Оцени по dialog только реплики оператора; реплики с пометкой «не оценивается» — контекст; "
     "учитывай rules."
+)
+
+
+_PICK = (
+    "Определи тему обращения клиента по dialog: тему задаёт вопрос клиента, а не ответ оператора. "
+    "Если подходящей темы нет, выбери самую общую."
 )
 
 
@@ -170,4 +177,35 @@ class JevVerifier:
             answers=_answers(raw, criteria),
             cost=used * JEV_PRICE_IN / 1_000_000,
             confidence=_confidence(raw, criteria),
+        )
+
+    async def pick(self, dialog_text: str, options: Mapping[str, str], flags: Mapping[str, str]) -> Pick:
+        """Один запрос: choice q0 по справочнику тем и noul r{i} на маркер риска (`flags`: код → текст)."""
+        questions: dict[str, Any] = {
+            "q0": {"type": "choice", "instructions": _PICK, "criteria": dict(options)}
+        }
+        questions |= {
+            f"r{i}": {"type": "noul", "instructions": text} for i, text in enumerate(flags.values())
+        }
+        body = {"model": JEV_MODEL, "state": {"dialog": dialog_text}, "questions": questions}
+        async with self._gate:
+            response = await post_json(self._http, JEV_URL, body, self._headers)
+        used = int((response.get("usage") or {}).get("input_tokens") or 0)
+        answers = response.get("answers") or {}
+        answer = answers.get("q0")
+        answer = answer if isinstance(answer, dict) else {}
+        found = {k: _number(_field(answers, f"r{i}", "noul")) for i, k in enumerate(flags)}
+        raw = answer.get("probabilities")
+        probs = (
+            {str(k): p for k, v in raw.items() if (p := _number(v)) is not None}
+            if isinstance(raw, dict)
+            else {}
+        )
+        choice = answer.get("choice")
+        return Pick(
+            choice=None if choice is None else str(choice),
+            probs=probs,
+            p=_sure(answer),
+            cost=used * JEV_PRICE_IN / 1_000_000,
+            flags={k: p for k, p in found.items() if p is not None},
         )

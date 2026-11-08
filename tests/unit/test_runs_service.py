@@ -327,6 +327,7 @@ def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store)
         "eta_s": 30,
         "errors": ["p1-ru-003: timeout"],
         "status": "running",
+        "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
         "skipped": 0,
         "insufficient": 0,
         "dialogs": [],
@@ -345,6 +346,7 @@ async def test_progress_of_a_finished_run(store: Store) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
         "skipped": 0,
         "insufficient": 0,
         "dialogs": [
@@ -384,6 +386,64 @@ async def test_use_during_a_run_is_a_conflict(store: Store) -> None:
     with pytest.raises(Conflict, match="идёт"):
         runner.use(FakeEvaluator())
     runner.cancel(runner._active or 0)
+
+
+def _announced() -> tuple[list[dict[str, Any]], Callable[[dict[str, Any]], Any]]:
+    events: list[dict[str, Any]] = []
+
+    async def on_finish(event: dict[str, Any]) -> None:
+        events.append(event)
+
+    return events, on_finish
+
+
+async def test_finished_run_is_announced_with_counts_and_requested_dialogs(store: Store) -> None:
+    events, on_finish = _announced()
+    runner = Runner(store, FakeEvaluator(fail_on={"p1-ru-003"}), parallel=1, on_finish=on_finish)
+    run_id = runner.start(["call-024", "p1-ru-003"], None)
+    await _drain(runner)
+    assert events == [
+        {
+            "run_id": run_id,
+            "status": "done",
+            "done": 16,
+            "total": 16,
+            "errors": ["p1-ru-003: timeout"],
+            "dialog_ids": ["call-024", "p1-ru-003"],
+        }
+    ]
+
+
+async def test_run_with_nothing_to_do_is_announced_too(store: Store) -> None:
+    events, on_finish = _announced()
+    runner = Runner(store, FakeEvaluator(), parallel=1, on_finish=on_finish)
+    runner.start(["call-024"], None)
+    await _drain(runner)
+    run_id = runner.start(["call-024"], None)
+    await _drain(runner)
+    assert [(e["run_id"], e["total"], e["dialog_ids"]) for e in events][-1] == (run_id, 0, [])
+
+
+async def test_ensure_idle_refuses_while_a_run_is_active(store: Store) -> None:
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(gate=gate), parallel=1)
+    runner.ensure_idle()
+    run_id = runner.start(None, None)
+    with pytest.raises(Conflict, match=f"^Запуск {run_id} ещё идёт$"):
+        runner.ensure_idle()
+    gate.set()
+    await _drain(runner)
+
+
+async def test_conflict_names_the_active_run_with_its_progress(store: Store) -> None:
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(gate=gate), parallel=1, clock=_clock())
+    run_id = runner.start(None, None)
+    with pytest.raises(Conflict) as err:
+        runner.ensure_idle()
+    assert err.value.extra == {"run_id": run_id, "done": 0, "total": 16, "eta_s": None}
+    gate.set()
+    await _drain(runner)
 
 
 # --- повторная проверка, запуски, сравнение ---
@@ -612,7 +672,7 @@ async def test_override_alone_is_a_forced_re_check(store: Store) -> None:
 async def test_finished_run_calls_alert_hook_and_survives_its_failure(store: Store) -> None:
     calls: list[int] = []
 
-    async def hook() -> None:
+    async def hook(run: dict[str, Any]) -> None:
         calls.append(1)
         raise RuntimeError("alerts down")
 

@@ -22,9 +22,9 @@ from pydantic import (
     field_validator,
 )
 
-from cqa.compose import build_evaluator, build_routed, check_provider
+from cqa.compose import build_classifier, build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
-from cqa.domain.models import Answer, Appeal, Checklist, ReasonCode
+from cqa.domain.models import Answer, Appeal, Checklist, Product, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.domain.tuning import Bands
@@ -65,6 +65,7 @@ from cqa.services.llm_config import (
     view,
 )
 from cqa.services.ports import DialogSource
+from cqa.services.products import save_products, set_manual, taxonomy
 from cqa.services.routing import explain, put_routing
 from cqa.services.routing import view as routing_view
 from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
@@ -75,6 +76,7 @@ from cqa.services.state import (
     mode_from_settings,
     operator_page,
     operator_rows,
+    product_stats_of,
     recommendations,
     report,
     scores_csv,
@@ -138,6 +140,11 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ProductIn(BaseModel):
+    id: str
+    reason: str = ""
 
 
 class ExplainIn(BaseModel):
@@ -681,7 +688,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_routed(settings, state.prosody, state.store))
+        _runner(request).use(build_routed(settings, state.prosody, state.store), build_classifier(settings))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -909,6 +916,30 @@ async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
     out = _runner(request).cancel(run_id)
     _log(request, "run.cancel", "run", run_id)
     return out
+
+
+@router.get("/products")
+async def get_products(request: Request) -> list[dict[str, Any]]:
+    return [p.model_dump() for p in taxonomy(request.app.state.store)]
+
+
+@router.put("/products")
+async def put_products(body: list[Product], request: Request) -> list[dict[str, Any]]:
+    saved = save_products(request.app.state.store, body)
+    _log(request, "products.save", "products", "", {"ids": [p.id for p in saved]})
+    return [p.model_dump() for p in saved]
+
+
+@router.get("/products/stats")
+async def get_product_stats(request: Request) -> list[dict[str, Any]]:
+    return product_stats_of(request.app.state.store)
+
+
+@router.put("/dialogs/{dialog_id}/product")
+async def put_dialog_product(dialog_id: str, body: ProductIn, request: Request) -> dict[str, Any]:
+    tag = set_manual(request.app.state.store, dialog_id, body.id, body.reason)
+    _log(request, "dialog.product", "dialog", dialog_id, {"id": body.id})
+    return tag.model_dump(mode="json")
 
 
 class EmployeeIn(BaseModel):

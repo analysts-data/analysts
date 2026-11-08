@@ -122,7 +122,7 @@
 | `POST /api/runs/{id}/adopt` | `{"dialogs": [..] или null, "criteria": [..] или null}` или без тела | `{adopted, skipped}`: теневые ответы запуска `compare` становятся текущими (там же) |
 | `GET /api/runs` | — | последние 50 запусков, новые первыми (раздел «История оценок и повторная проверка») |
 | `GET /api/runs/compare?a=<id>&b=<id>` | — | сравнение двух запусков (там же); неизвестный запуск — 404 |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog]}`; `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog], products: {done, total, errors, cost}}`; `products` — темы обращений отдельным счётом (раздел «Темы обращений»); `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 | `GET /api/dialogs/{id}/history` | — | история оценок диалога (раздел «История оценок и повторная проверка»); неизвестный диалог — 404 |
 | `POST /api/results/{id}/restore` | — | CriterionResult: прежняя оценка снова текущая; 404, 409 (там же) |
@@ -165,6 +165,11 @@
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
 | `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`, `sufficiency`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
+| `POST /api/evaluate?wait=true\|false` | запись организаторов `{conversation_id, channel, language, transcript, audio_url?, operator?}` или `{text, ch, title}`; заголовок `Idempotency-Key` необязателен | 200 `{dialog_id, run_id, total, critical_flag, criteria: [CriterionResult + cid, name], results_v1, errors}`; `wait=false` или оценка дольше 120 с — 202 `{dialog_id, run_id}` (раздел «Интеграционный API») |
+| `POST /api/evaluate/batch` | `{"dialogs": [1..100 элементов как у /evaluate]}`; `Idempotency-Key` | 202 `{run_id, dialog_ids}` |
+| `GET /api/dialogs/{id}` | — | `{dialog_id, total, critical_flag, criteria, results_v1, dialog: Dialog}`; неизвестный id — 404 |
+| `GET /api/results?ids=<id>&ids=<id>` | — | файл результатов организаторов JSON 1.0 `{schema_version, team_name, model, results}` по `ids` в их порядке, без `ids` — по всем диалогам |
+| `GET /api/openapi.json` | — | схема OpenAPI 3.1 по-русски; снимок `docs/openapi.json` (`make openapi`) |
 | `GET /api/employees` | — | `[{id, name, role, team, active}]` по имени; раздел «Сотрудники и журнал действий» |
 | `PUT /api/employees/{id}` | `{name, role: "operator" \| "qa" \| "reviewer" \| "manager" \| "admin", team, active}` | сотрудник после записи: создан или изменён; пустое имя или другая роль — 422 |
 | `POST /api/employees/import` | CSV `id;name;role;team`, UTF-8 (BOM можно), первая строка `id;…` — заголовок | `{added, updated}`; ошибка в строке — 422 «Строка N: …», ничего не сохранено |
@@ -463,6 +468,48 @@ Alert: `{id, rule_id, severity, title, target_type: "dialog" | "operator" | "set
 ## Доступ по токену (eval-and-delivery)
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
+
+## Интеграционный API (eval-and-delivery)
+
+Для CRM, Dynamics 365 и контакт-центра: те же пути, что у интерфейса, плюс оценка одним вызовом. Примеры curl и Python — `docs/api-examples.md`, схема — `GET /api/openapi.json`.
+
+- Диалоги из `/api/evaluate` и `/evaluate/batch` получают `source_id: "api"` (встроенный источник, строка в журнале синхронизаций). `POST /api/evaluate` сохраняет диалог тем же путём, что «Загрузить JSON» (запись организаторов, лишние поля вроде `operator` проходят как есть) или вставка текста (`paste-<n>`), и оценивает его текущим чек-листом через `Runner.start`: запрет реальных звонков без `CQA_ALLOW_REAL_DATA=1` и обезличивание — в оценщике, как у «Оценить». Повтор `conversation_id` диалог не заменяет, готовые пары берутся из кэша. Ошибки оценки (реальный звонок без разрешения, модель недоступна) — строками в `errors`, `criteria` тогда пуст.
+- `total` и `critical_flag` — с учётом последнего решения по апелляциям, как в интерфейсе; `critical_flag` — нарушение любого флага. `results_v1` — запись `results[]` файла JSON 1.0 по карте `results/criteria_map.json`; `null`, если карта не подходит к изменённому чек-листу (`GET /api/results` тогда — 409).
+- `Idempotency-Key` (до 255 символов): повтор с тем же ключом и тем же телом возвращает сохранённый ответ 2xx без новой оценки; другое тело — 422, повтор, пока первый запрос идёт, — 409. Ключи живут в памяти процесса, последние 1000.
+- 409 из-за активного запуска (у `/evaluate`, `/evaluate/batch`, `POST /api/runs`): `{"detail": "Запуск 41 ещё идёт", "run_id": 41, "done": 24, "total": 80, "eta_s": 95}`; диалог при этом не сохраняется.
+- 422 по телу или параметрам у всех путей: `{"detail": "Запрос не прошёл проверку: language — обязательное поле", "errors": [{"path": "language", "message": "обязательное поле", "expected": "\"ru\", \"kz\" или \"en\""}]}`; `path` — поля через точку от корня тела (`dialogs.1.ch`), `""` — тело целиком.
+- Вебхук: один отправитель с алертами (`src/cqa/adapters/webhook.py`). При `CQA_WEBHOOK_URL` по концу каждого запуска (в том числе без работы) — `POST` JSON `{"event": "run.finished", "data": {run_id, status, done, total, errors, dialog_ids}}`, `dialog_ids` — диалоги очереди запуска, без текста диалогов; алерты — `{"event": "alert.created", "data": …}`; при `CQA_WEBHOOK_SECRET` — заголовок `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела>`. Сбой доставки — строка в журнале без адреса, запуск не падает, повтора нет.
+- Доступ: при `CQA_ACCESS_TOKEN` клиент API шлёт `Authorization: Bearer <токен>` вместо cookie; предзапрос CORS проходит без токена, CORS разрешает заголовки `Authorization` и `Idempotency-Key`.
+
+## Темы обращений и маркеры риска (llm-evaluation, products)
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/products` | — | справочник тем `[{id, name, description}]`; на пустой базе засеян из `tests/fixtures/products.json` |
+| `PUT /api/products` | `[{id, name, description}]` | справочник целиком после сохранения; `id` — `[a-z0-9-]{1,32}`, `name` не пуст, повтор `id` или пустой список — 422. Версий нет: следующий `POST /api/runs` переопределит темы (ключ кэша) |
+| `GET /api/products/stats` | — | по каждой теме справочника и `{id: null, name: "Тема не определена"}` (нет темы, ошибка, тема удалена; строка есть, только если такие диалоги есть): `[{id, name, dialogs, scored, avg_total, risk_share, no_next_step_share, needs_review, reasons: [{tag, dialogs, owner}], weakest: [{id, name, share}], risks: [{k, label, dialogs}]}]`. Числа — как в отчёте на диалогах темы; `reasons` — топ-3 `tag`, `weakest` — до 3 худших критериев с долей ниже 1, `needs_review` — диалоги, тема которых ждёт проверки |
+| `PUT /api/dialogs/{id}/product` | `{"id": "<id темы>", "reason": "…" или ""}` | `Dialog.product` с `by: "вручную"`; неизвестный диалог — 404, тема не из справочника — 422. Ручную тему запуск не перезаписывает, пока она есть в справочнике |
+
+`Dialog.product` (нет поля — тема ещё не определялась):
+
+```json
+{"status": "done", "id": "funding", "name": "Пополнение и вывод средств", "confidence": 0.91, "by": "jev",
+ "needs_review": false, "error": null, "cost": 0.00006,
+ "basis": {"why": "Jev выбрал «Пополнение и вывод средств» с вероятностью 0,91", "ev": [],
+           "probs": {"funding": 0.91, "account": 0.05}, "threshold": 0.6, "threshold_why": "Порог 0,6 — …"}}
+```
+
+- `status`: `pending` — диалог в очереди активного запуска (после остановки запуска поле снова пропадает), `done`, `error` — `error` с текстом (нет записи, сбой модели, запрет реального звонка, тема не из справочника); такой диалог переспрашивается следующим запуском.
+- `by`: `"jev"`, имя основной модели или `"вручную"`. `confidence` — только у Jev (вероятность выбранной темы), у модели и вручную `null`.
+- `basis` — полное основание без эвристик: у Jev `probs` (вероятность каждой темы), `threshold` и `threshold_why`, `why` — вывод словами; у модели `why` — её короткая причина со ссылками на реплики и `ev` — номера реплик с вопросом клиента (только существующие); вручную `why` — причина человека.
+- `needs_review: true`: Jev с вероятностью ниже `threshold` (0,6 — тот же порог, что у ответов Jev по критериям; на размеченных темах не подбирался) или без вероятности; модель без существующих реплик-оснований.
+- В `GET /api/state` поля со значением `null` не передаются, как у остальных полей диалога.
+
+`Dialog.risks` — маркеры риска брокера из того же вызова (нет поля — ещё не определялись, `[]` — не найдены): `[{k, label, lines: [n], basis, p}]`. Список маркеров — данные `tests/fixtures/risks.json` (`{k, label, text}`): угроза ухода или закрытия счёта, просьба позвать руководителя, упоминание регулятора или жалобы, обещание перезвонить или вернуться, недовольство решением. У модели `lines` — реплики-основания, `basis` — её короткая причина; у Jev — вопрос noul на маркер, маркер есть при вероятности от 0,5 (граница подвопросов грубых нарушений), `p` — вероятность, `basis` — «Jev: вероятность 0,82 при пороге 0,5; номера реплик Jev не возвращает», `lines: []`. Совпадений по ключевым словам нет. Авто-маркеры и оповещения читают `Dialog.risks` как есть.
+
+Определение — часть `POST /api/runs`: одна задача на диалог выбранных (`dialogs` или все), параллельно оценке этого диалога. Один вызов на диалог: если задан ключ Jev (`CQA_JEV_API_KEY` или из интерфейса) — один запрос Jev (choice `q0` по темам и noul `r{i}` на маркер), иначе один запрос JSON к основной модели без рассуждения (`response_format: json_object`): `{"reason_ru", "turn_ids", "answer": "<id темы>", "risks": [{"k", "turn_ids", "reason_ru"}]}`. Кэш — по справочнику тем, маркерам и репликам диалога (`product_key`): готовая тема не спрашивается снова. Запрет реальных звонков (`CQA_ALLOW_REAL_DATA`), обезличивание и ошибки конфигурации — как у оценки. Запросы оценки по критериям тема не меняет: тело запроса байт в байт прежнее. Цена темы — в `product.cost` и в `products.cost` запуска, в `cost` запуска и `Dialog.cost` не входит.
+
+Отчёт для руководства (`GET /api/report`): `products` — строки `GET /api/products/stats` с диалогами, больше диалогов — выше; раздел «По продуктам» в `html` и `md` и вывод «Темы: ниже всего средний итог у …».
 
 ## Источники диалогов (dialog-ingest, sources)
 

@@ -8,7 +8,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome, ReasonCode
+from cqa.domain.models import (
+    Appeal,
+    Checklist,
+    Cost,
+    CriterionResult,
+    Dialog,
+    Outcome,
+    Product,
+    ProductTag,
+    ReasonCode,
+    RiskMark,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -90,6 +101,9 @@ CREATE TABLE IF NOT EXISTS telemetry (
 CREATE INDEX IF NOT EXISTS telemetry_at ON telemetry(at);
 CREATE TRIGGER IF NOT EXISTS telemetry_no_update BEFORE UPDATE ON telemetry
   BEGIN SELECT RAISE(ABORT, 'метрики только дописываются'); END;
+CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS dialog_products (
+  dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), key TEXT NOT NULL, body TEXT NOT NULL, risks TEXT);
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -133,6 +147,8 @@ _COLUMNS = {
     "operator",
     "source_id",
     "external_id",
+    "product",
+    "risks",
 }  # не в body: свои колонки или таблицы
 DialogStatus = Literal["queued", "evaluating", "done", "error", "skipped", "cancelled"]
 
@@ -323,20 +339,61 @@ class Store:
             data["cost"] = json.loads(row["cost"])
         else:
             data["cost"] = None
+        data["product"] = json.loads(row["product"]) if row["product"] is not None else None
+        data["risks"] = json.loads(row["risks"]) if row["risks"] is not None else None
         return Dialog.model_validate(data)
 
+    _DIALOG = (
+        "SELECT d.body, d.reviewed, d.cost, d.operator, d.source_id, d.external_id, "
+        "p.body AS product, p.risks FROM dialogs d "
+        "LEFT JOIN dialog_products p ON p.dialog_id = d.id"
+    )
+
     def get_dialog(self, dialog_id: str) -> Dialog | None:
-        row = self._conn.execute(
-            "SELECT body, reviewed, cost, operator, source_id, external_id FROM dialogs WHERE id = ?",
-            (dialog_id,),
-        ).fetchone()
+        row = self._conn.execute(f"{self._DIALOG} WHERE d.id = ?", (dialog_id,)).fetchone()
         return self._dialog_from_row(row) if row is not None else None
 
     def list_dialogs(self) -> list[Dialog]:
-        rows = self._conn.execute(
-            "SELECT body, reviewed, cost, operator, source_id, external_id FROM dialogs ORDER BY rowid"
-        ).fetchall()
+        rows = self._conn.execute(f"{self._DIALOG} ORDER BY d.rowid").fetchall()
         return [self._dialog_from_row(row) for row in rows]
+
+    # --- темы обращений ---
+
+    def products(self) -> list[Product] | None:
+        """Справочник тем; None — ещё не засеян."""
+        row = self._conn.execute("SELECT body FROM products").fetchone()
+        return [Product.model_validate(p) for p in json.loads(row["body"])] if row else None
+
+    def set_products(self, products: Sequence[Product]) -> None:
+        body = _dump([p.model_dump() for p in products])
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO products (id, body) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET body = excluded.body",
+                (body,),
+            )
+
+    def set_product(
+        self, dialog_id: str, tag: ProductTag, key: str, risks: Sequence[RiskMark] | None = None
+    ) -> None:
+        """Тема диалога, маркеры риска (None — не определены) и ключ кэша (`product_key`; пусто — спросить
+        снова при следующем запуске)."""
+        found = None if risks is None else _dump([r.model_dump(mode="json") for r in risks])
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO dialog_products (dialog_id, key, body, risks) VALUES (?, ?, ?, ?)",
+                (dialog_id, key, _dump(tag.model_dump(mode="json")), found),
+            )
+
+    def product_keys(self) -> dict[str, str]:
+        return {
+            r["dialog_id"]: r["key"] for r in self._conn.execute("SELECT dialog_id, key FROM dialog_products")
+        }
+
+    def clear_pending_products(self) -> None:
+        """Темы «pending» прерванного запуска: без ответа диалог снова без темы."""
+        with self._conn:
+            self._conn.execute("DELETE FROM dialog_products WHERE json_extract(body, '$.status') = 'pending'")
 
     def set_reviewed(self, dialog_id: str, reviewed: bool) -> None:
         with self._conn:
