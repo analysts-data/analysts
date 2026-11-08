@@ -10,7 +10,7 @@ from cqa.domain.scores_export import to_csv
 from fakes import FIXTURES
 
 FIXED = [
-    "ID", "Название", "Канал", "Язык", "Дата", "Итог", "Грубое нарушение", "Виды нарушений",
+    "ID", "Название", "Канал", "Язык", "Дата", "Сотрудник", "Итог", "Грубое нарушение", "Виды нарушений",
     "Нужна проверка", "Проверен",
 ]  # fmt: skip
 LONG = [
@@ -55,6 +55,15 @@ def test_wide_has_one_row_per_dialog_and_a_column_per_criterion_named_from_check
 
     assert head == FIXED + [c["name"] for c in s["checklist"]["criteria"]]
     assert [r[0] for r in rows] == [d["id"] for d in s["dialogs"]]
+
+
+def test_wide_has_operator_column_empty_when_not_assigned() -> None:
+    s = state()
+    s["dialogs"][0]["operator"] = "Сотрудник А"
+    rows = by_id(export(s))
+
+    assert rows[s["dialogs"][0]["id"]]["Сотрудник"] == "Сотрудник А"
+    assert rows[s["dialogs"][1]["id"]]["Сотрудник"] == ""
 
 
 def test_wide_row_carries_dialog_fields_and_answers_in_russian() -> None:

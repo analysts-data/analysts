@@ -55,9 +55,9 @@ DEFS = {
     "но сравнивать и делать выводы по нему нельзя. Порог — договорённость о минимальном объёме, "
     "а не статистический тест.",
     "filters": (
-        "lang — язык без учёта регистра; ch — канал; operator, product — точное совпадение поля диалога "
-        "(нет поля — нет совпадений); since, until — дата диалога включительно. Апелляции и решения — "
-        "только по выбранным диалогам."
+        "lang — язык без учёта регистра; ch — канал; operator, product — точное совпадение поля диалога, "
+        "значение «Не указан» — диалоги без него (как в отчёте); since, until — дата диалога "
+        "включительно. Апелляции и решения — только по выбранным диалогам."
     ),
     "date": (
         "Дата диалога — день из `at` (время Астаны, ДД.ММ ЧЧ:ММ; у звонка — первое событие, у чата — "
@@ -228,7 +228,7 @@ def _avg(xs: Sequence[float]) -> float | None:
 
 
 def _field(d: Dialog, name: str) -> str | None:
-    # ponytail: operator и product добавляют соседние ветки; без поля — None, фильтр ничего не находит
+    # ponytail: product добавляет соседняя ветка; без поля — None, как у диалога без значения
     value = getattr(d, name, None)
     return None if value is None else str(value)
 
@@ -240,7 +240,7 @@ def _pick(dialogs: Sequence[Dialog], f: Filters, today: date) -> list[Dialog]:
         if lang not in (None, d.lang.upper()) or f.ch not in (None, d.ch):
             return False
         if any(
-            want is not None and _field(d, k) != want
+            want is not None and (_field(d, k) or UNSET) != want
             for k, want in (("operator", f.operator), ("product", f.product))
         ):
             return False

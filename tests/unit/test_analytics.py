@@ -116,11 +116,31 @@ def test_heatmap_by_language_has_cells_with_n_and_low_n_and_matches_report() -> 
     assert out["columns"][6] == {"id": "07", "name": "Завершение", "n": 9, "share": 0.4444}
 
 
+def with_operators() -> dict[str, Any]:
+    s = state()
+    for d in s["dialogs"]:
+        d["operator"] = {"p1-kz-015": "Айгерим", "p1-kz-003": "Айгерим", "call-024": "Борис"}.get(d["id"])
+    return s
+
+
 def test_heatmap_defaults_to_operator_and_groups_dialogs_without_value() -> None:
-    out = run("heatmap")
+    out = run("heatmap", with_operators())
 
     assert out["by"] == "operator"
-    assert [(r["key"], r["label"], r["n"]) for r in out["rows"]] == [(None, "Не указан", 10)]
+    assert [(r["key"], r["label"], r["n"], r["avg_total"]) for r in out["rows"]] == [
+        (None, "Не указан", 7, 81.18),
+        ("Айгерим", "Айгерим", 2, 80.5),
+        ("Борис", "Борис", 1, 82.94),
+    ]
+    assert out["rows"][1]["cells"]["03"] == {"n": 2, "share": 0.5, "low_n": True}
+
+
+def test_operator_filter_matches_name_or_not_assigned_like_the_report() -> None:
+    s = with_operators()
+
+    assert run("trend", s, operator="Айгерим")["n"] == 2
+    assert run("trend", s, operator="Не указан")["n"] == 7
+    assert run("crosstab", s, operator="Борис")["cells"][0]["ch"] == "call"
 
 
 def test_drivers_compare_means_at_max_and_below_with_correlation_and_simulation() -> None:
