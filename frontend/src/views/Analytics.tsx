@@ -58,7 +58,7 @@ function download(name: string, text: string) {
 // Отчёт для руководства (GET {api}/report): адрес API тот же, что у main.tsx; фильтров на экране нет, параметры не нужны.
 const reportUrl = (fmt = '') => `${resolveBase(location.search, document.querySelector<HTMLElement>('cqa-app')?.dataset.api)}/report${fmt}`;
 
-const TILE = 'flex min-w-0 flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3.5 text-ink no-underline shadow-card';
+const TILE = 'flex min-w-0 flex-col gap-1.5 bg-surface px-4 py-3.5 text-ink no-underline transition-colors hover:bg-hover';
 
 /** Плитка сводки: число в <strong>, подпись и пояснение; со ссылкой — <a>, иначе <div>. */
 function Tile({ label, value, hint, children, ...a }: { label: string; value: React.ReactNode; hint: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
@@ -222,7 +222,7 @@ export function Analytics() {
       {tab === 'products' ? <Products /> : tab === 'runs' ? <Runs /> : (
       <>
 
-      <section className="lens grid grid-cols-2 gap-3 lg:grid-cols-5" aria-label={t('Сводка')}>
+      <section className="lens grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card lg:grid-cols-5" aria-label={t('Сводка')}>
         <Tile label={t('Средний итог')} value={avg == null ? '—' : f2(avg)} hint={TERMS.total}>
           {t('из 100 по {n} диалогам', { n: totals.length })}
           {totals.length < S.dialogs.length ? t(', ещё {n} ждут оценки', { n: S.dialogs.length - totals.length }) : ''}

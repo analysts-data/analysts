@@ -57,8 +57,8 @@ function grossWhy(d: any, cl: any, ap: any): { why: string; n?: number } | null 
 
 function Tile(p: { title: string; tip?: string; n: ReactNode; zero?: boolean; unit?: string; note: ReactNode; pressed?: boolean; onClick?: () => void; to?: string; g?: string }) {
   const cls = cn(
-    'tile flex min-w-0 flex-col items-start gap-0.5 rounded-card border p-3.5 text-left no-underline shadow-card transition-colors hover:border-line-strong',
-    p.pressed ? 'border-accent bg-accent-soft' : 'border-line bg-surface',
+    'tile relative flex min-w-0 flex-col items-start gap-0.5 px-4 py-3.5 text-left no-underline transition-colors',
+    p.pressed ? 'bg-accent-soft before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-accent' : 'bg-surface hover:bg-hover',
   );
   const inner = (
     <>
@@ -205,7 +205,7 @@ export function Queue() {
       {qa && S.source && <p className="text-[13px] text-muted">{syncNote(S.source)}</p>}
       {qa && <RunPanel all={all} dialogs={filtered ? seq.map(x => x.d.id) : null} pending={target.filter(x => x.c.pending).length} />}
 
-      <section className={cn('grid grid-cols-2 gap-3 md:grid-cols-3', op ? 'xl:grid-cols-4' : 'xl:grid-cols-5')} aria-label={t('Быстрые фильтры')}>
+      <section className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card md:grid-cols-3', op ? 'xl:grid-cols-4' : 'xl:grid-cols-5')} aria-label={t('Быстрые фильтры')}>
         <Tile
           title={t('Грубые ошибки')}
           tip={TERMS.gross}
