@@ -16,7 +16,7 @@ from cqa.domain.scoring import frac, total
 
 Shape = Literal["wide", "long"]
 WIDE = [
-    "ID", "Название", "Канал", "Язык", "Дата", "Итог", "Грубое нарушение", "Виды нарушений",
+    "ID", "Название", "Канал", "Язык", "Дата", "Сотрудник", "Итог", "Грубое нарушение", "Виды нарушений",
     "Нужна проверка", "Проверен",
 ]  # fmt: skip
 LONG = [
@@ -74,8 +74,9 @@ def wide_rows(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence
             if a.get(q.k)
         ]
         rows.append([
-            d.id, d.title or d.id, CHANNEL[d.ch], d.lang, d.at, _num(total(checklist, answers)),
-            _yes(bool(kinds)), ", ".join(kinds), _yes(awaits_review(checklist.criteria, d, decided)),
+            d.id, d.title or d.id, CHANNEL[d.ch], d.lang, d.at, d.operator or "",
+            _num(total(checklist, answers)), _yes(bool(kinds)), ", ".join(kinds),
+            _yes(awaits_review(checklist.criteria, d, decided)),
             _yes(d.reviewed), *(answer_text(c, answers.get(c.id)) for c in checklist.criteria),
         ])  # fmt: skip
     return rows
