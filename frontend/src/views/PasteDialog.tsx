@@ -101,7 +101,8 @@ function PasteDialog({ onClose }: { onClose: () => void }) {
 let show: ((n: number) => void) | null = null;
 let pending = 0;
 
-function Host() {
+/** Хост окна в дереве приложения (app.tsx); без него openPaste создаёт свой корень. */
+export function PasteHost() {
   const [n, setN] = useState(pending); // n > 0 — окно открыто; новый n — чистая форма
   show = setN;
   return n ? <PasteDialog key={n} onClose={() => setN(0)} /> : null;
@@ -113,5 +114,5 @@ export function openPaste() {
   if (show) return show(pending);
   const el = document.createElement('div');
   document.body.append(el);
-  createRoot(el).render(<Host />);
+  createRoot(el).render(<PasteHost />);
 }

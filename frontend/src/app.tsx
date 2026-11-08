@@ -16,6 +16,7 @@ import { Checklist } from './views/Checklist';
 import { Coaching } from './views/Coaching';
 import { ModeDialog } from './views/ModeDialog';
 import { Palette } from './palette';
+import { PasteHost } from './views/PasteDialog';
 
 // Аналитика тянет ECharts: отдельный кусок сборки, грузится при первом открытии экрана.
 const Analytics = lazy(() => import('./views/Analytics').then(m => ({ default: m.Analytics })));
@@ -213,7 +214,7 @@ export function App() {
             </NavLink>
           </nav>
           <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
-            <span>{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
+            <span id="clVer">{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
             <span>
               Команды: <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
@@ -285,6 +286,7 @@ export function App() {
       </div>
       <ModeDialog open={modeOpen} onOpenChange={setModeOpen} />
       <Palette open={palette} onOpenChange={setPalette} />
+      <PasteHost />
       <Toast />
     </MotionConfig>
   );
