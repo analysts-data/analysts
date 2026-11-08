@@ -253,12 +253,10 @@ def _pick(dialogs: Sequence[Dialog], f: Filters, today: date) -> list[Dialog]:
 
 
 def _rows(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]) -> list[_Row]:
+    pairs = _groups(appeals, lambda a: (a.dlg, a.cid))
     rows = []
     for d in dialogs:
-        ans = {
-            cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
-            for cid, r in d.res.items()
-        }
+        ans = {cid: effective_answer(r, pairs.get((d.id, cid), [])) for cid, r in d.res.items()}
         if (t := total(checklist, ans)) is not None:
             rows.append(_Row(d, ans, t))
     return rows
