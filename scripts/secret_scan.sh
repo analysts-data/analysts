@@ -63,15 +63,20 @@ forbidden_path() { # выводит путь, если он запрещён
   esac
 }
 
+# Фальшивые значения из ранних тестов (в HEAD их уже нет): не секреты, историю не переписываем.
+FAKE='storage\.test/rec\.mp3\?sig=abc|CQA_ORG_SIG=\{SIG\}example'
+
 for commit in $(git rev-list --all); do
   set +e
-  grep_secrets "$commit" -- . "${EXCLUDES[@]}"
+  out=$(grep_secrets "$commit" -- . "${EXCLUDES[@]}")
   rc=$?
   set -e
   if [ "$rc" -gt 1 ]; then
     exit "$rc"
   fi
-  if [ "$rc" -eq 0 ]; then
+  out=$(printf '%s\n' "$out" | grep -vE "$FAKE" | grep . || true)
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out"
     echo "ошибка: в истории ($commit) найдены сигнатуры секретов (см. выше)" >&2
     status=1
   fi
