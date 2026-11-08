@@ -127,7 +127,12 @@
 | `GET /api/checklist/presets` | — | `[{key, name, description, official, criteria, checklist}]`: готовые чек-листы для импорта в черновик |
 | `GET /api/criteria/templates?tag=<тег>` | — | `{tags, templates: [{key, tags, section, why, criterion}]}`; без `tag` — все |
 | `GET /api/bands`, `PUT /api/bands` | — или `{bands, why}` | `{bands: [{min, label, tone}], why, source: "default" \| "saved", saved_at}`; ошибка — 422 с `fields` |
-| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call&operator=<имя>` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang`, `ch` и `operator` необязательны (`operator=Не указан` — диалоги без сотрудника); без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/report?format=html\|json\|md\|csv&lang=RU&ch=chat\|call&operator=<имя>` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang`, `ch` и `operator` необязательны (`operator=Не указан` — диалоги без сотрудника); без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/reports` | — | каталог отчётов `[{id, title, description, formats, href_template, items?}]` (раздел «Отчёты по замерам») |
+| `GET /api/quality` | — | прогоны `make eval`, новые первыми: `[{id, created, model, n_dialogs, agree_total, passed}]`; нет отчётов — `[]` |
+| `GET /api/quality/{id}?format=html\|json\|md\|csv` | — | отчёт прогона `make eval`; неизвестный `id` — 404, формат — 422 |
+| `GET /api/runs/{id}/report?format=html\|json\|md\|csv` | — | отчёт запуска оценки; неизвестный запуск — 404 |
+| `GET /api/results/{set}` | — | `set`: `dev` \| `prod`; файл `results/<set>/results.json` (`attachment; filename="results-<set>.json"`), нет файла — 404, другой `set` — 422 |
 | `PUT /api/dialogs/{id}/operator` | `{"operator": "…" \| null}` | `{operator}` после обрезки пробелов; `null` или пустая строка снимает назначение; неизвестный id — 404, длиннее 200 знаков — 422 |
 | `POST /api/operators/import` | CSV-текст или файл сырым телом: `conversation_id;operator` (UTF-8, разделитель `;` или `,`, строка заголовка `conversation_id` необязательна, пустой сотрудник снимает назначение) | `{updated, unknown_ids: [..]}`; не UTF-8 или нет ни одной строки — 422 |
 | `GET /api/operators` | — | `{definitions: {"<поле>": "<определение>"}, min_n: 5, operators: [OperatorRow]}` (раздел «По сотрудникам») |
@@ -278,6 +283,18 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 
 - `src/cqa/catalog/criteria_templates.json`: `{key, tags, section, why, criterion}`; `criterion` — поля Criterion без `id` и `sec` (`w` — предлагаемый вес), проходит правила `PUT /api/checklist`; `section` — подсказка раздела по названию; `why` — какой риск бизнеса закрывает. Интерфейс «Добавить критерий» → «Из шаблона» даёт `id` и `sec`.
 - `src/cqa/catalog/checklist_presets.json` и официальный (`tests/fixtures/checklist_v3.json`) первым: `checklist` целиком импортируется в черновик как файл JSON (`version` заменяется текущей). Пресеты сохраняют общие правила и `id` критериев официального, поэтому их ответы переживают импорт; веса — сумма 100.
+
+## Отчёты по замерам (eval-and-delivery, reports-hub)
+
+Все отчёты, кроме файлов результатов, отдаются в одних форматах: `json` — данные как есть, для аналитики; `csv` — UTF-8 с BOM и `;`, таблицы блоками через пустую строку, ячейка с `= + - @` в начале — с апострофом; `md` — для вики и почты; `html` — самодостаточная страница A4 в стиле памятки чек-листа. Без `format` — `html`. `html` — `Content-Disposition: inline`, `csv` и `md` — `attachment; filename="<имя>.<формат>"`.
+
+`GET /api/reports`: `[{"id": "quality", "title": "Качество оценки", "description": "…", "formats": ["html", "json", "md", "csv"], "href_template": "/api/quality/{id}?format={format}", "items": "/api/quality"}]`. В `href_template` интерфейс подставляет `{format}` из `formats`, `{id}` — `id` элемента списка `items`, `{from}` — версию чек-листа. Отчёт попадает в каталог, только если его путь есть в приложении. `id`: `executive`, `quality`, `run` (`items: "/api/runs"`), `scores`, `operators`, `checklist`, `checklist-diff`; `results-dev` и `results-prod` — только если файл есть.
+
+`GET /api/quality`: прогоны из `CQA_EVAL_REPORTS_DIR` (`eval/reports/<YYYYMMDDTHHMMSSZ>.json`, пишет `make eval`); `created` — время из имени файла, ISO UTC; `passed` — пустой `problems`. Файлы `holdout-*`, битые и чужого формата пропускаются.
+
+`GET /api/quality/{id}`: `json` — тело файла `make eval` (поля `Report`, `cost_per_dialog`, `calls_per_dialog`, `problems`) и `{id, created, thresholds: [{name, label, limit, upper, value, ok}]}` — каждый порог `eval/thresholds.yaml` против значения прогона: `upper` — порог сверху, `ok: null` — значения нет (у `baseline_drop_max_pts` всегда, регресс к лучшему прогону — в `problems`). `csv`, `md`, `html` — сводка, совпадение по языкам и критериям, полнота грубых ошибок по видам и языкам и ложные флаги, пропущенные грубые ошибки, N/A, цена и время, пороги, замечания прогона, расхождения (диалог, критерий, эталон, ответ модели). Обоснования и цитаты модели (`why`, `quote`) — только в `json`: печатные отчёты не несут текста, производного от диалогов. Отчёты `make eval` в git не попадают.
+
+`GET /api/runs/{id}/report`: `json` — `{id, total, done, cost, calls, errors, status, started, finished, started_at, finished_at, progress, models: [строка], checklist_versions: [число], criteria: [{cid, name, n, answers: {"yes": 5, "no": 2, "na": 1, "3": 4, "<k>+<k>": 1, "none": 3}}]}`; `answers` — ответы запуска по значению (флаг — отмеченные подвопросы через `+`, `none` — без нарушений). Ответы запуска — результаты, записанные между `started` и `finished` (у идущего — до сейчас), включая ручные.
 
 ## Доступ по токену (eval-and-delivery)
 
