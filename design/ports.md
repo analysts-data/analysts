@@ -50,7 +50,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `build_evaluator` | `src/cqa/compose.py`, llm-evaluation | `build_evaluator(settings: Settings) -> LlmEvaluator`, не бросает; `ConfigError` — при `evaluate` |
 | `parse_payload`, `ingest_records` | `src/cqa/domain/ingest.py`, dialog-ingest | чистая пара для снимка: `ingest_records(records, *, group_id, now, shift_s, shift_paused_s) -> IngestResult` |
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
-| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None, *, force: bool = False, confirm: bool = False, model: str \| None = None, apply: "replace" \| "compare" = "replace", override: Mapping \| None = None, evaluator: Evaluator \| None = None) -> int` — `evaluator` только на этот запуск (`run_settings` + `build_evaluator` в `http/api.py`), `override` и `compare` включают `force`; `NotFound`, `Conflict` при активном запуске, `Invalid` — `force` без списка больше `CONFIRM_OVER = 5` диалогов без `confirm` |
+| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None, *, force: bool = False, confirm: bool = False, model: str \| None = None, apply: "replace" \| "compare" = "replace", override: Mapping \| None = None, evaluator: Evaluator \| None = None) -> int` — `evaluator` только на этот запуск (`run_settings` + `build_evaluator` в `http/api.py`), `override` и `compare` включают `force`; `NotFound`, `Conflict` при активном запуске, `Invalid` — `force` без списка больше `CONFIRM_OVER = 5` диалогов без `confirm`; `checklist: Checklist \| None = None` — черновик для песочницы (`POST /api/checklist/trial`), по умолчанию текущая версия |
 | `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status, skipped, dialogs}`; `NotFound` |
 | `plan_run`, `plan_rerun` | там же | `plan_run(store, checklist, dialogs, criteria) -> Plan` — пары без текущего результата; `plan_rerun(...) -> tuple[Plan, dict[str, int]]` — все выбранные пары, кроме тех, что держит человек (ручной ответ, апелляция или решение текущего смысла), и диалог → число таких пар |
 | `list_runs`, `compare_runs` | там же | `GET /api/runs`, `GET /api/runs/compare`; чистое сравнение — `compare_answers(a, b, checklist)` в `src/cqa/domain/agreement.py` |
@@ -97,7 +97,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `ModelUnavailable`, `RealDataBlocked`, `CassetteMissing` | llm-evaluation | — | строкой `"{dialog_id}: {exc}"` в `errors` запуска |
 | `PayloadError`, `OrgApiError` | dialog-ingest | — | только внутри трека: `OrgDialogSource` переводит их в `Invalid` или `Upstream` |
 
-Обработчики в `create_app` (`bootstrap-harness`) отвечают `{"detail": str(exc)}`. Текст по-русски, с идентификатором, без адресов и подписей.
+Обработчики в `create_app` (`bootstrap-harness`) отвечают `{"detail": str(exc)}`. Текст по-русски, с идентификатором, без адресов и подписей. `Invalid(message, fields={"<путь поля>": "<текст>"})` добавляет в ответ `"fields"`: путь через точку от корня тела (`criteria.4.na`, `bands.1.min`, `why`), `detail` — все тексты через «; ». Так отвечают `PUT /api/checklist` (`draft_errors`) и `PUT /api/bands` (`band_errors`).
 
 ## `create_app` и `app.state`
 
@@ -110,7 +110,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
-| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `Syncer(store, source, http: HttpSource \| None, settings)` — синхронизация и проверка источников (`org_api` через `source`, `http_json` через `HttpSource` с SSRF-защитой), `PUT /api/source`, `source` в состоянии; lifespan запускает `Syncer.run()` по `schedule_min` источников |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `Syncer(store, source, http: HttpSource \| None, settings)` — синхронизация и проверка источников (`org_api` через `source`, `http_json` через `HttpSource` с SSRF-защитой), `PUT /api/source`, `source` в состоянии; lifespan запускает `Syncer.run(skip=automation.owns_sync)` по `schedule_min` источников |
+| `automation` | `Automation` | eval-and-delivery (`src/cqa/services/automation.py`): `/api/automation*`; lifespan запускает `Automation.run()` — одна задача, тик 15 с. Внешние куски — за `Ports` (`sources`, `sync`, `evaluate`, `source_of`, `blocked`, `notify`, `audit`, `steps`); `wire()` собирает их на реестре источников (`Syncer.sync_source`), очереди батчей, достаточности; алерты и классификация подключаются заменой одной строки в `wire()` |
 | `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
 | `batches` | `Batches` | eval-and-delivery (`src/cqa/services/batches.py`, таблицы в `src/cqa/adapters/batches.py`): `/api/batches`; lifespan запускает `Batches.work()`, `create_app` — `recover()` |
 
@@ -147,6 +148,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (события не отправляются) | eval-and-delivery (алерты, `alert.created`) |
+| `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (без подписи) | eval-and-delivery (`X-CQA-Signature`) |
 | `CQA_ALLOW_PRIVATE_SOURCES` | `allow_private_sources` | `bool` | `False` | dialog-ingest (`src/cqa/adapters/http_source.py`): `http_json` во внутренней сети |
 | `CQA_TELEMETRY` | `telemetry` | `Literal["on", "off"]` | `on` | eval-and-delivery (`POST /api/telemetry`) |
 | `CQA_TELEMETRY_RETENTION_DAYS` | `telemetry_retention_days` | `int` | `30` | eval-and-delivery (очистка при старте) |
@@ -170,6 +173,11 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished`, `model TEXT NULL`, `checklist_version INTEGER NULL`, `force INTEGER`, `skipped INTEGER`, `apply TEXT` (`replace` \| `compare`), `override TEXT NULL` (JSON) | — |
 | `run_dialogs` | `run_id`, `dialog_id` (PK вместе), `status CHECK IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')`, `total`, `done`, `skipped`, `error`; статус меняется (`Runner`) | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `bands` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON `{bands, why}`), `saved` (ISO); `Store.bands() -> (body, saved) \| None`, `Store.set_bands(body)` | eval-and-delivery (`src/cqa/services/bands.py`) |
+| `markers` | `dialog_id`, `label`, `by`, `at`, PK (`dialog_id`, `label`) — ручные маркеры | eval-and-delivery (alerts) |
+| `lists` | `name TEXT PK` (`markers_catalog`, `alert_rules`), `body` JSON | eval-and-delivery (alerts) |
+| `alerts` | `id`, `rule_id`, `severity`, `title`, `target_type`, `target_id`, `basis` JSON, `created`, `status CHECK IN ('new', 'ack', 'resolved')`, `assignee`, `acked_by`, `acked_at`, `resolved_by`, `resolved_at`, `note`; `UNIQUE (rule_id, target_type, target_id)` | eval-and-delivery (alerts) |
+| `appeal_reasons` | `id INTEGER PK CHECK (id = 1)`, `body` (JSON-список `{code, label, applies}`); нет строки — каталог по умолчанию | eval-and-delivery (reason-codes) |
 | `telemetry` | `id`, `at` (ISO UTC, мс), `actor`, `role`, `event`, `page`, `props` (JSON после `clean_props`); `UPDATE` запрещён триггером, `DELETE` — только очистка старше `telemetry_retention_days` в `create_app` | eval-and-delivery (`src/cqa/services/telemetry.py`) |
 | `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
 | `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |
@@ -283,6 +291,18 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
 
+## Настройка чек-листа (eval-and-delivery, checklist-flex)
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `Band`, `Bands`, `band_of`, `band_errors` | `src/cqa/domain/tuning.py` | `band_of(bands, total) -> Band \| None` — первая оценка с `total >= min`; `band_errors(Bands) -> dict[путь, текст]` |
+| `simulate`, `normalize` | там же | `simulate(old, new, dialogs, before, after, bands) -> dict` — тело `POST /api/checklist/simulate` без `save_errors`; `normalize(checklist) -> dict` с `checklist: Checklist` |
+| `effective_answers` | `src/cqa/domain/review.py` | `effective_answers(dialog, appeals) -> {cid: Answer}` с учётом решений; общий для отчёта и «что если» |
+| `state_for` | `src/cqa/services/state.py` | `state_for(store, checklist) -> (dialogs, appeals)` — как в `GET /api/state`, но по отпечаткам `checklist` (для черновика — состояние сразу после сохранения) |
+| `draft_errors`, `simulate_draft`, `trial_draft`, `normalize_draft`, `criteria_templates`, `checklist_presets` | `src/cqa/services/checklists.py` | `draft_errors(draft) -> dict[путь, текст]` — правила `save_checklist`; остальное — тела ответов из контракта |
+| `bands_view`, `current_bands`, `save_bands` | `src/cqa/services/bands.py` | шкала из таблицы `bands` или `src/cqa/catalog/bands.json` |
+| `cqa.catalog.load` | `src/cqa/catalog/__init__.py` | `load(name) -> Any` — JSON рядом: `bands.json`, `criteria_templates.json`, `checklist_presets.json` |
+| `SEED_CHECKLIST` | `src/cqa/services/checklists.py` | `tests/fixtures/checklist_v3.json`: начальная версия (`seed_checklist`) и пресет «Официальный» |
 ## Текущий сотрудник и журнал действий (eval-and-delivery, employees-audit)
 
 | Функция | Где | Что делает |

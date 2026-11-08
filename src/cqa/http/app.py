@@ -14,16 +14,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.adapters import webhook
 from cqa.adapters.batches import BatchStore
 from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
+from cqa.domain.review import ASTANA
 from cqa.http import api, batches, docs, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
+from cqa.services.alerts import refresh
+from cqa.services.automation import Automation, wire
 from cqa.services.batches import Batches
+from cqa.services.checklists import SEED_CHECKLIST
 from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
@@ -36,8 +41,6 @@ from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
-# ponytail: seed is the test fixture; a separate product file if the two ever diverge
-SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -50,12 +53,14 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация источников по их расписанию, пока работает сервер."""
-    """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
-    syncer: Syncer | None = app.state.syncer
-    tasks = [asyncio.create_task(app.state.batches.work())]
-    if syncer:
-        tasks.append(asyncio.create_task(syncer.run()))
+    """Автосинхронизация набора организаторов, очередь батчей и планировщик автоматизации."""
+    syncer: Syncer = app.state.syncer
+    automation: Automation = app.state.automation
+    tasks = [
+        asyncio.create_task(app.state.batches.work()),
+        asyncio.create_task(syncer.run(skip=automation.owns_sync)),
+        asyncio.create_task(automation.run()),
+    ]
     yield
     for task in tasks:
         task.cancel()
@@ -126,13 +131,30 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
+    # ponytail: вебхук ждём в самом запросе; очередь — если получатель окажется медленным
+    hooks = httpx.AsyncClient(timeout=5)
+
+    async def alerts() -> list[dict[str, Any]]:
+        """Проверить правила алертов и отправить новые как `alert.created` (вебхук только при настройке)."""
+        created = refresh(store, datetime.now(ASTANA))
+        s = app.state.settings
+        if s.webhook_url and created:
+            secret = s.webhook_secret.get_secret_value() if s.webhook_secret else None
+            await webhook.send(hooks, s.webhook_url, secret, "alert.created", created)
+        return created
+
+    app.state.alerts = alerts
     evaluator = (
         evaluator if evaluator is not None else build_routed(settings, prosody, store)
     )  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
+    # выключена по умолчанию: пока enabled false, планировщик только читает настройки
+    app.state.automation = Automation(
+        store, wire(store, app.state.syncer, app.state.runner, app.state.batches, prosody)
+    )
     app.state.telemetry_limit = TokenBucket(capacity=30, rate=0.5)  # ~1 пакет в 2 с на клиента
 
     app.include_router(api.router)

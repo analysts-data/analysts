@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     db_path: str = "data/cqa.db"
     eval_dataset: Path = Path("data/dev.json")
     holdout_dir: Path | None = None
+    webhook_url: str | None = None  # события alert.created; пусто — не отправляются
+    webhook_secret: SecretStr | None = None  # ключ подписи X-CQA-Signature
     telemetry: Literal["on", "off"] = "on"  # метрики использования (README «Метрики использования»)
     telemetry_retention_days: int = 30
     eval_reports_dir: Path = Path("eval/reports")  # отчёты make eval для GET /api/quality

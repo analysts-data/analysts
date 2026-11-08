@@ -22,10 +22,28 @@ EXEMPT = {
     # текущий сотрудник: интерфейс знает его по выбору «Вы вошли как» (X-CQA-User), отдельный запрос не нужен
     "/me",
 }
+# UI в работе: шкала оценок, «что если», песочница, нормировка, шаблоны, готовые чек-листы (PR #91)
+EXEMPT |= {
+    "/bands", "/checklist/simulate", "/checklist/trial", "/checklist/normalize", "/checklist/presets",
+    "/criteria/templates",
+}  # fmt: skip
+# UI в работе: колокольчик, страница алертов, чипы и фильтр маркеров (PR #87)
+EXEMPT |= {
+    "/alerts",
+    "/alerts/evaluate",
+    "/alerts/rules",
+    "/alerts/{alert_id}/ack",
+    "/alerts/{alert_id}/assignee",
+    "/alerts/{alert_id}/resolve",
+    "/dialogs/{dialog_id}/markers",
+    "/markers/catalog",
+}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 # UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
 EXEMPT |= {"/routing", "/routing/explain"}
+# UI в работе: выбор «Причина решения» в форме решения, плитка «Изменено людьми» в аналитике (PR #92)
+EXEMPT |= {"/appeals/reasons", "/appeals/stats"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
