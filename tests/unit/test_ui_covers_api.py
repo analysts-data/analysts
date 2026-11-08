@@ -26,6 +26,8 @@ EXEMPT = {
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
 # UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
 EXEMPT |= {"/telemetry", "/usage"}
+# страницы документации, не API интерфейса (src/cqa/http/docs.py)
+EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
