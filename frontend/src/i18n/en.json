@@ -1545,5 +1545,6 @@
   "Сравните: слева текущая оценка с обоснованием, справа довод оператора, ниже фрагмент диалога с отмеченными репликами.": "Compare: the current score with its rationale on the left, the agent’s argument on the right, the dialog excerpt with marked lines below.",
   "Тема как в системе": "System theme",
   "Тёмная": "Dark",
-  "Тёмная тема": "Dark theme"
+  "Тёмная тема": "Dark theme",
+  "Не удалось загрузить данные. Сервер ответил ошибкой, ваши данные не потеряны.": "Could not load data. The server returned an error; your data is not lost."
 }
