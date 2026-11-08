@@ -50,6 +50,7 @@ async def test_replay_without_record_raises_cassette_missing(tmp_path):
             raise AssertionError("ожидали CassetteMissing")
     assert f"{_key(BODY)}.json" in message
     assert "make record" in message
+    assert str(tmp_path) not in message  # локальный путь не уходит в интерфейс
 
 
 async def test_record_saves_live_answer_without_secrets(tmp_path):

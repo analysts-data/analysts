@@ -3,6 +3,7 @@
 Чистое ядро без ввода-вывода.
 """
 
+import csv
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -299,9 +300,34 @@ def ingest_records(
         if cid in dialogs:
             notes.append("повтор conversation_id в пакете, взята последняя запись")
         warnings += [f"{cid}: {note}" for note in notes]
-        dialogs[cid] = dialog
+        dialogs[cid] = dialog.model_copy(update={"operator": operator_name(raw)})
         if dialog.ch == "call" and record.audio_url:
             audio[cid] = record.audio_url
     return IngestResult(
         dialogs=list(dialogs.values()), audio=audio, skipped=len(errors), errors=errors
     ), warnings
+
+
+# Поле сотрудника в записи: у организаторов его нет, у выгрузок контакт-центров бывает
+OPERATOR_KEYS = ("operator", "operator_id", "agent", "agent_id", "agent_name", "employee")
+
+
+def operator_name(raw: Mapping[str, Any]) -> str | None:
+    """Первое непустое поле сотрудника; табельный номер числом — строкой."""
+    for key in OPERATOR_KEYS:
+        value = raw.get(key)
+        if isinstance(value, str | int) and not isinstance(value, bool) and (name := str(value).strip()):
+            return name
+    return None
+
+
+def parse_operator_csv(text: str) -> list[tuple[str, str | None]]:
+    """`conversation_id;operator` (или через запятую) → пары; пустой сотрудник — снять назначение.
+
+    Разделитель — `;`, если он есть в первой строке; строка заголовка `conversation_id` и пустые пропускаются.
+    """
+    text = text.removeprefix("﻿")
+    first = next((line for line in text.splitlines() if line.strip()), "")
+    rows = csv.reader(text.splitlines(), delimiter=";" if ";" in first else ",")
+    pairs = [(row[0].strip(), row[1].strip() or None) for row in rows if len(row) >= 2 and row[0].strip()]
+    return [p for p in pairs if p[0].lower() != "conversation_id"]

@@ -26,6 +26,8 @@ EXEMPT = {
     "/batches/{job_id}",
     "/batches/{job_id}/{action}",
 }
+# UI в работе: оценки по сотрудникам (PR #80)
+EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
