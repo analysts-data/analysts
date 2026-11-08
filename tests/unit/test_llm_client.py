@@ -190,6 +190,7 @@ async def test_complete_plain_on_sends_only_model_and_messages():
             reply = await client.complete(MSGS)
     request = route.calls.last.request
     assert request.headers["Authorization"] == f"Bearer {KEY}"
+    assert "X-Title" not in request.headers
     assert json.loads(request.content) == {"model": "qwen3-6", "messages": MSGS}
     assert reply.text == "ответ"
     assert reply.ms >= 0
@@ -325,3 +326,34 @@ async def test_replay_without_base_url_still_builds_a_request() -> None:
         reply = await ChatClient(settings, http).complete([{"role": "user", "content": "x"}])
     assert reply.text == "ok"
     assert seen[0].host == "replay.invalid"
+
+
+OPENROUTER = "https://openrouter.ai/api/v1"
+
+
+async def test_openrouter_gets_standard_fields_attribution_and_its_own_cost():
+    usage = {"prompt_tokens": 10000, "completion_tokens": 2000, "cost": 0.0042}
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(f"{OPENROUTER}/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": "ответ"}}], "usage": usage}
+        )
+        async with httpx.AsyncClient() as http:
+            settings = _settings(
+                llm_base_url=OPENROUTER,
+                llm_model="typesafe/jev-router",
+                llm_reasoning="off",
+                llm_price_in=1.0,
+            )
+            reply = await ChatClient(settings, http).complete(MSGS)
+    request = route.calls.last.request
+    assert json.loads(request.content) == {
+        "model": "typesafe/jev-router",
+        "messages": MSGS,
+        "response_format": {"type": "json_object"},
+        "usage": {"include": True},
+    }
+    assert (request.headers["X-Title"], request.headers["HTTP-Referer"].startswith("https://")) == (
+        "CQA",
+        True,
+    )
+    assert reply.cost == 0.0042

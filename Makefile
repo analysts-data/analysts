@@ -1,5 +1,7 @@
 .PHONY: check e2e eval eval-holdout record run fmt backup demo results docker-build docker-run share
 
+PORT ?= 8000
+
 check:
 	uv run ruff check --no-cache src tests
 	uv run ruff format --check src tests
@@ -13,7 +15,7 @@ check:
 
 e2e:
 	# cassette вместе с e2e: test_every_cassette_is_replayed сверяет записи с журналом всего прогона
-	CQA_CASSETTE_AUDIT=1 uv run pytest -q -m "e2e or cassette" tests
+	CQA_CASSETTE_AUDIT=1 uv run pytest -q -m "e2e or cassette" tests $(ARGS)
 
 eval:
 	CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)
@@ -25,7 +27,7 @@ record:
 	CQA_LLM_MODE=record uv run pytest -m "cassette or e2e"
 
 run:
-	uv run uvicorn cqa.http.app:create_app --factory --reload --port 8000
+	uv run uvicorn cqa.http.app:create_app --factory --reload --port $(PORT)
 
 # доступ с других устройств: сервер на всех интерфейсах + адрес в локальной сети
 share:

@@ -201,6 +201,21 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `tests/fixtures/state_prototype.json` | ответ `GET /api/state` на данных прототипа | cqa-web-ui |
 | `tests/cassettes/{llm,jev}/{sha}.json` | `{"request": тело, "status": код, "response": JSON}`, без заголовков; `sha = sha256(json.dumps(тело, ensure_ascii=False, sort_keys=True, separators=(",", ":")))` | llm-evaluation |
 
+## Провайдеры моделей (llm-evaluation)
+
+Дополняет таблицы выше; форма HTTP — раздел «Провайдеры моделей» в `design/contract.md`.
+
+| Имя | Где | Смысл |
+| --- | --- | --- |
+| `CQA_LLM_PROVIDER` → `llm_provider` | `Settings`, `str`, `env` | код основной модели; `effective` переносит поля провайдера в `llm_base_url`, `llm_model`, `llm_profile`, `llm_api_key`, `data_where` |
+| `CQA_PROVIDERS` → `providers` | `Settings`, `dict[str, Provider]`, `{}` | JSON `{код: {label, base_url, model, profile, where, key}}`; `effective` добавляет `env`, список из базы (`overrides["providers"]`) заменяет этот |
+| `CQA_OPENROUTER_API_KEY` → `openrouter_api_key` | `Settings`, `SecretStr \| None`, `None` | ключ встроенного провайдера `openrouter-jev`; `effective` добавляет его вторым после `env` |
+| `CQA_VERIFIER` → `verifier` | `Settings`, `str \| None` | `"jev"` или код провайдера; `Mode.verifier` — `str \| None` |
+| `Provider` | `src/cqa/settings.py` | `label`, `base_url: str \| None`, `model`, `profile`, `where`, `key: SecretStr \| None` |
+| `put_provider`, `delete_provider`, `provider`, `as_llm` | `src/cqa/services/llm_config.py` | `put_provider(store, settings, pid, body, apply)`, `delete_provider(store, settings, pid, apply)` -> `Settings`, как `configure`; `provider(settings, pid)` — `NotFound`; `as_llm(provider)` — поля основной модели |
+| `ChatVerifier` | `src/cqa/services/evaluation.py` | `Verifier` на `ChatModel` провайдера: те же запросы по критериям без повтора; `build_evaluator` собирает его, если `verifier` — код провайдера |
+| `check_provider`, `ping` | `src/cqa/compose.py`, `src/cqa/adapters/llm.py` | `POST /api/providers/{id}/check`: `{ok, ms, error}` мимо записей |
+
 ## Режим «только Jev» (llm-evaluation, jev-only)
 
 | Имя | Модуль | Сигнатура и смысл |
@@ -232,5 +247,6 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `app.state.voice` | `create_app` | `PraatVoice(httpx.AsyncClient())`; тесты подменяют подделкой с синтетическими кадрами |
 | Таблица `prosody` | `data/cqa.db` | `dialog_id TEXT PK REFERENCES dialogs(id)`, `body TEXT` (JSON ответа) |
 | `ffmpeg` | системная зависимость сервера | в `PATH`; без него `/prosody` отвечает 502, остальное работает |
+| `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.

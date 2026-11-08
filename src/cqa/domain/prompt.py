@@ -1,6 +1,7 @@
 """Промпт оценки по одному критерию: отрисовка диалога и сообщения модели (design.md, п. 2–6)."""
 
-from typing import Literal, TypedDict
+from collections.abc import Mapping
+from typing import Any, Literal, TypedDict
 
 from cqa.domain.models import Criterion, Dialog, Fold, Question
 
@@ -43,6 +44,22 @@ _FLAG_JSON = (
     f'Верни JSON: {{{_EVIDENCE}, "violation_found": true | false}}, где true — нарушение есть '
     "хотя бы в одной реплике оператора."
 )
+
+
+# Блок звука идёт после </dialog> только у звонка с разбором интонации: правило 10 и запросы без него прежние
+_SOUND_HEAD = "Анализ звука записи (автоматически, по тону и громкости; распознавание речи не проверялось):"
+_SOUND_NONE = "отклонений тона, громкости, темпа и пауз не найдено"
+_SOUND_RULE = (
+    "Тон, паузы и темп оценивай по этим строкам вместе с репликами, ссылаясь на номера реплик. "
+    "Ничего сверх этих строк о звуке не утверждай: дикцию, разборчивость и оттенки интонации "
+    "по ним не оценить, для них звука по-прежнему нет."
+)
+
+
+def sound_block(prosody: Mapping[str, Any]) -> str:
+    """Наблюдения по звуку звонка из сводки `GET /prosody`: фразы о говорящих и номерах реплик, без имён."""
+    lines = prosody.get("summary") or [_SOUND_NONE]
+    return "\n".join([_SOUND_HEAD, *(f"- {s}" for s in lines), _SOUND_RULE])
 
 
 class Message(TypedDict):
@@ -112,13 +129,16 @@ def criterion_block(criterion: Criterion, question: Question | None = None, call
     return f"Критерий:\n{criterion.text}{extra}\n\n{answer}\n{_ANSWER_JSON}"
 
 
-def build_messages(dialog_text: str, rules: str, criterion: Criterion, ch: str) -> list[list[Message]]:
+def build_messages(
+    dialog_text: str, rules: str, criterion: Criterion, ch: str, sound: str | None = None
+) -> list[list[Message]]:
     """По списку сообщений на вызов: один для bool и scale, по одному на подвопрос флага.
 
     ch — канал диалога: уточнение call получает только звонок, запрос по чату от него не зависит.
+    sound — `sound_block` звонка; None — запрос как без звука.
     """
     system: Message = {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nОбщие правила чек-листа:\n{rules}"}
-    head = f"<dialog>\n{dialog_text}\n</dialog>\n\n"
+    head = f"<dialog>\n{dialog_text}\n</dialog>\n\n" + (f"{sound}\n\n" if sound else "")
     call = criterion.call if ch == "call" else None
     blocks = (
         [criterion_block(criterion, q, call) for q in criterion.questions or []]

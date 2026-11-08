@@ -54,6 +54,7 @@ class Runner:
         self._clock = clock
         self._cancel = asyncio.Event()
         self._active: int | None = None
+        self._failed = 0  # пары упавших диалогов активного запуска: «done» за 0 с, ETA их не считает
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
     def use(self, evaluator: Evaluator) -> None:
@@ -83,6 +84,7 @@ class Runner:
             self._store.finish_run(run_id, self._clock(), "done")
             return run_id
         self._active = run_id
+        self._failed = 0
         self._cancel = asyncio.Event()
         task = asyncio.create_task(self.execute(run_id, checklist, plan))
         self._tasks.add(task)
@@ -91,10 +93,11 @@ class Runner:
 
     def progress(self, run_id: int) -> dict[str, Any]:
         row = self._run(run_id)
+        failed = self._failed if run_id == self._active else 0
         eta = (
             None
             if row.status == "cancelled"
-            else eta_seconds(row.done, row.total, self._clock() - row.started)
+            else eta_seconds(row.done - failed, row.total - failed, self._clock() - row.started)
         )
         return {
             "done": row.done,
@@ -135,10 +138,12 @@ class Runner:
                     return
                 await self._evaluate(run_id, checklist, fps, dialog, criteria)
 
+        cancelled = True  # прерванная задача (Ctrl-C, остановка сервера) — не «done»
         try:
             await asyncio.gather(*(worker() for _ in range(self._parallel)))
+            cancelled = self._cancel.is_set()
         finally:
-            self._store.finish_run(run_id, self._clock(), "cancelled" if self._cancel.is_set() else "done")
+            self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
 
     async def _evaluate(
@@ -153,6 +158,7 @@ class Runner:
         try:
             out = await self._evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
+            self._failed += len(criteria)
             self._store.record_progress(
                 run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {str(exc) or type(exc).__name__}"]
             )

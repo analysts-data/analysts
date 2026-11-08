@@ -167,6 +167,20 @@ async def test_failed_dialog_is_an_error_and_does_not_stop_the_rest(store: Store
     assert store.get_dialog("p1-ru-003").cost is None  # type: ignore[union-attr]
 
 
+async def test_eta_does_not_extrapolate_from_a_dialog_that_failed_at_once(store: Store) -> None:
+    # live: a call refused without CQA_ALLOW_REAL_DATA counts as done in 0 s and made ETA climb to minutes
+    gate = asyncio.Event()
+    runner = Runner(store, FakeEvaluator(fail_on={"call-024"}, gate=gate), parallel=1, clock=_clock())
+    run_id = runner.start(["call-024", "p1-ru-003"], None)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    progress = runner.progress(run_id)
+    assert (progress["done"], progress["eta_s"]) == (8, None)
+    gate.set()
+    await _drain(runner)
+    assert runner.progress(run_id)["eta_s"] == 0
+
+
 async def test_missing_answer_is_an_error_and_waits_for_evaluation(store: Store) -> None:
     run = store.get_run(await _execute(store, FakeEvaluator(skip={"04"})))
     assert run is not None
@@ -255,6 +269,20 @@ async def test_cancel_lets_the_dialog_in_flight_finish_and_starts_no_new_one(sto
         16,
         None,
     )
+
+
+async def test_interrupted_run_is_cancelled_not_done(store: Store) -> None:
+    """Ctrl-C в scripts/results.py или остановка сервера отменяют задачу: запуск не «done»."""
+    evaluator = FakeEvaluator(gate=asyncio.Event())
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    for task in runner._tasks:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await _drain(runner)
+    progress = runner.progress(run_id)
+    assert (progress["status"], progress["done"]) == ("cancelled", 0)
 
 
 async def test_new_start_after_cancel_resumes_where_the_run_stopped(store: Store) -> None:

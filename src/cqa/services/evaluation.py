@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -18,7 +18,7 @@ from cqa.domain.models import (
     Evaluation,
     Line,
 )
-from cqa.domain.prompt import Message, build_messages, render_dialog
+from cqa.domain.prompt import Message, build_messages, render_dialog, sound_block
 from cqa.services.errors import ConfigError
 
 
@@ -42,6 +42,39 @@ class Verdict:
 
 class Verifier(Protocol):
     async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict: ...
+
+
+class ChatVerifier:
+    """Второе мнение другой OpenAI-совместимой модели: те же запросы по критериям, без повтора."""
+
+    def __init__(self, model: ChatModel) -> None:
+        self.model = model
+
+    async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict:
+        found = await asyncio.gather(*(self._answer(dialog_text, rules, c) for c in criteria))
+        answers = {c.id: a for c, (a, _) in zip(criteria, found, strict=True) if a is not None}
+        return Verdict(answers=answers, cost=sum(cost for _, cost in found))
+
+    async def _answer(
+        self, text: str, rules: str, criterion: Criterion
+    ) -> tuple[str | int | dict[str, bool] | None, float]:
+        # ponytail: Verifier не знает канала, уточнение для звонков второму мнению не уходит
+        prompts = build_messages(text, rules, criterion, "chat")
+        replies = await asyncio.gather(*(self.model.complete(m) for m in prompts))
+        raws = [parse_answer(r.text) or {} for r in replies]
+        cost = sum(r.cost for r in replies)
+        if criterion.type != "flag":
+            return allowed_answer(raws[0], criterion), cost
+        flags = {
+            q.k: raw["violation_found"]
+            for q, raw in zip(criterion.questions or [], raws, strict=True)
+            if isinstance(raw.get("violation_found"), bool)
+        }
+        return flags or None, cost
+
+
+# id звонка → тело `GET /prosody` (dialog_prosody); исключение — разбора нет, звонок оценивается по тексту
+Prosody = Callable[[str], Awaitable[Mapping[str, Any]]]
 
 
 class RealDataBlocked(Exception):
@@ -82,6 +115,11 @@ def _apply_verdict(criterion: Criterion, result: CriterionResult, answer: Any) -
         result.why = f"{result.why}; {notes}" if result.why else notes
 
 
+def _with(text: str, sound: str | None) -> str:
+    """Текст диалога для Jev: у него нет </dialog>, блок звука идёт следом за репликами."""
+    return f"{text}\n\n{sound}" if sound else text
+
+
 def _allowed(raw: dict[str, Any], criterion: Criterion, sub: bool) -> bool:
     if sub:
         return isinstance(raw.get("violation_found"), bool)
@@ -105,6 +143,17 @@ class _Gate:
     sends_real_data: bool
     allow_real_data: bool
     config_error: str | None
+    prosody: Prosody | None
+
+    async def _sound(self, dialog: Dialog) -> str | None:
+        """Блок звука звонка; чат, нет порта или разбора (нет записи, сети, ffmpeg) — None, запрос прежний."""
+        if dialog.ch != "call" or self.prosody is None:
+            return None
+        try:
+            return sound_block(await self.prosody(dialog.id))
+        except Exception as exc:  # интонация не роняет оценку
+            _LOG.info("Диалог %s: без звука: %s: %s", dialog.id, type(exc).__name__, exc)
+            return None
 
     def _admit(self, dialog: Dialog) -> Dialog:
         """Диалог, который можно отправить модели; иначе ConfigError, ValueError или RealDataBlocked."""
@@ -139,6 +188,7 @@ class LlmEvaluator(_Gate):
         sends_real_data: bool,
         allow_real_data: bool,
         config_error: str | None = None,
+        prosody: Prosody | None = None,
     ) -> None:
         self.model = model
         self.model_name = model_name
@@ -148,17 +198,18 @@ class LlmEvaluator(_Gate):
         self.sends_real_data = sends_real_data
         self.allow_real_data = allow_real_data
         self.config_error = config_error
+        self.prosody = prosody
 
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
     ) -> DialogEvaluation:
         dialog = self._admit(dialog)
         assert dialog.lines is not None  # проверено в _admit, anonymize список реплик не меняет
-        text = render_dialog(dialog)
+        text, sound = render_dialog(dialog), await self._sound(dialog)
         lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
-        prompts = [build_messages(text, checklist.rules, c, dialog.ch) for c in asked]
+        prompts = [build_messages(text, checklist.rules, c, dialog.ch, sound) for c in asked]
         failures: list[tuple[str, ModelUnavailable]] = []
         found_future = asyncio.gather(
             *(self._criterion(m, c, lines, failures) for m, c in zip(prompts, asked, strict=True))
@@ -166,7 +217,7 @@ class LlmEvaluator(_Gate):
         verdict: Verdict | None = None
         if self.verifier and asked:
             try:
-                verdict = await self.verifier.verify(text, checklist.rules, asked)
+                verdict = await self.verifier.verify(_with(text, sound), checklist.rules, asked)
             except Exception as exc:  # сбой второго мнения не рушит оценку и не попадает в результаты
                 _LOG.warning("Второе мнение не ответило: %s: %s", type(exc).__name__, exc)
         found = await found_future
@@ -271,6 +322,7 @@ class JevEvaluator(_Gate):
         sends_real_data: bool,
         allow_real_data: bool,
         config_error: str | None = None,
+        prosody: Prosody | None = None,
     ) -> None:
         self.jev = jev
         self.model_name = model_name
@@ -278,6 +330,7 @@ class JevEvaluator(_Gate):
         self.sends_real_data = sends_real_data
         self.allow_real_data = allow_real_data
         self.config_error = config_error
+        self.prosody = prosody
 
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
@@ -286,8 +339,9 @@ class JevEvaluator(_Gate):
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
         verdict, ms = Verdict(answers={}, cost=0.0), 0
         if asked:  # сбой Jev — сбой всего диалога, как у основной модели
+            text = _with(render_dialog(dialog), await self._sound(dialog))
             start = time.monotonic()
-            verdict = await self.jev.verify(render_dialog(dialog), checklist.rules, asked)
+            verdict = await self.jev.verify(text, checklist.rules, asked)
             ms = round((time.monotonic() - start) * 1000)
         found = {c.id: r for c in asked if (r := self._result(c, verdict, ms)) is not None}
         # один запрос на все ответы: calls = 1 у первого, цена запроса поровну

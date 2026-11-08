@@ -165,15 +165,20 @@ def empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> None:
-    monkeypatch.setattr(results, "build_evaluator", lambda settings: evaluator)
+def fake_model(monkeypatch: pytest.MonkeyPatch, evaluator: FakeEvaluator) -> list[object]:
+    """Подменяет оценщик; список — порты интонации, с которыми его собрали."""
+    ports: list[object] = []
+    monkeypatch.setattr(
+        results, "build_evaluator", lambda settings, prosody: ports.append(prosody) or evaluator
+    )
+    return ports
 
 
 def test_evaluate_loads_the_file_evaluates_missing_pairs_and_exports_them(
     empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     evaluator = FakeEvaluator(fail_on=[SYN[0]])
-    fake_model(monkeypatch, evaluator)
+    ports = fake_model(monkeypatch, evaluator)
     out = empty / "dev.json"
     args = ["dev", "--source", str(ORG_PAYLOAD), "--evaluate", "--model-name", "fake", "--out", str(out)]
 
@@ -187,6 +192,7 @@ def test_evaluate_loads_the_file_evaluates_missing_pairs_and_exports_them(
     assert [r["conversation_id"] for r in doc["results"]] == SYN
     assert [r["status"] for r in doc["results"]] == ["error", *["ok"] * (len(SYN) - 1)]
     assert sorted(evaluator.order) == sorted(SYN)
+    assert len(ports) == 1 and callable(ports[0])  # звонки оцениваются с интонацией, как в интерфейсе
 
     again = FakeEvaluator()
     fake_model(monkeypatch, again)
@@ -225,6 +231,48 @@ def test_evaluate_stops_before_the_model_when_the_set_does_not_load(
     assert evaluator.calls == 0
     assert "статусом 500" in capsys.readouterr().err
     assert not (empty / "prod.json").exists()
+
+
+def test_evaluate_on_a_missing_database_creates_it_with_the_seed_checklist(
+    empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Свежий клон без запуска сервера: одна команда контроля всё равно работает."""
+    monkeypatch.setenv("CQA_DB_PATH", str(empty / "fresh" / "cqa.db"))
+    fake_model(monkeypatch, FakeEvaluator())
+    out = empty / "dev.json"
+
+    code = results.main(
+        ["dev", "--source", str(ORG_PAYLOAD), "--evaluate", "--model-name", "f", "--out", str(out)]
+    )
+
+    assert code == 0
+    assert "режим replay" in capsys.readouterr().out  # режим модели виден до оценки
+    doc = json.loads(out.read_text(encoding="utf-8"))
+    assert [r["status"] for r in doc["results"]] == ["ok"] * len(SYN)
+
+
+def test_export_without_evaluate_needs_an_existing_database(
+    empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CQA_DB_PATH", str(empty / "missing.db"))
+
+    assert results.main(["dev", "--source", str(ORG_PAYLOAD), "--out", str(empty / "dev.json")]) == 2
+    assert "нет базы" in capsys.readouterr().err
+    assert not (empty / "missing.db").exists()
+
+
+def test_ctrl_c_during_evaluation_says_how_to_resume_without_a_traceback(
+    empty: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def interrupted(*args: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(results, "evaluate", interrupted)
+    out = empty / "dev.json"
+
+    assert results.main(["dev", "--source", str(ORG_PAYLOAD), "--evaluate", "--out", str(out)]) == 130
+    assert "повторите ту же команду" in capsys.readouterr().err
+    assert not out.exists()
 
 
 def test_make_target_passes_set_and_group() -> None:

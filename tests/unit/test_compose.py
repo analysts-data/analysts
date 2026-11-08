@@ -15,6 +15,7 @@ from cqa.domain.models import Checklist, Dialog
 from cqa.domain.prompt import build_messages, render_dialog
 from cqa.http.app import create_app
 from cqa.services.errors import ConfigError
+from cqa.services.llm_config import effective
 from cqa.settings import Settings
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
@@ -127,6 +128,37 @@ async def test_scenario_5_calls_deepseek_with_thinking_and_jev_once(
     assert not list(tmp_path.rglob("*.json"))  # live пишет записи только в record
 
 
+async def test_second_opinion_from_a_provider_asks_its_own_model_with_its_own_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(compose, "CASSETTES", tmp_path)
+    s = effective(
+        settings(llm_mode="live", llm_api_key=SecretStr("k")),
+        {
+            "providers": {
+                "ds": {"label": "DS", "base_url": "https://ds.test", "model": "ds-pro", "profile": "plain",
+                       "where": "external", "key": "sk-ds"},
+            },
+            "verifier": "ds",
+        },
+    )  # fmt: skip
+    main = {"reason_ru": "Поздоровался и представился.", "answer": "yes"}
+    second = {"reason_ru": "Не представился.", "answer": "no"}
+    usage = {"prompt_tokens": 1000, "completion_tokens": 100}
+    with respx.mock(assert_all_called=True) as net:
+        net.post("https://llm.test/v1/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(main)}}], "usage": usage}
+        )
+        ds = net.post("https://ds.test/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(second)}}], "usage": usage}
+        )
+        out = await build_evaluator(s).evaluate(CHAT, CHECKLIST, [FIRST])
+    [e] = out.results
+    assert (e.result.a, e.result.alt, out.verifier_calls) == ("yes", "no", 1)
+    assert json.loads(ds.calls.last.request.content)["model"] == "ds-pro"
+    assert ds.calls.last.request.headers["authorization"] == "Bearer sk-ds"
+
+
 def test_jev_only_evaluator_is_built_without_llm_key_and_needs_jev_key_in_live() -> None:
     from cqa.services.evaluation import JevEvaluator
 
@@ -145,3 +177,54 @@ async def test_jev_only_without_key_in_live_fails_at_evaluate() -> None:
     with respx.mock(assert_all_called=False) as net, pytest.raises(ConfigError, match="CQA_JEV_API_KEY"):
         await evaluator.evaluate(CHAT, CHECKLIST, [FIRST])
     assert net.calls.call_count == 0
+
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+@pytest.mark.parametrize("role", ["llm_provider", "verifier"])
+async def test_jev_through_openrouter_works_as_main_model_and_as_second_opinion(
+    role: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(compose, "CASSETTES", tmp_path)
+    s = effective(
+        settings(llm_mode="live", llm_api_key=SecretStr("k"), openrouter_api_key=SecretStr("sk-or")),
+        {role: "openrouter-jev"},
+    )
+    main = {"reason_ru": "Поздоровался и представился.", "answer": "yes"}
+    second = {"reason_ru": "Не представился.", "answer": "no"}
+    usage = {"prompt_tokens": 1000, "completion_tokens": 100, "cost": 0.003}
+    with respx.mock(assert_all_called=False) as net:
+        net.post("https://llm.test/v1/chat/completions").respond(
+            200, json={"choices": [{"message": {"content": json.dumps(second)}}], "usage": usage}
+        )
+        router = net.post(OPENROUTER_URL).respond(
+            200, json={"choices": [{"message": {"content": json.dumps(main)}}], "usage": usage}
+        )
+        out = await build_evaluator(s).evaluate(CHAT, CHECKLIST, [FIRST])
+    [e] = out.results
+    sent = router.calls.last.request
+    assert json.loads(sent.content)["model"] == "typesafe/jev-router"
+    assert (sent.headers["authorization"], sent.headers["x-title"]) == ("Bearer sk-or", "CQA")
+    if role == "llm_provider":
+        assert (e.result.a, e.result.why, e.result.model, e.result.cost) == (
+            "yes", "Поздоровался и представился.", "typesafe/jev-router", 0.003
+        )  # fmt: skip
+        assert evaluator_mode(s) == "external"
+    else:
+        assert (e.result.a, e.result.alt, out.verifier_calls, out.verifier_usd) == ("no", "yes", 1, 0.003)
+
+
+def evaluator_mode(s: Settings) -> str:
+    from cqa.services.state import mode_from_settings
+
+    return mode_from_settings(s).where
+
+
+@pytest.mark.parametrize("mode", ["llm", "jev"])
+def test_evaluator_gets_the_sound_analysis_port(mode: str) -> None:
+    async def prosody(dialog_id: str) -> dict[str, Any]:
+        return {"summary": []}
+
+    assert build_evaluator(settings(evaluator=mode), prosody).prosody is prosody
+    assert build_evaluator(settings(evaluator=mode)).prosody is None

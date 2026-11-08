@@ -29,20 +29,26 @@ import sys
 import time
 from collections.abc import Iterable
 from contextlib import closing
+from functools import partial
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store, connect
+from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.ingest import PayloadError, parse_payload
 from cqa.domain.models import Dialog
 from cqa.domain.results import check_results, to_results
+from cqa.http.app import seed_checklist
 from cqa.services.answers import MANUAL
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.errors import Invalid, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
+from cqa.services.prosody import dialog_prosody
 from cqa.services.runs import Runner, plan_run
 from cqa.services.state import current_state
 from cqa.settings import Settings
@@ -127,19 +133,30 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("для prod укажите GROUP=<group_id> (make) или --group/--source")
         files = [settings.eval_dataset]
     sources = [*files, *(settings.raw_dir / f"{g}.json" for g in args.group)]
-    if not Path(settings.db_path).is_file():
+    if not args.evaluate and not Path(settings.db_path).is_file():
         print(f"нет базы {settings.db_path} (CQA_DB_PATH)", file=sys.stderr)
         return 2
     with closing(connect(settings.db_path)) as conn:
         store = Store(conn)
+        if args.evaluate:
+            seed_checklist(store)  # как первый запуск сервера: свежий клон без make run
         settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env, как у сервера
-        return export(args, store, settings, sources, files)
+        try:
+            return export(args, store, settings, sources, files)
+        except KeyboardInterrupt:
+            print(
+                "прервано: готовые ответы сохранены, повторите ту же команду — она продолжит с места "
+                "остановки; файл из того, что есть, — та же команда без --evaluate",
+                file=sys.stderr,
+            )
+            return 130
 
 
 def export(
     args: argparse.Namespace, store: Store, settings: Settings, sources: list[Path], files: list[Path]
 ) -> int:
     if args.evaluate:
+        print(f"модель {settings.llm_model}, режим {settings.llm_mode}", flush=True)  # replay — без сети
         try:
             asyncio.run(load_set(store, build_source(settings), args.group, files))
         except (Invalid, Upstream, OSError) as e:
@@ -154,7 +171,9 @@ def export(
             return 2
     ids = list(dict.fromkeys(ids))  # повтор id в источнике — одна запись, как при загрузке
     if args.evaluate:
-        asyncio.run(evaluate(store, build_evaluator(settings), ids, settings.llm_max_parallel))
+        # интонация звонков, как у сервера; свои клиенты: соединения прошлого asyncio.run закрыты
+        prosody = partial(dialog_prosody, store, build_source(settings), PraatVoice(httpx.AsyncClient()))
+        asyncio.run(evaluate(store, build_evaluator(settings, prosody), ids, settings.llm_max_parallel))
 
     checklist, listed, appeals = current_state(store)
     dialogs = {d.id: d for d in listed}
