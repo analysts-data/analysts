@@ -133,6 +133,7 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
 
 
 class Appeal(BaseModel):

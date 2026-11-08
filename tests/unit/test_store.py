@@ -441,3 +441,54 @@ def test_org_source_is_saved_and_replaced():
     store.set_org_source("https://org.test/api?token=b", "CTRL1")
 
     assert store.org_source() == ("https://org.test/api?token=b", "CTRL1")
+
+
+# --- Сотрудник диалога ---
+
+
+def test_operator_is_a_column_set_one_by_one_or_in_bulk():
+    conn = connect(":memory:")
+    store = Store(conn)
+    call, chat = _by_id(_dialogs_fixture(), "call-024"), _by_id(_dialogs_fixture(), "p1-ru-003")
+    store.add_dialogs([call.model_copy(update={"operator": "Сотрудник А"}), chat], {})
+
+    assert store.get_dialog("call-024").operator == "Сотрудник А"
+    assert "operator" not in json.loads(conn.execute("SELECT body FROM dialogs").fetchone()["body"])
+    store.set_operator("p1-ru-003", "Сотрудник Б")
+    assert [d.operator for d in store.list_dialogs()] == ["Сотрудник А", "Сотрудник Б"]
+    with pytest.raises(KeyError):
+        store.set_operator("nope", "Х")
+
+    assert store.set_operators([("call-024", None), ("nope", "Х"), ("p1-ru-003", "В")]) == (2, ["nope"])
+    assert [d.operator for d in store.list_dialogs()] == [None, "В"]
+
+
+def test_reloaded_duplicate_fills_missing_operator_but_keeps_assigned_one():
+    store = Store(connect(":memory:"))
+    call, chat = _by_id(_dialogs_fixture(), "call-024"), _by_id(_dialogs_fixture(), "p1-ru-003")
+    store.add_dialogs([call, chat.model_copy(update={"operator": "Вручную"})], {})
+
+    again = [d.model_copy(update={"operator": "Из файла"}) for d in (call, chat)]
+    assert store.add_dialogs(again, {}) == (0, 2)
+
+    assert [d.operator for d in store.list_dialogs()] == ["Из файла", "Вручную"]
+
+
+def test_connect_adds_operator_column_to_an_old_database(tmp_path):
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.execute(
+        "CREATE TABLE dialogs (id TEXT PRIMARY KEY, body TEXT NOT NULL, "
+        "reviewed INTEGER NOT NULL DEFAULT 0, audio_url TEXT, cost TEXT)"
+    )
+    old.execute(
+        "INSERT INTO dialogs (id, body) VALUES ('d1', ?)",
+        (json.dumps({"id": "d1", "ch": "chat", "lang": "RU", "at": "07.11 10:00", "lines": []}),),
+    )
+    old.commit()
+    old.close()
+
+    store = Store(connect(path))
+    assert store.get_dialog("d1").operator is None
+    store.set_operator("d1", "Сотрудник")
+    assert Store(connect(path)).get_dialog("d1").operator == "Сотрудник"
