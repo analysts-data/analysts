@@ -136,14 +136,14 @@ def _log(
     record(request.app.state.store, actor or actor_from(request), action, target_type, target_id, details)
 
 
-@router.get("/state")
+@router.get("/state", summary="Состояние для интерфейса: чек-лист, версии, диалоги, апелляции, режим")
 async def get_state(request: Request) -> dict[str, Any]:
     syncer: Syncer | None = request.app.state.syncer
     state = build_state(request.app.state.store, request.app.state.mode)
     return {**state, "source": syncer.status() if syncer else None}
 
 
-@router.get("/report")
+@router.get("/report", summary="Отчёт для руководства: html, json или md")
 async def get_report(
     request: Request,
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
@@ -159,7 +159,7 @@ async def get_report(
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
-@router.get("/scores/export")
+@router.get("/scores/export", summary="Оценки диалогов для Excel (CSV)")
 async def get_scores_export(
     request: Request,
     fmt: Annotated[Literal["csv"], Query(alias="format")] = "csv",
@@ -174,14 +174,14 @@ async def get_scores_export(
     return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
 
 
-@router.post("/dialogs/text")
+@router.post("/dialogs/text", summary="Добавить диалог из вставленного текста")
 async def post_paste(body: PasteIn, request: Request) -> dict[str, str]:
     dialog_id = paste_text(request.app.state.store, title=body.title, ch=body.ch, text=body.text)
     _log(request, "dataset.paste", "dialog", dialog_id, {"ch": body.ch})
     return {"id": dialog_id}
 
 
-@router.post("/dialogs/{dialog_id}/reviewed")
+@router.post("/dialogs/{dialog_id}/reviewed", summary="Отметить диалог проверенным или снять отметку")
 async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> dict[str, bool]:
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     _log(request, "dialog.reviewed" if body.reviewed else "dialog.unreviewed", "dialog", dialog_id)
@@ -209,7 +209,7 @@ async def get_operator(name: str, request: Request) -> dict[str, Any]:
     return operator_page(request.app.state.store, name)
 
 
-@router.put("/checklist")
+@router.put("/checklist", summary="Сохранить черновик чек-листа новой версией")
 async def put_checklist(draft: Checklist, request: Request) -> dict[str, Any]:
     saved = save_checklist(request.app.state.store, draft)
     _log(request, "checklist.save", "checklist", saved["version"], {"pending": len(saved["pending"])})
@@ -219,7 +219,7 @@ async def put_checklist(draft: Checklist, request: Request) -> dict[str, Any]:
 MEDIA = {"json": "application/json", "csv": "text/csv", "md": "text/markdown", "html": "text/html"}
 
 
-@router.get("/checklist/export")
+@router.get("/checklist/export", summary="Выгрузить версию чек-листа файлом")
 async def get_checklist_export(
     request: Request, v: int | None = None, fmt: Annotated[ExportFormat, Query(alias="format")] = "json"
 ) -> Response:
@@ -235,7 +235,7 @@ def _diff_out(result: dict[str, Any] | str) -> Response:
     return JSONResponse(result) if isinstance(result, dict) else Response(result, media_type=MEDIA["md"])
 
 
-@router.get("/checklist/diff")
+@router.get("/checklist/diff", summary="Разница двух сохранённых версий чек-листа")
 async def get_checklist_diff(
     request: Request,
     frm: Annotated[int, Query(alias="from")],
@@ -245,14 +245,14 @@ async def get_checklist_diff(
     return _diff_out(diff_versions(request.app.state.store, frm, to, fmt))
 
 
-@router.post("/checklist/diff")
+@router.post("/checklist/diff", summary="Разница текущей версии и черновика, без сохранения")
 async def post_checklist_diff(
     draft: Checklist, request: Request, fmt: Annotated[DiffFormat, Query(alias="format")] = "json"
 ) -> Response:
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
-@router.put("/owners")
+@router.put("/owners", summary="Назначить ответственных за причины снижения")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     owners = save_owners(request.app.state.store, body)
     _log(request, "owners.save", "owners", "", dict(body))
@@ -287,7 +287,7 @@ def _appeal_out(appeal: Appeal) -> dict[str, Any]:
     return appeal.model_dump(mode="json", by_alias=True, exclude={"ask"} if appeal.kind == "review" else None)
 
 
-@router.post("/appeals")
+@router.post("/appeals", summary="Подать апелляцию на ответ по критерию")
 async def post_appeal(body: AppealIn, request: Request) -> dict[str, Any]:
     actor = actor_from(request, body.by)
     fields = {**body.model_dump(), "by": signed(actor, body.by)}
@@ -296,7 +296,7 @@ async def post_appeal(body: AppealIn, request: Request) -> dict[str, Any]:
     return _appeal_out(appeal)
 
 
-@router.post("/appeals/{appeal_id}/decision")
+@router.post("/appeals/{appeal_id}/decision", summary="Решение по апелляции")
 async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> dict[str, Any]:
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(), "reviewer": signed(actor, body.reviewer)}
@@ -305,7 +305,7 @@ async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> d
     return _appeal_out(appeal)
 
 
-@router.post("/decisions")
+@router.post("/decisions", summary="Решение проверяющего без апелляции")
 async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(exclude={"from_"}), "reviewer": signed(actor, body.reviewer)}
@@ -314,7 +314,7 @@ async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
     return _appeal_out(review)
 
 
-@router.put("/dialogs/{dialog_id}/answers/{cid}")
+@router.put("/dialogs/{dialog_id}/answers/{cid}", summary="Ручной ответ по критерию")
 async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request) -> dict[str, Any]:
     actor = actor_from(request, body.by)
     by = signed(actor, body.by)
@@ -350,19 +350,28 @@ FEATURES = {
 }
 
 
+def _paths(routes: Any) -> set[str]:
+    """Пути маршрутов; FastAPI 0.16x оборачивает include_router, пути лежат в `original_router`."""
+    out: set[str] = set()
+    for r in routes:
+        out.add(getattr(r, "path", ""))
+        if inner := getattr(r, "original_router", None):
+            out |= _paths(inner.routes)
+    return out
+
+
 def features(app: Any) -> list[str]:
     """Ключи разделов, чьи пути есть среди маршрутов приложения."""
-    # FastAPI 0.162 держит включённые роутеры как _IncludedRouter без path: пути API — из схемы OpenAPI
-    paths = {getattr(r, "path", "") for r in app.routes} | set(app.openapi().get("paths", {}))
+    paths = _paths(app.routes)
     return [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
 
 
-@router.get("/config")
+@router.get("/config", summary="Режим оценки, без ключей")
 async def get_config(request: Request) -> dict[str, Any]:
     return {**view(request.app.state.settings), "features": features(request.app)}
 
 
-@router.put("/config")
+@router.put("/config", summary="Сменить режим оценки без перезапуска")
 async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
     state = request.app.state
     out = view(configure(state.store, state.settings, body.model_dump(), _apply(request)))
@@ -370,7 +379,7 @@ async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
     return out
 
 
-@router.put("/providers/{provider_id}")
+@router.put("/providers/{provider_id}", summary="Создать или изменить провайдера модели")
 async def put_provider_route(provider_id: str, body: ProviderIn, request: Request) -> dict[str, Any]:
     state = request.app.state
     out = view(put_provider(state.store, state.settings, provider_id, body.model_dump(), _apply(request)))
@@ -378,7 +387,7 @@ async def put_provider_route(provider_id: str, body: ProviderIn, request: Reques
     return out
 
 
-@router.delete("/providers/{provider_id}")
+@router.delete("/providers/{provider_id}", summary="Удалить провайдера модели")
 async def delete_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
     state = request.app.state
     out = view(delete_provider(state.store, state.settings, provider_id, _apply(request)))
@@ -386,19 +395,19 @@ async def delete_provider_route(provider_id: str, request: Request) -> dict[str,
     return out
 
 
-@router.post("/providers/{provider_id}/check")
+@router.post("/providers/{provider_id}/check", summary="Проверить связь с провайдером модели")
 async def check_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
     return await check_provider(provider(request.app.state.settings, provider_id))
 
 
-@router.post("/datasets")
+@router.post("/datasets", summary="Загрузить набор по group_id")
 async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
     result = await load_group(request.app.state.store, _source(request), body.group_id)
     _log(request, "dataset.load", "dataset", body.group_id, result)
     return result
 
 
-@router.put("/source")
+@router.put("/source", summary="Сохранить ссылку на API набора и загрузить набор")
 async def put_source(body: SourceIn, request: Request) -> dict[str, int]:
     """Ссылка API организаторов из интерфейса: сразу загрузка набора, затем автосинхронизация."""
     result = await _syncer(request).configure(body.url, body.group_id)
@@ -406,7 +415,7 @@ async def put_source(body: SourceIn, request: Request) -> dict[str, int]:
     return result
 
 
-@router.post("/datasets/upload")
+@router.post("/datasets/upload", summary="Загрузить набор файлом JSON")
 async def post_upload(request: Request) -> dict[str, int]:
     """Сырое тело файла: без `UploadFile` и зависимости `python-multipart`."""
     result = load_upload(request.app.state.store, _source(request), await request.body())
@@ -414,7 +423,7 @@ async def post_upload(request: Request) -> dict[str, int]:
     return result
 
 
-@router.post("/runs")
+@router.post("/runs", summary="Запустить оценку")
 async def post_run(body: RunIn, request: Request) -> dict[str, int]:
     run_id = _runner(request).start(body.dialogs, body.criteria)
     picked = None if body.dialogs is None else len(body.dialogs)
@@ -422,12 +431,12 @@ async def post_run(body: RunIn, request: Request) -> dict[str, int]:
     return {"run_id": run_id}
 
 
-@router.get("/runs/{run_id}")
+@router.get("/runs/{run_id}", summary="Прогресс запуска оценки")
 async def get_run(run_id: int, request: Request) -> dict[str, Any]:
     return _runner(request).progress(run_id)
 
 
-@router.post("/runs/{run_id}/cancel")
+@router.post("/runs/{run_id}/cancel", summary="Остановить запуск оценки")
 async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
     out = _runner(request).cancel(run_id)
     _log(request, "run.cancel", "run", run_id)

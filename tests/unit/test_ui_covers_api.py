@@ -36,6 +36,8 @@ EXEMPT |= {
 }
 # вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
 EXEMPT |= {"/sources/{source_id}/ingest"}
+# страницы документации, не API интерфейса (src/cqa/http/docs.py)
+EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
