@@ -10,7 +10,7 @@ import {
   resultsCsv,
   nextStepStats,
   reasonsCsv,
-} from '../../../web/js/analytics.js';
+} from '../../../frontend/src/lib/analytics.js';
 
 // Числа в этом файле посчитаны вручную по данным прототипа (design.md, решение 7):
 // ans учитывает решения (апелляция a3 меняет 04 у p1-en-006 с 15 на 20), запись r1 закрывает

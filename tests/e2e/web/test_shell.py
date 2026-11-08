@@ -56,6 +56,8 @@ def test_dataset_by_group_id_posts_and_reports_counts(page: Page, web_url: str) 
 
     page.route("**/api/datasets", datasets)
     page.goto(f"{web_url}/#/queue")
+    page.get_by_role("button", name="Добавить диалоги").click()  # загрузка набора — в меню
+    page.get_by_role("button", name="Набор организаторов…").click()
     page.fill("#gid", "CTRL")
     page.click('[data-act="load"]')
     expect(page.locator("#toast")).to_contain_text("12")
