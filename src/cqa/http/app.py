@@ -13,14 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
-from cqa.http import api
+from cqa.http import api, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
-from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
+from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.prosody import dialog_prosody
@@ -36,6 +37,7 @@ SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
+    Unauthorized: 401,
     Conflict: 409,
     Upstream: 502,
     Unavailable: 503,
@@ -44,7 +46,7 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация набора организаторов, пока работает сервер."""
+    """Автосинхронизация источников по их расписанию, пока работает сервер."""
     syncer: Syncer | None = app.state.syncer
     task = asyncio.create_task(syncer.run()) if syncer else None
     yield
@@ -55,9 +57,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 async def _detail(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(
-        {"detail": str(exc)}, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t))
-    )
+    body: dict[str, Any] = {"detail": str(exc)}
+    if isinstance(exc, Invalid) and exc.fields:
+        body["fields"] = exc.fields  # ошибки по полям формы источника
+    return JSONResponse(body, status_code=next(c for t, c in STATUS.items() if isinstance(exc, t)))
 
 
 def seed_checklist(store: Store) -> None:
@@ -101,7 +104,9 @@ def create_app(
     seed_checklist(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
-    app.state.syncer = Syncer(store, app.state.source)
+    store.fail_stale_syncs()
+    http_source = HttpSource(httpx.AsyncClient(), allow_private=settings.allow_private_sources)
+    app.state.syncer = Syncer(store, app.state.source, http_source, settings)
     app.state.voice = PraatVoice(httpx.AsyncClient())  # интонация: запись скачивается и разбирается локально
 
     async def prosody(dialog_id: str) -> dict[str, Any]:
@@ -114,6 +119,7 @@ def create_app(
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
+    app.include_router(sources.router)
     app.include_router(audio_router)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")  # last: it shadows every path

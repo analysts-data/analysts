@@ -5,8 +5,10 @@ from datetime import datetime
 from typing import Literal
 
 from cqa.adapters.store import Store
+from cqa.domain.models import IngestResult
 from cqa.domain.paste import PasteError, paste_dialog
 from cqa.domain.review import ASTANA
+from cqa.services.datasets import logged
 from cqa.services.errors import Invalid, NotFound
 
 
@@ -34,5 +36,6 @@ def paste_text(store: Store, *, title: str, ch: Literal["chat", "call"], text: s
         )
     except PasteError as exc:
         raise Invalid(str(exc)) from None
-    store.add_dialogs([dialog], {})
+    with logged(store, "paste") as save:
+        save(IngestResult([dialog], {}, 0, []))
     return dialog.id

@@ -29,6 +29,7 @@ DEFAULTS = {
     "data_where": "kz",
     "allow_real_data": False,
     "org_api_url": None,
+    "allow_private_sources": False,
     "raw_dir": Path("data/raw"),
     "audio_shift_s": 0.25,
     "audio_shift_paused_s": 4.5,
