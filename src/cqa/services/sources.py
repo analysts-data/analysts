@@ -216,7 +216,7 @@ def extract(src: Mapping[str, Any], body: Any) -> list[Any]:
 def build(
     src: Mapping[str, Any], records: list[Any], settings: Settings, now: datetime
 ) -> tuple[IngestResult, list[dict[str, Any]]]:
-    """Записи источника → диалоги с `source_id`, `external_id`, `product` и сопоставленные записи."""
+    """Записи источника → диалоги с `source_id`, `external_id` и сопоставленные записи (там же `product`)."""
     mapped, errors = map_records(
         records,
         src["config"]["mapping"],
@@ -237,7 +237,6 @@ def build(
             update={
                 "source_id": src["id"],
                 "external_id": by_id[d.id]["external_id"],
-                "product": by_id[d.id]["product"],
                 "title": ("Звонок " if d.ch == "call" else "Чат ") + by_id[d.id]["external_id"],
             }
         )
@@ -264,7 +263,7 @@ def preview(
             "lang": d.lang,
             "lines": len(lines),
             "operator": m.get("operator"),
-            "product": d.product,
+            "product": m.get("product"),
             "sample": [{"who": x.who, "text": x.text[:200]} for x in lines[:3]],
         }
 

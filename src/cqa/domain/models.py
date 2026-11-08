@@ -133,9 +133,9 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
     source_id: str | None = None  # источник из реестра (GET /api/sources); колонка dialogs.source_id
     external_id: str | None = None  # id записи в источнике; дубли по (source_id, external_id)
-    product: str | None = None  # продукт из поля записи или product_default источника
 
 
 class Appeal(BaseModel):

@@ -46,7 +46,10 @@ def test_report_json_follows_current_results_and_filters(
     assert every.headers["content-type"] == "application/json"
     summary = every.json()["summary"]
     assert (summary["dialogs"], summary["scored"], summary["avg_total"]) == (2, 1, 82.94)
-    assert (chats["summary"]["scored"], chats["filters"]) == (0, {"lang": None, "ch": "chat", "source": None})
+    assert (chats["summary"]["scored"], chats["filters"]) == (
+        0,
+        {"lang": None, "ch": "chat", "operator": None, "source": None},
+    )
 
 
 def test_report_bad_format_or_channel_is_422(client: TestClient) -> None:

@@ -57,6 +57,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
 | `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
+| `Store.set_operator`, `Store.set_operators` | там же, eval-and-delivery | `set_operator(dialog_id, operator: str \| None)` — `KeyError` для неизвестного id; `set_operators(pairs: Sequence[tuple[str, str \| None]]) -> tuple[int, list[str]]` — `(обновлено, неизвестные id)` одной транзакцией |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
 
 `Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата.
@@ -147,7 +148,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 
 | Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
 | --- | --- | --- |
-| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`, `source_id`, `external_id`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается), `source_id`, `external_id` (уникальны вместе), `added` (ISO UTC; старые базы получают колонки в `connect`) | dialog-ingest через `Store.audio_url` |
+| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`, `operator`, `source_id`, `external_id`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается), `operator TEXT NULL` (сотрудник), `source_id`, `external_id` (уникальны вместе), `added` (ISO UTC); старые базы получают колонки в `connect` | dialog-ingest через `Store.audio_url` |
 | `sources` | `id TEXT PK`, `name`, `kind CHECK IN ('org_api', 'http_json', 'webhook', 'file', 'paste', 'api')`, `service`, `channel_default`, `product_default`, `config` (JSON, не секрет), `secret` (не отдаётся), `enabled`, `schedule_min`, `created`, `archived`; встроенные `org`, `file`, `paste`, `api` создаёт схема, прежняя `org_source` переносится в `org` | dialog-ingest |
 | `source_syncs` | `id`, `source_id`, `started`, `finished`, `status CHECK IN ('running', 'ok', 'partial', 'error')`, `added`, `skipped`, `errors` (JSON), `duration_ms` | dialog-ingest (`logged` в `services/datasets.py`) |
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |

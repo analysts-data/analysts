@@ -88,6 +88,7 @@ def test_create_lists_the_source_without_its_secret(client: TestClient) -> None:
     listed = client.get("/api/sources")
     assert [s["id"] for s in listed.json()] == ["org", "file", "paste", "api", "src1"]
     assert "s3cr3t" not in created.text + listed.text
+    assert "sources" in client.get("/api/config").json()["features"]
 
 
 def test_bad_config_is_a_field_level_422(client: TestClient) -> None:
