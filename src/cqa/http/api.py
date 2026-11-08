@@ -27,7 +27,6 @@ from cqa.services.checklists import (
 )
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
-from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
