@@ -25,6 +25,7 @@ def test_explain_names_the_matching_rule_and_every_condition(
     settings: Settings, store: Store, conn: sqlite3.Connection
 ) -> None:
     client = _client(settings, conn)
+    assert "routing" in client.get("/api/config").json()["features"]
     assert client.put("/api/routing", json=[CALLS]).status_code == 200
     assert [r["id"] for r in client.get("/api/routing").json()] == ["calls", "default"]
     call = client.post("/api/routing/explain", json={"dialog_id": "call-024"}).json()
