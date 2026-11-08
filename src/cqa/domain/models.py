@@ -113,9 +113,27 @@ class CriterionResult(BaseModel):
     better: str | None = None
     evFail: bool = False
     model: str | None = None
+    rule_id: str | None = None  # правило обработки, выбравшее оценщик; None — общий режим
+    rule_name: str | None = None  # название правила на момент оценки
     calls: int = 0
     cost: float = 0.0
     ms: int = 0
+    reviewWhy: str | None = None  # считается при чтении (domain.sufficiency), в базе не хранится
+
+
+Outcome = Literal["block", "flag", "info"]
+
+
+class Reason(BaseModel):  # Dialog.sufficiency.reasons
+    id: str
+    text: str
+    basis: str
+    outcome: Outcome
+
+
+class Sufficiency(BaseModel):  # Dialog.sufficiency, считается при чтении
+    status: Literal["ok", "flag", "block"]
+    reasons: list[Reason] = []
 
 
 class Cost(BaseModel):  # Dialog.cost
@@ -137,6 +155,9 @@ class Dialog(BaseModel):
     reviewed: bool = False
     cost: Cost | None = None
     operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
+    source_id: str | None = None  # источник из реестра (GET /api/sources); колонка dialogs.source_id
+    external_id: str | None = None  # id записи в источнике; дубли по (source_id, external_id)
+    sufficiency: Sufficiency | None = None
 
 
 class Appeal(BaseModel):

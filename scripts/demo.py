@@ -12,14 +12,17 @@ pick берёт только поля GET /api/state и снимок DEV (CQA_EV
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +37,45 @@ from cqa.settings import Settings
 ROOT = Path(__file__).resolve().parents[1]
 CASSETTES = ROOT / "tests" / "cassettes" / "llm"
 DEMO_SET = ROOT / "tests" / "e2e" / "fixtures" / "defence_set.json"
+SOURCE_FIXTURES = ROOT / "tests" / "e2e" / "fixtures" / "sources"  # синтетические выгрузки «сервисов»
+CHAT_PLATFORM = {
+    "name": "Чат-платформа",
+    "kind": "http_json",
+    "service": "ChatDesk",
+    "schedule_min": 5,
+    "config": {
+        "method": "GET",
+        "records_path": "data.items",
+        "mapping": {
+            "conversation_id": "id",
+            "channel": "channel",
+            "transcript": "messages",
+            "speaker": "author",
+            "text": "text",
+            "timestamp": "sent",
+            "operator": "agent.name",
+            "product": "product",
+        },
+    },
+}
+TELEPHONY = {
+    "name": "Телефония",
+    "kind": "webhook",
+    "service": "АТС (webhook)",
+    "channel_default": "call",
+    "product_default": "Переводы",
+    "config": {
+        "auth": "bearer",
+        "mapping": {
+            "conversation_id": "call_id",
+            "transcript": "turns",
+            "speaker": "role",
+            "text": "phrase",
+            "timestamp": "at",
+            "operator": "operator",
+        },
+    },
+}
 DEMO_EMPLOYEES = ROOT / "tests" / "e2e" / "fixtures" / "employees.csv"  # вымышленные сотрудники
 SHOWCASE_SET = ROOT / "tests" / "fixtures" / "showcase_set.json"  # 40 синтетических диалогов, 5 операторов
 BASE = "http://127.0.0.1:8000"
@@ -221,7 +263,14 @@ def serve(port: int = 8000) -> int:
         print(message, file=sys.stderr)
         return 1
     (ROOT / "data").mkdir(exist_ok=True)
-    env = {**os.environ, "CQA_LLM_MODE": "replay", "CQA_DB_PATH": str(ROOT / "data" / "demo.db")}
+    # «Чат-платформа» — отдельный сервис на этом же ноутбуке: адрес 127.0.0.1 разрешён только в демо
+    env = {
+        **os.environ,
+        "CQA_LLM_MODE": "replay",
+        "CQA_DB_PATH": str(ROOT / "data" / "demo.db"),
+        "CQA_ALLOW_PRIVATE_SOURCES": "1",
+    }
+    files = serve_fixtures()
     cmd = [
         sys.executable,
         "-m",
@@ -244,7 +293,7 @@ def serve(port: int = 8000) -> int:
             staff = api.post("/api/employees/import", content=DEMO_EMPLOYEES.read_bytes())
             print(f"сотрудники: {staff.raise_for_status().json()}")
             run_id = (
-                api.post("/api/runs", json={"dialogs": None, "criteria": None})
+                api.post("/api/runs", json={"dialogs": defence_ids(raw), "criteria": None})
                 .raise_for_status()
                 .json()["run_id"]
             )
@@ -253,6 +302,7 @@ def serve(port: int = 8000) -> int:
             if run["errors"]:
                 print(f"ошибок оценки {len(run['errors'])}, первая: {run['errors'][0]}", file=sys.stderr)
                 print("не хватает записанных ответов модели: make record", file=sys.stderr)
+            seed_sources(api, files)
         print(f"Готово: {base}/#/queue  (Ctrl+C — остановить)")
         return proc.wait()
     except KeyboardInterrupt:
@@ -303,7 +353,9 @@ def showcase(port: int = 8000) -> int:
             _wait_health(api, proc)
             json_body = {"Content-Type": "application/json"}
             added = api.post("/api/datasets/upload", content=DEMO_SET.read_bytes(), headers=json_body)
-            print(f"набор защиты: {added.raise_for_status().json()}, витрина: операторы {', '.join(operators)}")
+            print(
+                f"набор защиты: {added.raise_for_status().json()}, витрина: операторы {', '.join(operators)}"
+            )
             staff = DEMO_EMPLOYEES.read_text(encoding="utf-8").rstrip("\n").splitlines()
             staff += [f"sc-op-{i};{name};operator;Линия 3" for i, name in enumerate(operators, 1)]
             api.post("/api/employees/import", content="\n".join(staff).encode()).raise_for_status()
@@ -324,6 +376,46 @@ def showcase(port: int = 8000) -> int:
     finally:
         proc.terminate()
         proc.wait(10)
+
+
+def defence_ids(raw: bytes) -> list[str]:
+    """Оценивается только набор защиты: у диалогов демо-источников нет записанных ответов модели."""
+    return [str(r["conversation_id"]) for r in json.loads(raw)["data"]["records"]]
+
+
+def serve_fixtures() -> str:
+    """Выгрузки «сервисов» по HTTP на свободном порту (поток-демон, живёт с процессом демо)."""
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(SOURCE_FIXTURES))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def seed_sources(api: httpx.Client, files: str) -> None:
+    """Страница «Источники» на защите: чат-платформа (pull), телефония (webhook), организаторы (выключен).
+
+    Повторный запуск на той же базе источники не дублирует: адрес выгрузки обновляется, данные — без дублей.
+    """
+    have = {s["name"]: s for s in api.get("/api/sources").raise_for_status().json()}
+    chat = {**CHAT_PLATFORM, "config": {**CHAT_PLATFORM["config"], "url": f"{files}/chat_platform.json"}}
+    if "Чат-платформа" in have:
+        sid = have["Чат-платформа"]["id"]
+        api.put(f"/api/sources/{sid}", json=chat).raise_for_status()
+    else:
+        sid = api.post("/api/sources", json=chat).raise_for_status().json()["id"]
+    print(f"Чат-платформа: {api.post(f'/api/sources/{sid}/sync').raise_for_status().json()['status']}")
+    if "Телефония" in have:
+        tel = api.put(f"/api/sources/{have['Телефония']['id']}", json={**TELEPHONY, "rotate_token": True})
+    else:
+        tel = api.post("/api/sources", json=TELEPHONY)
+    created = tel.raise_for_status().json()
+    calls = (SOURCE_FIXTURES / "telephony.json").read_bytes()
+    pushed = api.post(
+        created["ingest_path"],
+        content=calls,
+        headers={"Authorization": f"Bearer {created['token']}", "Content-Type": "application/json"},
+    )
+    print(f"Телефония (webhook): {pushed.raise_for_status().json()}")
 
 
 def _wait_health(api: httpx.Client, proc: subprocess.Popen[bytes], limit_s: float = 30) -> None:

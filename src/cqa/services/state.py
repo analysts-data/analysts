@@ -21,7 +21,9 @@ from cqa.domain.report import (
 from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
+from cqa.domain.sufficiency import mark_unsupported
 from cqa.services.errors import Invalid, NotFound, Unavailable
+from cqa.services.sufficiency import assess_dialogs
 from cqa.settings import Settings
 
 
@@ -44,14 +46,27 @@ def current_results(
 
 
 def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
-    """Current checklist, dialogs with current `res`, appeals the score takes into account."""
+    """Current checklist, dialogs with current `res` and `sufficiency`, appeals the score takes into account.
+
+    Достаточность и пометка «ответ без основания» считаются здесь, при чтении: смена исходов правил
+    сразу видна везде — в состоянии, очереди, отчёте, экспорте и файле результатов.
+    """
     checklist = store.current_checklist()
     if checklist is None:
         raise Unavailable("Чек-лист не загружен")
     fps = fingerprints(checklist)
     stored = store.list_dialogs()
     results = current_results(store, checklist, stored)
-    dialogs = [d.model_copy(update={"res": results.get(d.id, {})}) for d in stored]
+    verdicts = assess_dialogs(store, stored)
+    dialogs = [
+        d.model_copy(
+            update={
+                "res": mark_unsupported(results.get(d.id, {}), verdicts[d.id]),
+                "sufficiency": verdicts[d.id],
+            }
+        )
+        for d in stored
+    ]
     ch = {d.id: d.ch for d in stored}
     # open records always; decided ones only for the current meaning of the criterion (decision 12)
     appeals = [
@@ -73,12 +88,15 @@ def report(
     ch: str | None,
     now: datetime,
     operator: str | None = None,
+    source: str | None = None,
 ) -> dict[str, Any] | str:
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
+    names = {s["id"]: s["name"] for s in store.sources()}
     rep = build_report(
-        checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator
-    )
+        checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator,
+        source=source, source_names=names,
+    )  # fmt: skip
     return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 
 
@@ -136,4 +154,10 @@ def build_state(store: Store, mode: Mode) -> dict[str, Any]:
         ],
         "owners": store.get_owners(),
         "mode": mode.model_dump(mode="json"),
+        # подписи для фильтра и плашки источника; полный реестр — GET /api/sources
+        "sources": [
+            {"id": s["id"], "name": s["name"], "kind": s["kind"], "service": s["service"]}
+            for s in store.sources()
+            if not s["archived"]
+        ],
     }

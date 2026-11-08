@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -44,6 +44,29 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sources (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('org_api', 'http_json', 'webhook', 'file', 'paste', 'api')),
+  service TEXT NOT NULL DEFAULT '', channel_default TEXT, product_default TEXT,
+  config TEXT NOT NULL DEFAULT '{}', secret TEXT, enabled INTEGER NOT NULL DEFAULT 1,
+  schedule_min INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS source_syncs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, started TEXT NOT NULL, finished TEXT,
+  status TEXT NOT NULL CHECK (status IN ('running', 'ok', 'partial', 'error')),
+  added INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]',
+  duration_ms INTEGER);
+CREATE INDEX IF NOT EXISTS source_syncs_by_source ON source_syncs(source_id, id);
+INSERT OR IGNORE INTO sources (id, name, kind, service, enabled, schedule_min, created, config) VALUES
+  ('org', 'Организаторы Data Challenge', 'org_api', 'API организаторов', 0, 5,
+   strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{}'),
+  ('file', 'Загрузка файла', 'file', 'CQA', 1, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{}'),
+  ('paste', 'Вставка текста', 'paste', 'CQA', 1, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{}'),
+  ('api', 'Интеграционный API', 'api', 'CQA', 1, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), '{}');
+UPDATE sources SET secret = (SELECT url FROM org_source),
+  config = json_object('group_id', (SELECT group_id FROM org_source)), enabled = 1
+  WHERE id = 'org' AND secret IS NULL AND EXISTS (SELECT 1 FROM org_source);
+CREATE TABLE IF NOT EXISTS sufficiency (
+  id TEXT PRIMARY KEY, outcome TEXT NOT NULL CHECK (outcome IN ('block', 'flag', 'info')));
 CREATE TABLE IF NOT EXISTS telemetry (
   id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, role TEXT,
   event TEXT NOT NULL, page TEXT NOT NULL, props TEXT NOT NULL);
@@ -85,6 +108,15 @@ COLUMNS = [
 ]
 
 RunStatus = Literal["running", "done", "cancelled"]
+SyncStatus = Literal["running", "ok", "partial", "error"]
+_COLUMNS = {
+    "res",
+    "reviewed",
+    "cost",
+    "operator",
+    "source_id",
+    "external_id",
+}  # не в body: свои колонки или таблицы
 DialogStatus = Literal["queued", "evaluating", "done", "error", "skipped", "cancelled"]
 
 
@@ -135,12 +167,30 @@ def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.executescript(SCHEMA)  # встроенные источники и перенос прежней ссылки org_source — в SCHEMA
+    _migrate_dialogs(conn)
     conn.executescript(SCHEMA)
     for table, column, decl in COLUMNS:
         if column not in {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _migrate_dialogs(conn: sqlite3.Connection) -> None:
+    """Старые базы: колонки источника у диалогов; прежние диалоги — вставка, API организаторов или файл."""
+    if "source_id" not in {row[1] for row in conn.execute("PRAGMA table_info(dialogs)")}:
+        with conn:
+            for col in ("source_id", "external_id", "added"):
+                conn.execute(f"ALTER TABLE dialogs ADD COLUMN {col} TEXT")
+            conn.execute(
+                "UPDATE dialogs SET external_id = id, source_id = CASE WHEN id LIKE 'paste-%' THEN 'paste' "
+                "WHEN EXISTS (SELECT 1 FROM org_source) THEN 'org' ELSE 'file' END"
+            )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS dialogs_by_source ON dialogs(source_id, external_id) "
+        "WHERE external_id IS NOT NULL"
+    )
 
 
 class Store:
@@ -152,9 +202,9 @@ class Store:
     # --- диалоги ---
 
     def add_dialogs(self, dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]:
-        """Сохранить новые диалоги, пропустить дубли по id. Возвращает (added, дубли).
+        """Сохранить новые диалоги, пропустить дубли по id и по (source_id, external_id). (added, дубли).
 
-        У дубля дописывается только сотрудник, если его ещё нет: назначенного вручную повтор не меняет.
+        У дубля по id дописывается только сотрудник, если его ещё нет: назначенного вручную повтор не меняет.
         """
         added = duplicates = 0
         with self._conn:
@@ -167,10 +217,29 @@ class Store:
                         (dialog.operator, dialog.id),
                     )
                     continue
-                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost", "operator"})
+                if (
+                    dialog.source_id
+                    and dialog.external_id
+                    and self._conn.execute(
+                        "SELECT 1 FROM dialogs WHERE source_id = ? AND external_id = ?",
+                        (dialog.source_id, dialog.external_id),
+                    ).fetchone()
+                ):
+                    duplicates += 1
+                    continue
+                body = dialog.model_dump(mode="json", exclude=_COLUMNS)
                 self._conn.execute(
-                    "INSERT INTO dialogs (id, body, audio_url, operator) VALUES (?, ?, ?, ?)",
-                    (dialog.id, _dump(body), audio.get(dialog.id), dialog.operator),
+                    "INSERT INTO dialogs (id, body, audio_url, operator, source_id, external_id, added) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        dialog.id,
+                        _dump(body),
+                        audio.get(dialog.id),
+                        dialog.operator,
+                        dialog.source_id,
+                        dialog.external_id,
+                        _now(),
+                    ),
                 )
                 added += 1
         return added, duplicates
@@ -198,6 +267,10 @@ class Store:
     def audio_url(self, dialog_id: str) -> str | None:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
         return row["audio_url"] if row is not None else None
+
+    def audio_ids(self) -> set[str]:
+        """Диалоги со ссылкой на запись: правило no_audio без запроса на каждый диалог."""
+        return {r["id"] for r in self._conn.execute("SELECT id FROM dialogs WHERE audio_url IS NOT NULL")}
 
     def prosody(self, dialog_id: str) -> dict[str, Any] | None:
         """Интонация звонка, посчитанная раньше (`GET /api/dialogs/{id}/prosody`)."""
@@ -227,6 +300,7 @@ class Store:
         data = json.loads(row["body"])
         data["res"] = {}
         data["reviewed"] = bool(row["reviewed"])
+        data["source_id"], data["external_id"] = row["source_id"], row["external_id"]
         data["operator"] = row["operator"]
         if row["cost"] is not None:
             data["cost"] = json.loads(row["cost"])
@@ -236,13 +310,14 @@ class Store:
 
     def get_dialog(self, dialog_id: str) -> Dialog | None:
         row = self._conn.execute(
-            "SELECT body, reviewed, cost, operator FROM dialogs WHERE id = ?", (dialog_id,)
+            "SELECT body, reviewed, cost, operator, source_id, external_id FROM dialogs WHERE id = ?",
+            (dialog_id,),
         ).fetchone()
         return self._dialog_from_row(row) if row is not None else None
 
     def list_dialogs(self) -> list[Dialog]:
         rows = self._conn.execute(
-            "SELECT body, reviewed, cost, operator FROM dialogs ORDER BY rowid"
+            "SELECT body, reviewed, cost, operator, source_id, external_id FROM dialogs ORDER BY rowid"
         ).fetchall()
         return [self._dialog_from_row(row) for row in rows]
 
@@ -573,17 +648,112 @@ class Store:
                 [(k, _dump(v)) for k, v in values.items()],
             )
 
+    def sufficiency_outcomes(self) -> dict[str, Outcome]:
+        """Исходы правил достаточности, изменённые из интерфейса: id правила → block, flag или info."""
+        return {r["id"]: r["outcome"] for r in self._conn.execute("SELECT id, outcome FROM sufficiency")}
+
+    def set_sufficiency_outcomes(self, outcomes: Mapping[str, Outcome]) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO sufficiency (id, outcome) VALUES (?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET outcome = excluded.outcome",
+                list(outcomes.items()),
+            )
+
     def org_source(self) -> tuple[str, str] | None:
-        """Ссылка API организаторов и group_id автосинхронизации, сохранённые из интерфейса."""
-        row = self._conn.execute("SELECT url, group_id FROM org_source").fetchone()
-        return (row["url"], row["group_id"]) if row else None
+        """Ссылка API организаторов и group_id: секрет и настройка источника `org` реестра."""
+        src = self.source("org")
+        if src is None or not src["secret"]:
+            return None
+        return src["secret"], str(src["config"].get("group_id", ""))
 
     def set_org_source(self, url: str, group_id: str) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO org_source (id, url, group_id) VALUES (1, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET url = excluded.url, group_id = excluded.group_id",
+                "UPDATE sources SET secret = ?, config = json_object('group_id', ?), enabled = 1 "
+                "WHERE id = 'org'",
                 (url, group_id),
+            )
+
+    # --- источники и журнал синхронизаций ---
+
+    @staticmethod
+    def _source_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        out = dict(row)
+        out["config"] = json.loads(row["config"])
+        out["enabled"], out["archived"] = bool(row["enabled"]), bool(row["archived"])
+        return out
+
+    def sources(self) -> list[dict[str, Any]]:
+        """Все источники в порядке создания, со строкой `secret`: убирают её сервисы."""
+        rows = self._conn.execute("SELECT * FROM sources ORDER BY rowid").fetchall()
+        return [self._source_from_row(r) for r in rows]
+
+    def source(self, source_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+        return self._source_from_row(row) if row is not None else None
+
+    def put_source(self, src: Mapping[str, Any]) -> None:
+        """Создать или заменить источник целиком (поля таблицы `sources`)."""
+        cols = ("id", "name", "kind", "service", "channel_default", "product_default", "config", "secret",
+                "enabled", "schedule_min", "created", "archived")  # fmt: skip
+        values = {**src, "config": _dump(src.get("config") or {}), "created": src.get("created") or _now()}
+        with self._conn:
+            self._conn.execute(
+                f"INSERT INTO sources ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "  # noqa: S608
+                f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{c} = excluded.{c}' for c in cols[1:])}",
+                tuple(
+                    int(values.get(c) or 0) if c in ("enabled", "archived") else values.get(c) for c in cols
+                ),
+            )
+
+    def delete_source(self, source_id: str) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+            self._conn.execute("DELETE FROM source_syncs WHERE source_id = ?", (source_id,))
+
+    def source_dialogs(self) -> dict[str, tuple[int, str | None]]:
+        """По источнику: число диалогов и время добавления самого нового (ISO UTC)."""
+        rows = self._conn.execute(
+            "SELECT source_id, COUNT(*) AS n, MAX(added) AS newest FROM dialogs "
+            "WHERE source_id IS NOT NULL GROUP BY source_id"
+        ).fetchall()
+        return {r["source_id"]: (r["n"], r["newest"]) for r in rows}
+
+    def start_sync(self, source_id: str) -> int:
+        with self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO source_syncs (source_id, started, status) VALUES (?, ?, 'running')",
+                (source_id, _now()),
+            )
+            if cur.lastrowid is None:
+                raise RuntimeError("sqlite не вернул id синхронизации")
+            return cur.lastrowid
+
+    def finish_sync(
+        self, sync_id: int, status: SyncStatus, added: int, skipped: int, errors: Sequence[str], ms: int
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE source_syncs SET finished = ?, status = ?, added = ?, skipped = ?, errors = ?, "
+                "duration_ms = ? WHERE id = ?",
+                (_now(), status, added, skipped, _dump(list(errors)), ms, sync_id),
+            )
+
+    def syncs(self, source_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Журнал синхронизаций источника, новые первыми."""
+        rows = self._conn.execute(
+            "SELECT * FROM source_syncs WHERE source_id = ? ORDER BY id DESC LIMIT ?", (source_id, limit)
+        ).fetchall()
+        return [{**dict(r), "errors": json.loads(r["errors"])} for r in rows]
+
+    def fail_stale_syncs(self) -> None:
+        """Синхронизации, прерванные остановкой сервера, — ошибка с причиной."""
+        with self._conn:
+            self._conn.execute(
+                "UPDATE source_syncs SET status = 'error', finished = ?, "
+                "errors = '[\"прервана перезапуском сервера\"]' WHERE status = 'running'",
+                (_now(),),
             )
 
     # --- метрики использования (только дописываются, старше срока хранения удаляются при старте) ---
