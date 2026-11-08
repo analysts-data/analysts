@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from cqa.adapters.jev import JEV_PRICE_IN, JEV_URL, JevVerifier
-from cqa.domain.models import Checklist, Dialog, Line
+from cqa.domain.models import Checklist, Dialog, JevQuestion, Line
 from cqa.services.evaluation import LlmEvaluator, Reply
 
 KEY = "jev-test-key"
@@ -87,6 +87,24 @@ async def test_choice_criteria_follow_criterion_type_and_na_permission():
             }
         else:
             assert criteria == {"yes": "Да", "no": "Нет", **na}
+
+
+async def test_choice_criteria_take_answer_descriptions_from_jev():
+    checklist = _checklist()
+    base = next(c for c in checklist.criteria if c.type == "bool" and c.na)
+    jev = JevQuestion(
+        type="choice",
+        instructions=base.text,
+        criteria={"yes": "Да, назвал", "no": "Не назвал", "not_applicable": "Срока нет"},
+    )
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(JEV_URL).respond(200, json=_EMPTY_OK)
+        async with httpx.AsyncClient() as http:
+            await JevVerifier(KEY, http).verify(
+                DIALOG_TEXT, checklist.rules, [base.model_copy(update={"jev": jev})]
+            )
+    criteria = json.loads(route.calls[0].request.content)["questions"]["q0"]["criteria"]
+    assert criteria == {"yes": "Да, назвал", "no": "Не назвал", "na": "Срока нет"}
 
 
 async def test_request_carries_bearer_authorization():
