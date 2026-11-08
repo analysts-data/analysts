@@ -7,6 +7,7 @@
     "records": [
       {
         "conversation_id": "p1-ru-022",
+        "operator": "Алия К.",
         "channel": "agent chat",
         "language": "RU",
         "transcript": [
@@ -60,6 +61,7 @@
       },
       {
         "conversation_id": "p1-ru-025",
+        "operator": "Данияр С.",
         "channel": "agent chat",
         "language": "RU",
         "transcript": [
@@ -93,6 +95,7 @@
       },
       {
         "conversation_id": "call-024",
+        "operator": "Данияр С.",
         "channel": "voice call",
         "language": "RU",
         "transcript": [
@@ -266,6 +269,7 @@
       },
       {
         "conversation_id": "p1-ru-003",
+        "operator": "Мария О.",
         "channel": "agent chat",
         "language": "RU",
         "transcript": [
@@ -329,6 +333,7 @@
       },
       {
         "conversation_id": "p1-ru-009",
+        "operator": "Тимур Б.",
         "channel": "agent chat",
         "language": "RU",
         "transcript": [
@@ -392,6 +397,7 @@
       },
       {
         "conversation_id": "p1-kz-015",
+        "operator": "Тимур Б.",
         "channel": "agent chat",
         "language": "KZ",
         "transcript": [
@@ -445,6 +451,7 @@
       },
       {
         "conversation_id": "p1-ru-029",
+        "operator": "Алия К.",
         "channel": "agent chat",
         "language": "RU",
         "transcript": [
@@ -513,6 +520,7 @@
       },
       {
         "conversation_id": "p1-en-006",
+        "operator": "Мария О.",
         "channel": "agent chat",
         "language": "EN",
         "transcript": [
