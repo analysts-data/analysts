@@ -3,7 +3,7 @@ connection, used only from the event loop thread (review-workflow design, decisi
 
 import time
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
@@ -11,11 +11,13 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
 from cqa.compose import build_evaluator, check_provider
+from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.http.actor import actor_from, signed
 from cqa.services import reports
+from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
@@ -158,6 +160,27 @@ async def get_report(
     body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
     _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return _file(body, fmt, "report")
+
+
+AnalyticsName = Literal["trend", "heatmap", "drivers", "distribution", "crosstab", "appeals", "model"]
+AnalyticsBy = Literal["day", "week", "operator", "product", "lang", "ch"]
+
+
+@router.get("/analytics/{name}")
+async def get_analytics(
+    name: AnalyticsName,
+    request: Request,
+    by: AnalyticsBy | None = None,
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
+    product: str | None = None,
+    since: date | None = None,
+    until: date | None = None,
+) -> dict[str, Any]:
+    """Расширенная аналитика (design/contract.md, «Аналитика»): n, low_n и формулы в каждом ответе."""
+    filters = Filters(lang=lang, ch=ch, operator=operator, product=product, since=since, until=until)
+    return analytics(request.app.state.store, name, filters, by, datetime.now(ASTANA))
 
 
 def _file(body: dict[str, Any] | str, fmt: str, name: str) -> Response:
