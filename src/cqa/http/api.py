@@ -239,10 +239,20 @@ async def get_customer_cases(request: Request) -> list[dict[str, Any]]:
         if any(d.risks for d in items):
             reasons.append({"code": "risk", "label": "В диалоге отмечен риск; требуется проверить основание"})
         priority = min(100, 30 * (len(items) > 1) + 25 * bool(repeated_topic) + 35 * any(d.case_status in ("open", "in_progress") for d in items) + 25 * any(d.risks for d in items))
+        expanded = []
+        for d in items:
+            conn = request.app.state.store._conn
+            evaluations = [{"criterion": r["cid"], **json.loads(r["body"])} for r in conn.execute(
+                "SELECT cid, body FROM results WHERE dialog_id = ? ORDER BY id DESC", (d.id,)).fetchall()]
+            decisions = [json.loads(r["body"]) for r in conn.execute(
+                "SELECT body FROM appeals WHERE dlg = ? ORDER BY n DESC", (d.id,)).fetchall()]
+            expanded.append({"id": d.id, "at": d.at, "title": d.title,
+                "topic": d.product.name if d.product else None, "status": d.case_status,
+                "risks": [r.model_dump(mode="json") for r in (d.risks or [])],
+                "evaluations": evaluations, "reviewer_decisions": decisions})
         rows.append({"client_ref": client_ref, "contact_count": len(items), "repeated_topic": repeated_topic,
             "status": items[-1].case_status, "priority": priority, "priority_reasons": reasons,
-            "dialogs": [{"id": d.id, "at": d.at, "title": d.title, "topic": d.product.label if d.product else None,
-                "status": d.case_status, "risks": [r.model_dump(mode="json") for r in (d.risks or [])]} for d in items]})
+            "dialogs": expanded})
     return sorted(rows, key=lambda row: (-row["priority"], row["client_ref"]))
 
 
