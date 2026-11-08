@@ -2,9 +2,10 @@
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
 from cqa.compose import build_evaluator
@@ -12,7 +13,14 @@ from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
-from cqa.services.checklists import save_checklist
+from cqa.services.checklists import (
+    DiffFormat,
+    ExportFormat,
+    diff_draft,
+    diff_versions,
+    export_checklist,
+    save_checklist,
+)
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
@@ -114,6 +122,41 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
 @router.put("/checklist")
 async def put_checklist(draft: Checklist, request: Request) -> dict[str, Any]:
     return save_checklist(request.app.state.store, draft)
+
+
+MEDIA = {"json": "application/json", "csv": "text/csv", "md": "text/markdown", "html": "text/html"}
+
+
+@router.get("/checklist/export")
+async def get_checklist_export(
+    request: Request, v: int | None = None, fmt: Annotated[ExportFormat, Query(alias="format")] = "json"
+) -> Response:
+    """Файл версии v (без v — текущей); памятка html открывается во вкладке, остальное скачивается."""
+    version, body = export_checklist(request.app.state.store, v, fmt)
+    how = "inline" if fmt == "html" else "attachment"
+    disposition = f'{how}; filename="checklist-v{version}.{fmt}"'
+    return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
+
+
+def _diff_out(result: dict[str, Any] | str) -> Response:
+    return JSONResponse(result) if isinstance(result, dict) else Response(result, media_type=MEDIA["md"])
+
+
+@router.get("/checklist/diff")
+async def get_checklist_diff(
+    request: Request,
+    frm: Annotated[int, Query(alias="from")],
+    to: int | None = None,
+    fmt: Annotated[DiffFormat, Query(alias="format")] = "json",
+) -> Response:
+    return _diff_out(diff_versions(request.app.state.store, frm, to, fmt))
+
+
+@router.post("/checklist/diff")
+async def post_checklist_diff(
+    draft: Checklist, request: Request, fmt: Annotated[DiffFormat, Query(alias="format")] = "json"
+) -> Response:
+    return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
 @router.put("/owners")
