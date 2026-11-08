@@ -97,15 +97,18 @@ def criterion_block(criterion: Criterion, question: Question | None = None, call
     extra = f"\nДля звонка: {call}" if call else ""
     if question is not None:
         return f"Нарушение для проверки:\n{question.text or question.label}{extra}\n\n{_FLAG_JSON}"
+    descriptions = criterion.jev_descriptions()
     cond = f", только если: {criterion.naCond}" if criterion.naCond else ""
-    na = f'"na" — неприменимо{cond}' if criterion.na else None
+    na = f'"na" — {descriptions.get("na", "неприменимо")}{cond}' if criterion.na else None
     if criterion.type == "scale":
-        steps, texts = criterion.steps or [], criterion.stepText or {}
+        steps = criterion.steps or []
+        texts = {**(criterion.stepText or {}), **descriptions}
         # save_checklist требует текст каждой ступени; .get — чтобы старая версия не роняла весь диалог
         rows = [f"{s} — {texts[str(s)]}" if texts.get(str(s)) else str(s) for s in steps]
         answer = "\n".join(["Ответ answer — одно число из шкалы:", *rows, *([na] if na else [])])
     else:
-        answer = 'Ответ answer: "yes" — да, "no" — нет' + (f", {na}" if na else "") + "."
+        yes, no = descriptions.get("yes", "да"), descriptions.get("no", "нет")
+        answer = f'Ответ answer: "yes" — {yes}, "no" — {no}' + (f", {na}" if na else "") + "."
     return f"Критерий:\n{criterion.text}{extra}\n\n{answer}\n{_ANSWER_JSON}"
 
 
