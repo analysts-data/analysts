@@ -15,6 +15,21 @@ echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 /** Столбец: name — подпись, value — длина, label — число для показа, href — список диалогов за числом. */
 export type Bar = { name: string; value: number; label: string; href?: string };
 
+// Ячейка тепловой карты (обзор и «Срезы»), уровень 0..4: насколько часто теряют баллы (классы hm* — метки старой вёрстки)
+export const heat = (k: number, n: number) => (!n ? 0 : k / n >= 0.6 ? 4 : k / n >= 0.4 ? 3 : k / n >= 0.2 ? 2 : k ? 1 : 0);
+const HEAT_BG = [
+  'var(--sunken)',
+  'color-mix(in srgb, var(--ev) 14%, var(--surface))',
+  'color-mix(in srgb, var(--ev) 32%, var(--surface))',
+  'color-mix(in srgb, var(--ev) 58%, var(--surface))',
+  'var(--ev)',
+];
+// в тёмной теме насыщенная ячейка светлая: текст на ней тёмный, иначе контраст ниже 4,5:1
+export const heatStyle = (h: number, dark: boolean) => ({
+  background: HEAT_BG[h],
+  color: h === 4 ? 'var(--surface)' : h === 3 && dark ? 'var(--bg)' : h ? 'var(--ink)' : 'var(--muted)',
+});
+
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(`--${n}`).trim();
 
 export function Chart({
