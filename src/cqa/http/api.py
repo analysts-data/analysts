@@ -357,7 +357,8 @@ FEATURES = {
 
 def features(app: Any) -> list[str]:
     """Ключи разделов, чьи пути есть среди маршрутов приложения."""
-    paths = {getattr(r, "path", "") for r in app.routes}
+    # app.routes держит подключённые роутеры обёртками без путей (FastAPI 0.162): пути API — из схемы
+    paths = {getattr(r, "path", "") for r in app.routes} | set(app.openapi()["paths"])
     return [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
 
 
