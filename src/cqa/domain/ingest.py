@@ -41,6 +41,7 @@ class OrgRecord(BaseModel):
     transcript: list[OrgTurn]
     audio_url: str | None = None
     client_ref: str | None = None  # стабильный псевдо-ID; имена и телефоны не принимаются
+    case_status: Literal["unknown", "open", "in_progress", "resolved"] = "unknown"
 
 
 class PayloadError(ValueError):
@@ -261,6 +262,7 @@ def build_dialog(
         at=at or now.strftime(_AT),
         lines=items,
         client_ref=record.client_ref,
+        case_status=record.case_status,
     )
     return dialog, warnings
 
