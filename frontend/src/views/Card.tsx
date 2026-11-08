@@ -17,6 +17,7 @@ import { AppealDialog } from './AppealDialog';
 import { ALL, Criteria, type Ctx } from './card/Criteria';
 import { CardForms, type Pending } from './card/Forms';
 import { IntonationPanel, useProsody } from './card/Intonation';
+import { TalkStats } from './card/TalkStats';
 import { evalOf, OpsBar, rerun } from './card/Ops';
 import { Player, seek } from './card/Player';
 import { RecheckMenu } from './card/Recheck';
@@ -446,6 +447,7 @@ export function CardView({ id }: { id: string | null }) {
           <Criteria ctx={ctx} sum={sum} />
         </section>
       </div>
+      {S.role !== 'operator' && <TalkStats key={`ts-${d.id}`} id={d.id} />}
       {qa && <p className="meta text-xs text-muted">{costLine(S, d)}</p>}
 
       <CardForms d={d} p={form} onClose={() => setForm(null)} />
