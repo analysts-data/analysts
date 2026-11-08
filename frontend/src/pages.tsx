@@ -40,6 +40,7 @@ export const PAGES: PageDef[] = [
   { page: 'queue', label: msg('Диалоги'), group: 'work', icon: <MessageSquare /> },
   { page: 'appeals', label: msg('Апелляции'), group: 'work', icon: <Scale /> },
   { page: 'alerts', label: msg('Алерты'), group: 'work', icon: <Bell />, feature: 'alerts', view: lazyView(() => import('./views/Alerts'), 'Alerts') },
+  { page: 'customer-cases', label: msg('Клиентские случаи'), group: 'work', icon: <Users />, view: lazyView(() => import('./views/CustomerCases'), 'CustomerCases') },
   { page: 'coaching', label: msg('Обучение'), group: 'work', icon: <BookOpen /> },
   { page: 'analytics', label: msg('Аналитика'), group: 'overview', icon: <BarChart3 /> },
   { page: 'people', label: msg('Сотрудники'), group: 'overview', icon: <Users />, feature: 'employees', view: lazyView(() => import('./views/People'), 'People') },
