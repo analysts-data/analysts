@@ -29,8 +29,6 @@ EXEMPT |= {
 }  # fmt: skip
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
-# UI в работе: выбор «Причина решения» в форме решения, плитка «Изменено людьми» в аналитике (PR #92)
-EXEMPT |= {"/appeals/reasons", "/appeals/stats"}
 # интеграционный API, не для интерфейса: CRM, Dynamics 365 и контакт-центр
 EXEMPT |= {"/evaluate", "/evaluate/batch", "/dialogs/{dialog_id}", "/results"}
 

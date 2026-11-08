@@ -1,6 +1,6 @@
 // Экран решений по апелляциям (web/js/views/appeals.js): очередь слева, рассмотрение справа, история решений.
-import { Play } from 'lucide-react';
-import { useState } from 'react';
+import { ListChecks, Play } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { allowed, signOf } from '../lib/appeal.js';
 import { ansTxt, f2, mmss, titleOf } from '../lib/format.js';
 import { t } from '../lib/i18n.js';
@@ -9,25 +9,30 @@ import { calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
 import { setRole, useS } from '../store';
 import { Term } from '../terms';
-import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip, type Tone } from '../ui';
+import { Button, Card, Chip, cn, Empty, Field, LinkButton, PageHead, Tip, type Tone } from '../ui';
 import { humanError } from './AppealDialog';
+import { Changed, type Reason, ReasonsDialog } from './appeals/Reasons';
 
 const MIN_REASON = 5;
 // Подписи — функции, а не константы: t() вызывается при отрисовке, после выбора языка.
 const who = (w: string) => (({ client: t('клиент'), operator: t('оператор'), bot: t('бот'), system: t('система') }) as Record<string, string>)[w];
 const status = (s: string) =>
-  (({
-    pending: ['ev', t('Ждёт решения'), ''],
-    changed: ['info', t('Оценка изменена'), t(', изменена')],
-    confirmed: ['ok', t('Оценка подтверждена'), t(', подтверждена')],
-    closed: ['na', t('Закрыта'), t(', закрыта')],
-  }) as Record<string, [Tone, string, string]>)[s];
+  (
+    ({
+      pending: ['ev', t('Ждёт решения'), ''],
+      changed: ['info', t('Оценка изменена'), t(', изменена')],
+      confirmed: ['ok', t('Оценка подтверждена'), t(', подтверждена')],
+      closed: ['na', t('Закрыта'), t(', закрыта')],
+    }) as Record<string, [Tone, string, string]>
+  )[s];
 const sub = (role: string) =>
-  (({
-    reviewer: t('Сравните оценку с доводом и фрагментом диалога, затем сохраните решение с причиной.'),
-    operator: t('Апелляции по оценкам и решения проверяющего.'),
-    qa: t('Спорная оценка, довод и фрагмент диалога на одном экране.'),
-  }) as Record<string, string>)[role];
+  (
+    ({
+      reviewer: t('Сравните оценку с доводом и фрагментом диалога, затем сохраните решение с причиной.'),
+      operator: t('Апелляции по оценкам и решения проверяющего.'),
+      qa: t('Спорная оценка, довод и фрагмент диалога на одном экране.'),
+    }) as Record<string, string>
+  )[role];
 // «Оператор» → «оператор» для «Просит оператор», «как просит оператор».
 const low = (by: string) => (by ? by[0].toLowerCase() + by.slice(1) : t('оператор'));
 const same = (x: any, y: any) => JSON.stringify(x) === JSON.stringify(y);
@@ -35,6 +40,42 @@ const step = (v: any) => (v === 'yes' ? t('Да') : v === 'no' ? t('Нет') : v
 
 export function Appeals({ id }: { id: string | null }) {
   const S = useS();
+  // Каталог причин и сводка — только на этом экране; сбой (старый сервер) не мешает решению без кода.
+  const [reasons, setReasons] = useState<Reason[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    api.get('/appeals/reasons').then(
+      (r: any) => setReasons(Array.isArray(r) ? r : []),
+      () => {},
+    );
+  }, []);
+  useEffect(() => {
+    api.get('/appeals/stats').then(setStats, () => {});
+  }, [S.appeals]); // reload() после решения меняет S.appeals
+  const head = (title: string) => (
+    <>
+      <PageHead title={title} sub={sub(S.role)}>
+        {S.role === 'qa' && reasons.length > 0 && (
+          <Button data-act="reasons" onClick={() => setEditing(true)}>
+            <ListChecks size={16} aria-hidden="true" /> {t('Коды причин')}
+          </Button>
+        )}
+      </PageHead>
+      {editing && (
+        <ReasonsDialog
+          reasons={reasons}
+          onClose={() => setEditing(false)}
+          onSaved={r => {
+            setReasons(r);
+            setEditing(false);
+          }}
+        />
+      )}
+      <Changed stats={stats} />
+    </>
+  );
+  const labelOf = (code: string) => reasons.find(r => r.code === code)?.label ?? code;
   const crit = (cid: string) => S.checklist?.criteria.find((c: any) => c.id === cid);
   const dlg = (did: string) => S.dialogs.find((d: any) => d.id === did);
   const txt = (c: any, v: any) => (c ? ansTxt(c, v) : String(v));
@@ -42,12 +83,12 @@ export function Appeals({ id }: { id: string | null }) {
   const pend = list.filter((a: any) => a.status === 'pending');
   const done = list.filter((a: any) => a.status !== 'pending');
   const a = list.find((x: any) => x.id === id) || pend[0] || done[0];
-  const decided = S.appeals
-    .filter((x: any) => x.status === 'changed' || x.status === 'confirmed')
-    .sort((x: any, y: any) => (y.decidedAt || '').localeCompare(x.decidedAt || ''));
+  const decided = S.appeals.filter((x: any) => x.status === 'changed' || x.status === 'confirmed').sort((x: any, y: any) => (y.decidedAt || '').localeCompare(x.decidedAt || ''));
 
   const item = (x: any) => {
-    const c = crit(x.cid), d = dlg(x.dlg), on = a === x;
+    const c = crit(x.cid),
+      d = dlg(x.dlg),
+      on = a === x;
     return (
       <a
         key={x.id}
@@ -76,7 +117,7 @@ export function Appeals({ id }: { id: string | null }) {
   if (!list.length)
     return (
       <>
-        <PageHead title={t('Апелляции')} sub={sub(S.role)} />
+        {head(t('Апелляции'))}
         <Card>
           <Empty action={<LinkButton href={href('queue')}>{t('Перейти к диалогам')}</LinkButton>}>
             {S.role === 'operator' ? t('Апелляций нет. Не согласны с оценкой: откройте диалог и нажмите «Оспорить».') : t('Апелляций нет. Они появятся, когда оператор оспорит оценку.')}
@@ -87,7 +128,7 @@ export function Appeals({ id }: { id: string | null }) {
 
   return (
     <>
-      <PageHead title={S.role === 'reviewer' ? t('Апелляции: ждут решения {n}', { n: pend.length }) : t('Апелляции')} sub={sub(S.role)} />
+      {head(S.role === 'reviewer' ? t('Апелляции: ждут решения {n}', { n: pend.length }) : t('Апелляции'))}
       <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="flex flex-col p-2" aria-label={t('Очередь апелляций')}>
           <p className="px-3 pb-1.5 pt-1.5 text-xs font-semibold text-muted">{t('Ждут решения: {n}', { n: pend.length })}</p>
@@ -97,13 +138,14 @@ export function Appeals({ id }: { id: string | null }) {
           {done.map(item)}
         </Card>
         <div className="flex min-w-0 flex-col gap-4">
-          <Detail key={a.id} a={a} d={dlg(a.dlg)} c={crit(a.cid)} />
+          <Detail key={a.id} a={a} d={dlg(a.dlg)} c={crit(a.cid)} reasons={reasons} />
           <Card className="p-5" aria-label={t('История решений')}>
             <h2 className="mb-2 text-base font-semibold">{t('История решений')}</h2>
             {decided.length ? (
               <ol className="divide-y divide-line2">
                 {decided.map((x: any) => {
-                  const c = crit(x.cid), d = dlg(x.dlg);
+                  const c = crit(x.cid),
+                    d = dlg(x.dlg);
                   return (
                     <li key={x.id} className="py-2.5 first:pt-0 last:pb-0">
                       <b className="font-semibold">
@@ -114,7 +156,8 @@ export function Appeals({ id }: { id: string | null }) {
                         : {x.status === 'changed' ? `${txt(c, x.from)} → ${txt(c, x.to)}` : t('оценка подтверждена')}
                       </b>
                       <p className="text-[13px] text-muted">
-                        {x.reviewer}, {x.decidedAt}. {x.reason}
+                        {x.reviewer}, {x.decidedAt}. {x.reason_code && <Chip className="mr-1">{labelOf(x.reason_code)}</Chip>}
+                        {x.reason}
                       </p>
                     </li>
                   );
@@ -131,15 +174,18 @@ export function Appeals({ id }: { id: string | null }) {
 }
 
 function Fragment({ d, r, a }: { d: any; r: any; a: any }) {
-  const mine: number[] = r.ev || [], theirs: number[] = a.ev || [];
+  const mine: number[] = r.ev || [],
+    theirs: number[] = a.ev || [];
   const ns = [...mine, ...theirs];
   if (!d.lines || !ns.length) return <p className="text-[13px] text-muted">{t('Реплик-оснований нет.')}</p>;
-  const lo = Math.min(...ns) - 2, hi = Math.max(...(mine.length ? mine : ns)) + 1;
+  const lo = Math.min(...ns) - 2,
+    hi = Math.max(...(mine.length ? mine : ns)) + 1;
   const shown = d.lines.filter((l: any) => !l.fold && ((l.n >= lo && l.n <= hi) || theirs.includes(l.n)));
   return (
     <div className="flex flex-col gap-1.5">
       {shown.map((l: any) => {
-        const m = mine.includes(l.n), ap = theirs.includes(l.n);
+        const m = mine.includes(l.n),
+          ap = theirs.includes(l.n);
         return (
           <div key={l.n} className={cn('flex items-start justify-between gap-3 border-l-2 py-1 pl-3', m ? 'border-ev' : ap ? 'border-line-strong' : 'border-transparent')}>
             <div className="min-w-0">
@@ -166,7 +212,7 @@ function Fragment({ d, r, a }: { d: any; r: any; a: any }) {
   );
 }
 
-function Detail({ a, d, c }: { a: any; d: any; c: any }) {
+function Detail({ a, d, c, reasons }: { a: any; d: any; c: any; reasons: Reason[] }) {
   const S = useS();
   if (!d || !c)
     return (
@@ -221,7 +267,7 @@ function Detail({ a, d, c }: { a: any; d: any; c: any }) {
             {a.reason}
           </p>
         ) : S.role === 'reviewer' ? (
-          <Decision a={a} d={d} c={c} />
+          <Decision a={a} d={d} c={c} reasons={reasons} />
         ) : (
           <p className="text-muted">
             {t('Апелляцию рассматривает проверяющий. Когда он примет решение, статус сменится на «Оценка изменена» или «Оценка подтверждена».')}
@@ -240,13 +286,18 @@ function Detail({ a, d, c }: { a: any; d: any; c: any }) {
   );
 }
 
-function Decision({ a, d, c }: { a: any; d: any; c: any }) {
+function Decision({ a, d, c, reasons }: { a: any; d: any; c: any; reasons: Reason[] }) {
   const S = useS();
   const [mode, setMode] = useState<'change' | 'confirm'>('change');
   const [val, setVal] = useState<any>(a.ask);
   const [reason, setReason] = useState('');
+  const [rc, setRc] = useState('');
   const [busy, setBusy] = useState(false);
   const to = mode === 'confirm' ? a.from : val;
+  // Сервер принимает код, только если он подходит к исходу: прежний ответ — «подтверждена», иначе «изменена».
+  const outcome = same(to, a.from) ? 'confirmed' : 'changed';
+  const fit = reasons.filter(r => r.applies === outcome || r.applies === 'both');
+  const code = fit.some(r => r.code === rc) ? rc : '';
   const before = calc(d, S.checklist, S.appeals).total;
   const after = calc(d, S.checklist, S.appeals, { cid: a.cid, val: to }).total;
   const flag = c.type === 'flag';
@@ -256,7 +307,7 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
   async function decide() {
     setBusy(true);
     try {
-      await api.postDecision(a.id, { to, reason: reason.trim(), reviewer: signOf(S.role) });
+      await api.postDecision(a.id, { to, reason: reason.trim(), reviewer: signOf(S.role), ...(code && { reason_code: code }) });
     } catch (e: any) {
       setBusy(false);
       toast(t('Решение не сохранено. {err}', { err: humanError(e, { 409: t('Апелляция уже рассмотрена, на экране её решение.') }) }));
@@ -332,6 +383,18 @@ function Decision({ a, d, c }: { a: any; d: any; c: any }) {
             })}
           </span>
         </div>
+      )}
+      {reasons.length > 0 && (
+        <Field label={t('Причина решения')} hint={t('Код из каталога: по нему считается, почему люди меняют оценки модели.')}>
+          <select className="fld sm:max-w-md" data-act="dcode" data-id={a.id} value={code} onChange={e => setRc(e.target.value)}>
+            <option value="">{t('Без кода')}</option>
+            {fit.map(r => (
+              <option key={r.code} value={r.code}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </Field>
       )}
       <label className="flex flex-col gap-1.5">
         <span className="text-[13px] font-semibold text-ink2">{t('Причина решения, обязательно')}</span>

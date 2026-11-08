@@ -1,8 +1,8 @@
 """Экран «Алерты»: фильтры статуса и важности, «Принять», «Решить» с заметкой, «Назначить», «Почему»,
 переход к объекту.
 
-Ответы /api/alerts — по черновику контракта (openspec/changes/react-frontend/helpers-ops.md),
-объектом {items, counts}.
+Ответы /api/alerts — как у сервера (design/contract.md): {alerts, counts}; basis — {rule, dialogs, threshold,
+value, why}.
 """
 
 import copy
@@ -50,7 +50,13 @@ ALERTS = [
         "created": "2026-11-08T02:00:00Z",
         "status": "ack",
         "assignee": "e2",
-        "basis": {"rule": "Средний итог за 7 дней", "threshold": 70, "value": 64.5},
+        "basis": {
+            "rule": "operator-avg",
+            "dialogs": ["p1-ru-003", "p1-kz-015"],
+            "threshold": 70,
+            "value": 64.5,
+            "why": "Почему: средний итог 64,5 по последним 2 оценённым диалогам оператора ниже порога 70.",
+        },
     },
     {
         **BLANK,
@@ -102,7 +108,7 @@ class Alerts:
                 and q.get("severity", a["severity"]) == a["severity"]
             ]
             counts = {s: sum(a["status"] == s for a in self.items) for s in ("new", "ack", "resolved")}
-            return route.fulfill(json={"items": items, "counts": counts})
+            return route.fulfill(json={"alerts": items, "counts": counts})
         alert = next(a for a in self.items if a["id"] == parts[3])
         self.calls.append((req.method, parts[4], body))
         if parts[4] == "ack":
@@ -211,7 +217,10 @@ def test_why_shows_server_basis_and_links_lead_to_the_object(page: Page, web_url
 def test_alert_route_opens_its_why(page: Page, web_url: str) -> None:
     open_alerts(page, web_url, "#/alerts/a2")
     expect(row(page, "a2")).to_have_class(re.compile(r"\bsel\b"))
-    expect(page.locator('[aria-label="Почему"]')).to_contain_text("Средний итог за 7 дней")
+    why = page.locator('[aria-label="Почему"]')
+    expect(why).to_contain_text("Почему: средний итог 64,5 по последним 2 оценённым диалогам")
+    expect(why.locator("dt", has_text="why")).to_have_count(0)  # why — фразой над полями, не полем
+    expect(why.get_by_role("link", name="p1-kz-015")).to_have_attribute("href", "#/d/p1-kz-015")
 
 
 def test_operator_sees_why_but_no_alert_actions(page: Page, web_url: str) -> None:
@@ -219,3 +228,72 @@ def test_operator_sees_why_but_no_alert_actions(page: Page, web_url: str) -> Non
     page.locator('[data-act="role"][data-role="operator"]').click()
     expect(page.locator('[data-act="ack"], [data-act="resolve"], [data-act="assign"]')).to_have_count(0)
     expect(row(page, "a1").locator('[data-act="why"]')).to_be_visible()
+
+
+RULES = [
+    {"id": "gross", "title": "Грубое нарушение", "kind": "gross_error", "params": {}, "severity": "critical",
+     "enabled": True, "why": "Точное правило."},
+    {"id": "low-total", "title": "Низкий итог", "kind": "low_total", "params": {"threshold": 60},
+     "severity": "warning", "enabled": True, "why": "60 из 100 — нижняя граница «удовлетворительно»."},
+]  # fmt: skip
+NEW = {
+    **BLANK, "id": "a4", "rule_id": "low-total", "severity": "warning", "title": "Низкий итог",
+    "target_type": "dialog", "target_id": "p1-ru-003", "created": "2026-11-08T05:00:00Z", "status": "new",
+}  # fmt: skip
+
+
+def test_rules_are_edited_and_saved_whole_and_server_errors_stay_at_the_rule(
+    page: Page, web_url: str
+) -> None:
+    api = open_alerts(page, web_url)
+    puts: list[Any] = []
+
+    def rules(route: Route) -> None:
+        if route.request.method == "GET":
+            return route.fulfill(json=RULES)
+        puts.append(route.request.post_data_json)
+        if len(puts) == 1:  # первая попытка — порог вне диапазона, как отвечает сервер
+            msg = "Порог итога: число от 0 до 100"
+            return route.fulfill(
+                status=422, json={"detail": [{"loc": ["body", 1, "params", "threshold"], "msg": msg}]}
+            )
+        route.fulfill(json=puts[-1])
+
+    page.route("**/api/alerts/rules", rules)
+    page.locator('[data-act="rules"]').click()
+    dialog = page.get_by_role("dialog", name="Правила алертов")
+    low = dialog.locator('[data-rule="low-total"]')
+    expect(low).to_contain_text("Итог диалога ниже порога")
+    low.locator('[data-param="threshold"]').fill("160")
+    low.locator('[data-act="rule-severity"]').select_option("critical")
+    dialog.locator('[data-rule="gross"] [data-act="rule-on"]').uncheck()
+    dialog.locator('[data-act="rules-save"]').click()
+    expect(low).to_contain_text("Порог итога: число от 0 до 100")
+    expect(dialog.locator('[data-rule="gross"]')).not_to_contain_text("Порог итога")
+    low.locator('[data-param="threshold"]').fill("55")
+    dialog.locator('[data-act="rules-save"]').click()
+    expect(dialog).to_have_count(0)
+    expect(page.locator("#toast")).to_contain_text("Правила алертов сохранены.")
+    assert puts[-1] == [
+        {**RULES[0], "enabled": False},
+        {**RULES[1], "params": {"threshold": 55}, "severity": "critical"},
+    ]
+    assert puts[0][1]["params"] == {"threshold": 160}
+    assert all("422" in m for m in api.errors), api.errors  # только ответ 422 заглушки
+
+
+def test_check_now_evaluates_rules_and_shows_the_new_alert(page: Page, web_url: str) -> None:
+    api = open_alerts(page, web_url)
+
+    def evaluate(route: Route) -> None:
+        api.items.append(copy.deepcopy(NEW))
+        route.fulfill(json={"created": [NEW]})
+
+    page.route("**/api/alerts/evaluate", evaluate)
+    page.locator('[data-act="evaluate"]').click()
+    expect(page.locator("#toast")).to_contain_text("Правила проверены, новых алертов: 1.")
+    expect(row(page, "a4")).to_contain_text("Низкий итог")
+    expect(page.locator('[data-view="alerts"]')).to_contain_text("Новых: 2")
+    page.locator('[data-act="role"][data-role="operator"]').click()
+    expect(page.locator('[data-act="evaluate"], [data-act="rules"]')).to_have_count(0)
+    assert api.errors == []

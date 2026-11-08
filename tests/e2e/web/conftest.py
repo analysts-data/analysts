@@ -57,6 +57,11 @@ def live_config(page: Page) -> None:
         re.compile(r".*/api/(employees|alerts)(\?.*)?$"),
         lambda r: r.fulfill(status=200, content_type="application/json", body="[]"),
     )
+    # Каталог причин и сводка экрана апелляций: без них форма решения работает без кода причины.
+    page.route(
+        re.compile(r".*/api/appeals/(reasons|stats)$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body="null"),
+    )
     page.route(
         re.compile(r".*/api/me$"),
         lambda r: r.fulfill(status=200, content_type="application/json", body="null"),
