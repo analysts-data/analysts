@@ -13,6 +13,17 @@ FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
 # UI в работе: статистика разговора (блок карточки «Статистика разговора»).
 EXEMPT = {"/health", "/login", "/dialogs/{id}/talkstats", "/talkstats/norms"}
+EXEMPT = {
+    "/health",
+    "/login",
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
+}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
