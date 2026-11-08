@@ -1593,5 +1593,6 @@
   "Сохраняю…": "Saving…",
   "Исход для правила «{text}»": "Outcome for the rule “{text}”",
   "Исход по умолчанию": "Default outcome",
-  "Изменено: по умолчанию «{d}»": "Changed: default is “{d}”"
+  "Изменено: по умолчанию «{d}»": "Changed: default is “{d}”",
+  "Создайте первый кнопкой «Новый пакет»: можно взять диалоги по фильтрам очереди или списком.": "Create the first one with “New batch”: take dialogs by queue filters or by a list."
 }
