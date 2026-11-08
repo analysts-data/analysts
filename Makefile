@@ -51,7 +51,7 @@ docker-run:
 
 demo:
 	# без ключа: replay, база data/demo.db, набор tests/e2e/fixtures/defence_set.json
-	uv run python scripts/demo.py serve
+	uv run python scripts/demo.py serve --port $(PORT)
 
 showcase:
 	# витрина для экранов аналитики: replay, свежая data/showcase.db, набор защиты + tests/fixtures/showcase_set.json
