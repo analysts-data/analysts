@@ -11,7 +11,7 @@ import httpx
 from cqa.domain.prompt import Message
 from cqa.services.errors import ConfigError
 from cqa.services.evaluation import ModelUnavailable, Reply
-from cqa.settings import Settings
+from cqa.settings import Provider, Settings
 
 _RETRY_PAUSES = (5.0, 10.0, 20.0)
 _RETRIABLE_4XX = frozenset({429})
@@ -84,6 +84,22 @@ async def post_json(
             pause = _RETRY_PAUSES[attempt]
         await sleep(pause)
     raise ModelUnavailable(last_error or "нет ответа провайдера")
+
+
+_PING: list[Message] = [{"role": "user", "content": "Ответь одним словом: да"}]  # синтетический текст
+
+
+async def ping(http: httpx.AsyncClient, provider: Provider) -> dict[str, Any]:
+    """`POST /api/providers/{id}/check`: один запрос на 1 токен без повторов -> {ok, ms, error}."""
+    key = provider.key.get_secret_value() if provider.key else ""
+    body = {"model": provider.model, "messages": _PING, "max_tokens": 1}
+    http_ms: list[float] = []
+    try:
+        url = f"{provider.base_url}/chat/completions"
+        await post_json(http, url, body, {"Authorization": f"Bearer {key}"}, attempts=1, http_ms=http_ms)
+    except (ModelUnavailable, ValueError) as exc:
+        return {"ok": False, "ms": int(sum(http_ms)), "error": str(exc)}
+    return {"ok": True, "ms": int(sum(http_ms)), "error": None}
 
 
 class RateLimiter:

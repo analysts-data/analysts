@@ -3,8 +3,21 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+Where = Literal["kz", "local", "external"]
+
+
+class Provider(BaseModel):
+    """OpenAI-compatible model with its own key (PUT /api/providers/{id}); `env` is built from llm_*."""
+
+    label: str
+    base_url: str | None
+    model: str
+    profile: str
+    where: Where
+    key: SecretStr | None = None
 
 
 class Settings(BaseSettings):
@@ -24,10 +37,12 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 180
     llm_price_in: float = 0.0  # USD per 1M tokens
     llm_price_out: float = 0.0
-    verifier: Literal["jev"] | None = None
+    llm_provider: str = "env"  # main model: id in providers
+    providers: dict[str, Provider] = {}  # JSON {id: Provider}; llm_config.effective adds "env"
+    verifier: str | None = None  # "jev" or id in providers
     jev_api_key: SecretStr | None = None
     anonymize: bool = True
-    data_where: Literal["kz", "local", "external"] = "kz"
+    data_where: Where = "kz"
     allow_real_data: bool = False  # set only by a human
     org_api_url: SecretStr | None = None
     raw_dir: Path = Path("data/raw")

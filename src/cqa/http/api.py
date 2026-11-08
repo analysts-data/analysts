@@ -7,7 +7,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, StrictBool
 
-from cqa.compose import build_evaluator
+from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.services.answers import set_answer
@@ -16,7 +16,7 @@ from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
-from cqa.services.llm_config import configure, view
+from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import build_state, mode_from_settings
@@ -56,15 +56,20 @@ class AnswerIn(BaseModel):
 
 
 class ConfigIn(BaseModel):
-    llm_base_url: str
-    llm_model: str
-    llm_profile: str
-    llm_api_key: str = ""  # пусто — оставить сохранённый ключ
-    data_where: Literal["kz", "local", "external"]
+    llm_provider: str
     anonymize: bool
-    verifier: Literal["jev"] | None = None
-    jev_api_key: str = ""
+    verifier: str | None = None  # "jev" или id провайдера
+    jev_api_key: str = ""  # пусто — оставить сохранённый ключ
     allow_real_data: bool
+
+
+class ProviderIn(BaseModel):
+    label: str
+    base_url: str
+    model: str
+    profile: str = "plain"
+    where: Literal["kz", "local", "external"]
+    key: str = ""  # пусто — оставить сохранённый ключ
 
 
 class RunIn(BaseModel):
@@ -176,6 +181,17 @@ async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request)
     return result.model_dump(mode="json", exclude_none=True)
 
 
+def _apply(request: Request) -> Apply:
+    """Пересобрать оценщик и плашку `mode` без перезапуска; во время запуска — 409."""
+    state = request.app.state
+
+    def apply(settings: Settings) -> None:
+        _runner(request).use(build_evaluator(settings))
+        state.settings, state.mode = settings, mode_from_settings(settings)
+
+    return apply
+
+
 @router.get("/config")
 async def get_config(request: Request) -> dict[str, Any]:
     return view(request.app.state.settings)
@@ -183,14 +199,25 @@ async def get_config(request: Request) -> dict[str, Any]:
 
 @router.put("/config")
 async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
-    """Режим оценки из интерфейса: оценщик пересобирается без перезапуска, во время запуска — 409."""
     state = request.app.state
+    return view(configure(state.store, state.settings, body.model_dump(), _apply(request)))
 
-    def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings))
-        state.settings, state.mode = settings, mode_from_settings(settings)
 
-    return view(configure(state.store, state.settings, body.model_dump(), apply))
+@router.put("/providers/{provider_id}")
+async def put_provider_route(provider_id: str, body: ProviderIn, request: Request) -> dict[str, Any]:
+    state = request.app.state
+    return view(put_provider(state.store, state.settings, provider_id, body.model_dump(), _apply(request)))
+
+
+@router.delete("/providers/{provider_id}")
+async def delete_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
+    state = request.app.state
+    return view(delete_provider(state.store, state.settings, provider_id, _apply(request)))
+
+
+@router.post("/providers/{provider_id}/check")
+async def check_provider_route(provider_id: str, request: Request) -> dict[str, Any]:
+    return await check_provider(provider(request.app.state.settings, provider_id))
 
 
 @router.post("/datasets")

@@ -42,6 +42,35 @@ class Verifier(Protocol):
     async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict: ...
 
 
+class ChatVerifier:
+    """Второе мнение другой OpenAI-совместимой модели: те же запросы по критериям, без повтора."""
+
+    def __init__(self, model: ChatModel) -> None:
+        self.model = model
+
+    async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict:
+        found = await asyncio.gather(*(self._answer(dialog_text, rules, c) for c in criteria))
+        answers = {c.id: a for c, (a, _) in zip(criteria, found, strict=True) if a is not None}
+        return Verdict(answers=answers, cost=sum(cost for _, cost in found))
+
+    async def _answer(
+        self, text: str, rules: str, criterion: Criterion
+    ) -> tuple[str | int | dict[str, bool] | None, float]:
+        # ponytail: Verifier не знает канала, уточнение для звонков второму мнению не уходит
+        prompts = build_messages(text, rules, criterion, "chat")
+        replies = await asyncio.gather(*(self.model.complete(m) for m in prompts))
+        raws = [parse_answer(r.text) or {} for r in replies]
+        cost = sum(r.cost for r in replies)
+        if criterion.type != "flag":
+            return allowed_answer(raws[0], criterion), cost
+        flags = {
+            q.k: raw["violation_found"]
+            for q, raw in zip(criterion.questions or [], raws, strict=True)
+            if isinstance(raw.get("violation_found"), bool)
+        }
+        return flags or None, cost
+
+
 class RealDataBlocked(Exception):
     pass
 

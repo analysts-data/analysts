@@ -1,19 +1,21 @@
 """Сборка реализаций портов из `Settings`; без запросов наружу."""
 
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from cqa.adapters.cassette import CassetteTransport
 from cqa.adapters.jev import JevVerifier
-from cqa.adapters.llm import ChatClient
+from cqa.adapters.llm import ChatClient, ping
 from cqa.adapters.org_api import OrgApi
-from cqa.services.evaluation import LlmEvaluator, Verifier
+from cqa.services.evaluation import ChatVerifier, LlmEvaluator, Verifier
 from cqa.services.ingest import OrgDialogSource
-from cqa.services.llm_config import config_error
-from cqa.settings import Settings
+from cqa.services.llm_config import as_llm, config_error
+from cqa.settings import Provider, Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
+CHECK_TIMEOUT_S = 20
 
 
 def build_source(settings: Settings) -> OrgDialogSource:
@@ -29,10 +31,21 @@ def _http(settings: Settings, kind: str) -> httpx.AsyncClient:
 
 
 def _verifier(settings: Settings) -> Verifier | None:
-    if settings.verifier != "jev":
+    if settings.verifier == "jev":
+        key = (
+            settings.jev_api_key.get_secret_value() if settings.jev_api_key else ""
+        )  # в replay ключ не нужен
+        return JevVerifier(key, _http(settings, "jev"))
+    second = settings.providers.get(settings.verifier or "")
+    if second is None:
         return None
-    key = settings.jev_api_key.get_secret_value() if settings.jev_api_key else ""  # в replay ключ не нужен
-    return JevVerifier(key, _http(settings, "jev"))
+    return ChatVerifier(ChatClient(settings.model_copy(update=as_llm(second)), _http(settings, "llm")))
+
+
+async def check_provider(provider: Provider) -> dict[str, Any]:
+    """Проверка связи мимо записей: синтетический запрос сразу в сеть, реальные данные не уходят."""
+    async with httpx.AsyncClient(timeout=CHECK_TIMEOUT_S) as http:
+        return await ping(http, provider)
 
 
 def build_evaluator(settings: Settings) -> LlmEvaluator:
