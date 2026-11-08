@@ -261,7 +261,9 @@ async def get_sufficiency(request: Request) -> dict[str, Any]:
 
 @router.put("/sufficiency")
 async def put_sufficiency(body: dict[str, str], request: Request) -> dict[str, Any]:
-    return configure_sufficiency(request.app.state.store, body)
+    saved = configure_sufficiency(request.app.state.store, body)
+    _log(request, "sufficiency.save", "sufficiency", "", dict(body))
+    return saved
 
 
 @router.put("/owners")
