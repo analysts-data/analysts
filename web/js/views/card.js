@@ -1,7 +1,7 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { ans, calc, flagsOf, flagWhy, frac, lastDec } from '../scoring.js';
-import { groupOf, queueOrder } from '../queue.js';
+import { byJev, groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
 import { href } from '../router.js';
 import * as player from '../player.js';
@@ -255,12 +255,13 @@ function scoredBody(d, c, r, a) {
   if (a === 'na') out += `<div class="box na"><b>Условие N/A выполнено.</b> ${esc(c.naCond)} ${esc(r.why)} Вес ${c.w} распределён между применимыми критериями.</div>`;
   else out += `<div><span class="label">Обоснование</span><p>${esc(r.why)}</p></div>`;
   // пропущенное действие: реплик-оснований нет, модель называет проверенный участок
-  if ((a === 'no' && (r.seg || !evs)) || (c.type === 'scale' && f != null && f < 1 && !evs)) {
+  // Jev участок не называет: не выдумываем его
+  if (!byJev(r) && ((a === 'no' && (r.seg || !evs)) || (c.type === 'scale' && f != null && f < 1 && !evs))) {
     out += `<p class="small">Проверен участок: <b>${esc(r.seg || 'весь диалог')}</b>. ${a === 'no' ? 'Ожидаемого действия там нет.' : 'Полностью действие там не выполнено.'}</p>`;
   }
   if (evs) out += `<div class="stack" style="gap:6px"><span class="label">Основание</span>${evs}</div>`;
   const dec = lastDec(d, c.id, S.appeals), cid = esc(c.id);
-  if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span><b>Цитата не нашлась в указанной реплике</b> и после повтора. Ответ <span class="chip c-ev">на проверку</span></span>
+  if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span>${byJev(r) ? '<b>Jev не уверен в ответе</b>: вероятность ниже порога.' : '<b>Цитата не нашлась в указанной реплике</b> и после повтора.'} Ответ <span class="chip c-ev">на проверку</span></span>
     <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(a)}">Оставить ${esc(ansTxt(c, a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}">Изменить</button></span></div>`;
   if (r.alt != null && r.alt !== r.a && !dec) out += `<div class="box info stack" style="gap:8px"><span><b>Второе мнение: ${esc(ansTxt(c, r.alt))}.</b> Модели разошлись, ответ ждёт решения специалиста.</span>
     <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.a)}">Оставить ${esc(ansTxt(c, r.a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.alt)}">Принять ${esc(ansTxt(c, r.alt))}</button></span></div>`;

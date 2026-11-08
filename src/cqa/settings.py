@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_price_in: float = 0.0  # USD per 1M tokens
     llm_price_out: float = 0.0
     verifier: Literal["jev"] | None = None
+    evaluator: Literal["llm", "jev"] = "llm"  # jev: all criteria by Jev alone, no rationale
     jev_api_key: SecretStr | None = None
     anonymize: bool = True
     data_where: Literal["kz", "local", "external"] = "kz"
