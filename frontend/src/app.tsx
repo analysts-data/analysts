@@ -2,11 +2,11 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, ListChecks, MessageSquare, Moon, Scale, Search, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Sun } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
 import { groupOf } from './lib/queue.js';
-import { applyTheme, currentTheme, ROLES, setRole, useRoute, useS, type Role } from './store';
+import { applyTheme, currentTheme, load, ROLES, save, setRole, useRoute, useS, type Role } from './store';
 import { cn, Skeleton } from './ui';
 import { Queue } from './views/Queue';
 import { CardView } from './views/Card';
@@ -71,6 +71,58 @@ function Toast() {
     >
       {shown?.msg}
     </div>
+  );
+}
+
+// Первый вход в роли: что здесь делать, тремя фразами. Закрывается кнопкой «Понятно» и больше не показывается.
+const HINTS: Record<string, string[]> = {
+  qa: [
+    'Очередь показывает, что проверить первым: грубые ошибки, расхождения двух моделей и разговоры без следующего шага.',
+    'В карточке у каждого критерия — балл, обоснование и реплика-основание; «Принять» или «Оставить» решает спор моделей.',
+    'Критерии и веса меняются на экране «Чек-лист», Ctrl K — быстрый переход к диалогу или экрану.',
+  ],
+  operator: [
+    'Здесь ваши оценки: откройте диалог, чтобы увидеть, за что снижен балл и как сказать лучше.',
+    'Не согласны с оценкой — нажмите «Оспорить оценку» у критерия и коротко объясните почему.',
+    'Экран «Обучение» собирает удачные примеры по критериям, где чаще всего теряются баллы.',
+  ],
+  reviewer: [
+    'На экране «Апелляции» — оспоренные оценки и спорные ответы моделей.',
+    'Сравните «было → стало», укажите причину и сохраните решение: итог диалога пересчитается.',
+    'Исходный ответ модели не меняется, решение видно в истории критерия.',
+  ],
+};
+
+function RoleHint({ role }: { role: string }) {
+  const [, force] = useState(0);
+  if (load(`cqa.hint.${role}`)) return null;
+  return (
+    <motion.aside
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-wrap items-start gap-3 rounded-card border border-info-soft bg-info-soft px-4 py-3 text-[13px] text-ink2"
+      aria-label="Подсказка для роли"
+    >
+      <Info size={18} className="mt-0.5 flex-none text-info" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <b className="text-ink">Вы вошли как {ROLES[role as Role].toLowerCase()}.</b>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4">
+          {HINTS[role].map(t => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      </div>
+      <button
+        type="button"
+        className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-hover"
+        onClick={() => {
+          save(`cqa.hint.${role}`, '1');
+          force(x => x + 1);
+        }}
+      >
+        Понятно
+      </button>
+    </motion.aside>
   );
 }
 
@@ -239,6 +291,7 @@ export function App() {
             </div>
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
+            {!S.loading && !S.error && <RoleHint key={S.role} role={S.role} />}
             <motion.div key={r.page + (r.id ?? '')} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
               <View page={r.page} id={r.id} />
             </motion.div>
