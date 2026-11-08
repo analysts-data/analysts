@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 def test_default_off_status_and_lifespan_change_nothing(client: TestClient) -> None:
     with client:
         assert client.get("/api/automation").json()["enabled"] is False
+        assert "automation" in client.get("/api/config").json()["features"]
         status = client.get("/api/automation/status").json()
         assert (status["state"], status["next_run_at"], status["last_cycle"]) == ("off", None, None)
         assert status["queue_length"] == 2
