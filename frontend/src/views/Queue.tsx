@@ -205,7 +205,7 @@ export function Queue() {
       {qa && S.source && <p className="text-[13px] text-muted">{syncNote(S.source)}</p>}
       {qa && <RunPanel all={all} dialogs={filtered ? seq.map(x => x.d.id) : null} pending={target.filter(x => x.c.pending).length} />}
 
-      <section className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card md:grid-cols-3', op ? 'xl:grid-cols-4' : 'xl:grid-cols-5')} aria-label={t('Быстрые фильтры')}>
+      <section className={cn('grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card [&>*:last-child:nth-child(odd)]:col-span-2 md:[&>*:last-child:nth-child(odd)]:col-span-1', op ? 'md:grid-cols-4' : 'md:grid-cols-5')} aria-label={t('Быстрые фильтры')}>
         <Tile
           title={t('Грубые ошибки')}
           tip={TERMS.gross}

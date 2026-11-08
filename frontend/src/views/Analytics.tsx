@@ -222,7 +222,7 @@ export function Analytics() {
       {tab === 'products' ? <Products /> : tab === 'runs' ? <Runs /> : (
       <>
 
-      <section className="lens grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card lg:grid-cols-5" aria-label={t('Сводка')}>
+      <section className="lens grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card [&>*:last-child:nth-child(odd)]:col-span-2 lg:grid-cols-5 lg:[&>*:last-child:nth-child(odd)]:col-span-1" aria-label={t('Сводка')}>
         <Tile label={t('Средний итог')} value={avg == null ? '—' : f2(avg)} hint={TERMS.total}>
           {t('из 100 по {n} диалогам', { n: totals.length })}
           {totals.length < S.dialogs.length ? t(', ещё {n} ждут оценки', { n: S.dialogs.length - totals.length }) : ''}

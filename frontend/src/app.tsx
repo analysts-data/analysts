@@ -376,10 +376,10 @@ export function App() {
         </aside>
         <div className="min-w-0">
           <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap md:flex-nowrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
-            <div className="min-w-0 flex-1 truncate text-[13px] text-muted" id="crumb">
+            <div className="order-1 min-w-0 flex-1 truncate text-[13px] text-muted" id="crumb">
               {NAME} / <b className="font-semibold text-ink">{t(NAMES[r.page])}</b>
             </div>
-            <div className="flex min-w-0 flex-wrap items-center gap-2.5 md:flex-none md:flex-nowrap">
+            <div className="order-3 flex w-full min-w-0 flex-wrap items-center gap-2.5 md:order-2 md:w-auto md:flex-none md:flex-nowrap">
               <button
                 type="button"
                 onClick={() => setPalette(true)}
@@ -431,6 +431,9 @@ export function App() {
                   </Tip>
                 ))}
               </div>
+            </div>
+            {/* иконки: на телефоне в строке с крошками, режим и роли ниже */}
+            <div className="order-2 flex flex-none items-center gap-2 md:order-3">
               {S.features?.includes('alerts') && (
                 <Tip content={S.alertsNew ? t('Новых алертов: {n}', { n: S.alertsNew }) : t('Алерты')}>
                   <a
