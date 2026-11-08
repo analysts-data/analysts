@@ -2,12 +2,12 @@
 // обоснование, основания с переходом к реплике, второе мнение, N/A, история решений, ручной ответ и апелляция.
 import { ChevronDown } from 'lucide-react';
 import { ansTxt, f2, fn, mmss } from '../../lib/format.js';
-import { allowed } from '../../lib/appeal.js';
 import { byJev } from '../../lib/queue.js';
 import { ans, calc, flagWhy, frac, lastDec } from '../../lib/scoring.js';
 import { href } from '../../lib/router.js';
 import { S } from '../../store';
-import { Button, Chip, cn } from '../../ui';
+import { Term } from '../../terms';
+import { Button, Chip, cn, Tip, type Tone } from '../../ui';
 import { OrgPlayer } from './Transcript';
 import { lineBy, MANUAL, ptsTxt, tone } from './util';
 
@@ -28,6 +28,17 @@ export type Ctx = {
 
 const Label = ({ children }: { children: React.ReactNode }) => <span className="text-[13px] font-semibold text-ink2">{children}</span>;
 const qa = () => S.role === 'qa';
+const firstSentence = (s: string) => (s || '').split(/(?<=[.!?])\s/)[0];
+const pendingOf = (d: any, cid: string) => S.appeals.find((x: any) => x.dlg === d.id && x.cid === cid && x.status === 'pending');
+
+// Пояснение в теле критерия: строка с левой линией цвета по смыслу, без плашки. data-note — метка для тестов.
+const LINE: Record<string, string> = { check: 'border-ev', second: 'border-info', na: 'border-na', better: 'border-accent' };
+const Note = ({ kind, children }: { kind: string; children: React.ReactNode }) => (
+  <div data-note={kind} className={cn('flex flex-col gap-2 border-l-2 pl-3 text-[13px]', LINE[kind])}>
+    {children}
+  </div>
+);
+const AnsChip = ({ c, a, tone: t }: { c: any; a: any; tone: Tone }) => <Chip tone={t}>{ansTxt(c, a)}</Chip>;
 
 export function Criteria({ ctx, sum }: { ctx: Ctx; sum: any }) {
   const cl = S.checklist;
@@ -58,15 +69,20 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
   const r = d.res[c.id];
   const a = ans(d, c.id, S.appeals);
   const isOpen = open === c.id || open === ALL;
-  let chip, pts;
+  let chip, pts, lowered, gist;
   if (c.type === 'flag') {
-    const on = a && Object.values(a).some(Boolean);
-    chip = !r ? <Chip tone="ev">ждёт оценки</Chip> : on ? <Chip tone="risk">Да</Chip> : <Chip tone="ok">Нет</Chip>;
+    lowered = Boolean(r && a && Object.values(a).some(Boolean));
+    chip = !r ? <Chip tone="ev">ждёт оценки</Chip> : lowered ? <Chip tone="risk">Да</Chip> : <Chip tone="ok">Нет</Chip>;
     pts = 'без баллов';
+    gist = r ? ansTxt(c, a) : '';
   } else {
-    chip = <Chip tone={tone(c, a)}>{ansTxt(c, a)}</Chip>;
+    const f = frac(c, a);
+    lowered = Boolean(r && f != null && f < 1);
+    chip = <AnsChip c={c} a={a} tone={tone(c, a)} />;
     pts = ptsTxt(c, a);
+    gist = r ? firstSentence(r.why) : '';
   }
+  const pa = pendingOf(d, c.id);
   return (
     <article
       className={cn('crit border-b border-line2', isOpen && 'open bg-sunken')}
@@ -76,20 +92,38 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
       onMouseLeave={() => ctx.hover(null)}
       onFocus={() => ctx.hover(c.id)}
     >
-      <button
-        type="button"
-        className="crit-row grid w-full grid-cols-[2.2rem_minmax(0,1fr)_auto_auto_18px] items-center gap-2 px-4 py-2.5 text-left hover:bg-hover"
-        data-act="crit"
-        data-cid={c.id}
-        aria-expanded={isOpen}
-        onClick={() => ctx.toggle(c.id)}
-      >
-        <span className="text-[13px] text-muted">{c.id}</span>
-        <span className="min-w-0">{c.name}</span>
-        {chip}
-        <span className="num text-[13px] font-semibold">{pts}</span>
-        <ChevronDown size={16} className={cn('text-muted transition-transform', isOpen && 'rotate-180')} aria-hidden="true" />
-      </button>
+      <div className="flex items-center hover:bg-hover">
+        <button
+          type="button"
+          className="crit-row grid min-w-0 flex-1 grid-cols-[2.2rem_minmax(0,1fr)_auto_auto_18px] items-center gap-2 py-2.5 pl-4 pr-2 text-left"
+          data-act="crit"
+          data-cid={c.id}
+          aria-expanded={isOpen}
+          onClick={() => ctx.toggle(c.id)}
+        >
+          <span className="text-[13px] text-muted">{c.id}</span>
+          <span className="min-w-0">
+            <span className="block">{c.name}</span>
+            {!isOpen && gist && <span className="block truncate text-xs text-muted">{gist}</span>}
+          </span>
+          {chip}
+          <span className="num text-[13px] font-semibold">{pts}</span>
+          <ChevronDown size={16} className={cn('text-muted transition-transform', isOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
+        {S.role === 'operator' &&
+          (pa ? (
+            <Chip tone="info" className="mr-3">
+              Апелляция на рассмотрении
+            </Chip>
+          ) : (
+            lowered &&
+            !isOpen && (
+              <Button variant="ghost" size="sm" className="mr-2" data-act="appealrow" data-cid={c.id} onClick={() => ctx.appeal(c.id)}>
+                Оспорить
+              </Button>
+            )
+          ))}
+      </div>
       {isOpen && (
         <div className="crit-body flex flex-col gap-3 px-4 pb-4 pt-1 text-sm">
           <Body c={c} r={r} a={a} ctx={ctx} />
@@ -103,7 +137,7 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
   const { d } = ctx;
   if (!r || a == null)
     return (
-      <div className="box ev flex flex-col gap-2">
+      <Note kind="check">
         <span>Критерий ждёт оценки. Пока итог считается без него.</span>
         {qa() && (
           <span>
@@ -112,10 +146,10 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
             </Button>
           </span>
         )}
-      </div>
+      </Note>
     );
   const hist = S.appeals.filter((x: any) => x.dlg === d.id && x.cid === c.id && (x.status === 'confirmed' || x.status === 'changed'));
-  const pa = S.appeals.find((x: any) => x.dlg === d.id && x.cid === c.id && x.status === 'pending');
+  const pa = pendingOf(d, c.id);
   const blocked = S.appeals.some((x: any) => x.dlg === d.id && x.cid === c.id && x.status !== 'closed');
   return (
     <>
@@ -145,10 +179,14 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
       )}
       {(r.model === MANUAL || (!blocked && qa())) && (
         <div className="flex flex-wrap items-center gap-2">
-          {r.model === MANUAL && <Chip tone="info">Поставлено вручную</Chip>}
+          {r.model === MANUAL && (
+            <Chip tone="info">
+              <Term k="manual">Исправлено специалистом</Term>
+            </Chip>
+          )}
           {!blocked && qa() && (
-            <Button size="sm" data-act="manual" data-cid={c.id} onClick={() => ctx.manual(c)} title="Ручной ответ заменяет ответ модели">
-              Изменить ответ
+            <Button size="sm" data-act="manual" data-cid={c.id} onClick={() => ctx.manual(c)}>
+              Исправить оценку
             </Button>
           )}
         </div>
@@ -157,13 +195,13 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
         <p className="flex items-center gap-2">
           <Chip tone="info">Апелляция на рассмотрении</Chip>
           <a href={href('appeals', pa.id)} className="text-[13px]">
-            Открыть
+            Открыть апелляцию
           </a>
         </p>
       ) : (
         S.role !== 'reviewer' && (
           <div>
-            <Button data-act="appeal" data-cid={c.id} onClick={() => ctx.appeal(c.id)} title="Подать апелляцию: проверяющий решит, какой ответ верный">
+            <Button variant={qa() ? 'ghost' : 'default'} size={qa() ? 'sm' : 'md'} data-act="appeal" data-cid={c.id} onClick={() => ctx.appeal(c.id)}>
               Оспорить оценку
             </Button>
           </div>
@@ -192,7 +230,7 @@ function Evidence({ ev, ctx }: { ev: number[]; ctx: Ctx }) {
         const l = lineBy(d, n);
         if (!l) return null;
         return (
-          <div key={n} className="quote flex flex-wrap items-start justify-between gap-2 rounded-lg border-l-[3px] border-line-strong bg-surface px-3 py-2">
+          <div key={n} className="quote flex flex-wrap items-start justify-between gap-2 border-l-2 border-ev py-0.5 pl-3">
             <div className="min-w-0 flex-1">
               <span className="text-xs text-muted">
                 {n}, {WHO[l.who] || l.who}
@@ -207,9 +245,11 @@ function Evidence({ ev, ctx }: { ev: number[]; ctx: Ctx }) {
                 (l.s == null ? (
                   <OrgPlayer d={d} />
                 ) : (
-                  <Button size="sm" data-act="seek" data-n={l.n} onClick={() => ctx.seekLine(l)} aria-label={`Перейти к фрагменту, ${mmss(l.s)}`} title="Перейти к фрагменту">
-                    ▶ {mmss(l.s)}
-                  </Button>
+                  <Tip content={`Слушать запись с ${mmss(l.s)}`}>
+                    <Button size="sm" data-act="seek" data-n={l.n} onClick={() => ctx.seekLine(l)} aria-label={`Перейти к фрагменту, ${mmss(l.s)}`}>
+                      ▶ {mmss(l.s)}
+                    </Button>
+                  </Tip>
                 ))}
             </span>
           </div>
@@ -251,26 +291,19 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
   const { d } = ctx;
   const hasEv = (r.ev || []).some((n: number) => lineBy(d, n));
   const f = frac(c, a);
-  const vals = allowed(c).filter((v: any) => v !== 'na' || a === 'na' || r.alt === 'na');
   const altDiff = r.alt != null && r.alt !== a;
   const dec = lastDec(d, c.id, S.appeals);
-  const txt = (v: any) => (v === 'yes' ? 'Да' : v === 'no' ? 'Нет' : v === 'na' ? 'N/A' : v);
+  const op = S.role === 'operator';
   return (
     <>
-      <div className="flex flex-col gap-1.5">
-        <div className="ladder flex flex-wrap gap-1" role="img" aria-label={`Ответ ${ansTxt(c, a)}${altDiff ? `, второе мнение ${ansTxt(c, r.alt)}` : ''}`}>
-          {vals.map((v: any) => (
-            <span
-              key={v}
-              className={cn(
-                'step min-w-9 rounded-md border px-2 py-0.5 text-center text-[13px]',
-                v === a ? 'on border-accent bg-accent font-semibold text-on-accent' : altDiff && v === r.alt ? 'alt border-dashed border-info text-info' : 'border-line text-muted',
-              )}
-            >
-              {txt(v)}
-            </span>
-          ))}
-        </div>
+      <div className="flex flex-col gap-1">
+        <p className="flex flex-wrap items-center gap-2 text-[13px]">
+          <span>Ответ:</span>
+          <AnsChip c={c} a={a} tone={tone(c, a)} />
+          {altDiff && !op && (
+            <span className="text-muted">Второе мнение: {ansTxt(c, r.alt)}</span>
+          )}
+        </p>
         {c.type === 'scale' && c.stepText && c.stepText[a] && (
           <span className="text-xs text-muted">
             {a}: {c.stepText[a]}
@@ -278,9 +311,12 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
         )}
       </div>
       {a === 'na' ? (
-        <div className="box na" title="N/A: критерий неприменим к разговору, его вес делится между остальными">
-          <b>Условие N/A выполнено.</b> {c.naCond} {r.why} Вес {c.w} распределён между применимыми критериями.
-        </div>
+        <Note kind="na">
+          <p>
+            <b>N/A: не применимо.</b>{' '}
+            Условие N/A выполнено: {c.naCond} {r.why} Вес {c.w} распределён между применимыми критериями.
+          </p>
+        </Note>
       ) : (
         <div>
           <Label>Обоснование</Label>
@@ -299,8 +335,8 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
           <Evidence ev={r.ev} ctx={ctx} />
         </div>
       )}
-      {r.evFail && !dec && (
-        <div className="box ev flex flex-col gap-2">
+      {r.evFail && !dec && !op && (
+        <Note kind="check">
           <span>
             {byJev(r) ? (
               <>
@@ -323,12 +359,12 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
               </Button>
             </span>
           )}
-        </div>
+        </Note>
       )}
-      {r.alt != null && r.alt !== r.a && !dec ? (
-        <div className="box info flex flex-col gap-2" title="Второе мнение: ответ второй модели. При расхождении решает специалист">
+      {op ? null : r.alt != null && r.alt !== r.a && !dec ? (
+        <Note kind="second">
           <span>
-            <b>Второе мнение: {ansTxt(c, r.alt)}.</b> Модели разошлись, ответ ждёт решения специалиста.
+            <b>Второе мнение: {ansTxt(c, r.alt)}.</b> Ответы моделей разошлись, выберите верный.
           </span>
           {qa() && (
             <span className="flex flex-wrap gap-2">
@@ -340,14 +376,19 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
               </Button>
             </span>
           )}
-        </div>
+        </Note>
       ) : (
-        r.alt != null && r.alt === r.a && <p className="text-xs text-muted">Второе мнение совпало: {ansTxt(c, r.alt)}.</p>
+        r.alt != null &&
+        r.alt === r.a && (
+          <p className="text-xs text-muted">Второе мнение совпало: {ansTxt(c, r.alt)}.</p>
+        )
       )}
       {r.better && f != null && f < 1 && (
-        <div className="box good">
-          <b>Как сказать лучше:</b> «{r.better}»
-        </div>
+        <Note kind="better">
+          <p>
+            <b>Как сказать лучше:</b> «{r.better}»
+          </p>
+        </Note>
       )}
     </>
   );

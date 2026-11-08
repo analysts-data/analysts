@@ -1,11 +1,11 @@
 // Расшифровка: реплики [data-n] со временем, метки критериев, свёрнутые участки (fold) — соседи строки перед ними.
 import { Play } from 'lucide-react';
 import { useState } from 'react';
-import { mmss } from '../../lib/format.js';
+import { ansTxt, mmss } from '../../lib/format.js';
 import { ans } from '../../lib/scoring.js';
 import { api } from '../../lib/state.js';
 import { S } from '../../store';
-import { Button, Chip, cn } from '../../ui';
+import { Button, Chip, cn, Tip } from '../../ui';
 import { ProsodyBadges } from './Intonation';
 import { seek } from './Player';
 import { tone } from './util';
@@ -23,13 +23,14 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
   if (!d.lines) return <div className="px-4 py-10 text-center text-muted">Расшифровка ещё не загружена. Оценка и обоснования справа.</div>;
   const call = d.ch === 'call';
-  const tags: Record<number, { id: string; t: any }[]> = {};
+  const tags: Record<number, { id: string; t: any; tip: string }[]> = {};
   for (const c of S.checklist.criteria) {
     const r = d.res[c.id];
     if (!r || !r.ev) continue;
     const a = ans(d, c.id, S.appeals);
     const t = c.type === 'flag' ? (Object.values(a || {}).some(Boolean) ? 'risk' : 'ok') : tone(c, a);
-    r.ev.forEach((n: number) => (tags[n] = tags[n] || []).push({ id: c.id, t }));
+    const tip = `${c.id} ${c.name}: ${ansTxt(c, a)}`;
+    r.ev.forEach((n: number) => (tags[n] = tags[n] || []).push({ id: c.id, t, tip }));
   }
   const out: React.ReactNode[] = [];
   let hidden: any = null;
@@ -66,9 +67,11 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
     const time = call ? mmss(l.t) : l.t;
     const state = cn(marks.sel.has(l.n) && 'sel bg-ev-soft ring-2 ring-ev-line', marks.hl.has(l.n) && 'hl ring-2 ring-info-line', marks.now === l.n && 'now ring-2 ring-ink', marks.flash === l.n && 'flash');
     const tg = (tags[l.n] || []).map(x => (
-      <button key={x.id} type="button" data-act="crit" data-cid={x.id} onClick={() => onCrit(x.id)} aria-label={`Открыть критерий ${x.id}`} title={`Открыть критерий ${x.id}`}>
-        <Chip tone={x.t}>{x.id}</Chip>
-      </button>
+      <Tip key={x.id} content={x.tip}>
+        <button type="button" data-act="crit" data-cid={x.id} onClick={() => onCrit(x.id)} aria-label={`Открыть критерий ${x.tip}`}>
+          <Chip tone={x.t}>{x.id}</Chip>
+        </button>
+      </Tip>
     ));
     const end = marks.flash === l.n ? marks.onFlashEnd : undefined;
     if (l.who === 'system' || l.who === 'bot') {
@@ -96,16 +99,17 @@ export function Transcript({ d, marks, prosody, onCrit, onSeek }: { d: any; mark
             (l.s == null ? (
               <OrgPlayer d={d} />
             ) : (
-              <button
-                type="button"
-                className="grid h-6 w-6 place-items-center rounded-full text-accent hover:bg-hover"
-                data-act="seek"
-                onClick={() => onSeek(l)}
-                aria-label={`Слушать реплику ${l.n} с ${mmss(l.s)}`}
-                title={`Слушать с ${mmss(l.s)}`}
-              >
-                <Play size={13} />
-              </button>
+              <Tip content={`Слушать с ${mmss(l.s)}`}>
+                <button
+                  type="button"
+                  className="grid h-6 w-6 place-items-center rounded-md text-accent hover:bg-hover"
+                  data-act="seek"
+                  onClick={() => onSeek(l)}
+                  aria-label={`Слушать реплику ${l.n} с ${mmss(l.s)}`}
+                >
+                  <Play size={13} />
+                </button>
+              </Tip>
             ))}
           {call && <ProsodyBadges p={prosody} n={l.n} />}
           {tg}

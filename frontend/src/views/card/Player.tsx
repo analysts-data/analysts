@@ -7,7 +7,7 @@ import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { mmss } from '../../lib/format.js';
 import { api, toast } from '../../lib/state.js';
-import { Button, cn } from '../../ui';
+import { Button, cn, Tip } from '../../ui';
 
 let audio: HTMLAudioElement | null = null;
 let dur = 0;
@@ -155,18 +155,26 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
       <h2 className="sr">Запись звонка</h2>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Button className="w-10 !px-0" onClick={toggle} aria-label={paused ? 'Слушать' : 'Пауза'} title={paused ? 'Слушать' : 'Пауза'}>
-            {paused ? <Play size={18} /> : <Pause size={18} />}
-          </Button>
-          <Button size="sm" onClick={() => skip(-5)} title="Назад на 5 секунд">
-            −5 с
-          </Button>
-          <Button size="sm" onClick={() => skip(5)} title="Вперёд на 5 секунд">
-            +5 с
-          </Button>
-          <Button size="sm" onClick={nextRate} title="Скорость воспроизведения">
-            {rate}×
-          </Button>
+          <Tip content={paused ? 'Слушать' : 'Пауза'}>
+            <Button className="w-10 !px-0" onClick={toggle} aria-label={paused ? 'Слушать' : 'Пауза'}>
+              {paused ? <Play size={18} /> : <Pause size={18} />}
+            </Button>
+          </Tip>
+          <Tip content="Назад на 5 секунд">
+            <Button size="sm" onClick={() => skip(-5)}>
+              −5 с
+            </Button>
+          </Tip>
+          <Tip content="Вперёд на 5 секунд">
+            <Button size="sm" onClick={() => skip(5)}>
+              +5 с
+            </Button>
+          </Tip>
+          <Tip content="Скорость: 1×, 1,5×, 2×">
+            <Button size="sm" onClick={nextRate} aria-label={`Скорость ${rate}×`}>
+              {rate}×
+            </Button>
+          </Tip>
           <span className="num">
             <b>{mmss(t)}</b> / {mmss(total)}
           </span>
@@ -179,7 +187,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
           <Legend tint="var(--ev)">Потеря баллов</Legend>
         </div>
       </div>
-      <div className="wave relative pt-5" title="Нажмите на волну, чтобы перейти к моменту записи">
+      <div className="wave relative pt-5">
         {hatches.map((f: any) => (
           <div key={f.from} className="hatch pointer-events-none absolute bottom-0 top-0 z-[1] bg-[repeating-linear-gradient(135deg,transparent_0_6px,var(--line)_6px_8px)]" style={{ left: `${(100 * f.t0) / total}%`, width: `${(100 * (f.t1 - f.t0)) / total}%` }}>
             <span className="block truncate text-center text-[11px] text-muted">{f.label}, не оценивается</span>
@@ -189,8 +197,8 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
           {plain && <PlainBars d={d} total={total} />}
         </div>
         {pins.map(({ k, r, ln }) => (
+          <Tip key={k} content={`Потеря ${k + 1}: ${r.c.name}, ${mmss(ln.s)}`}>
           <button
-            key={k}
             type="button"
             className="pin absolute top-0 z-[2] min-w-[18px] -translate-x-1/2 rounded border border-ev bg-ev-soft px-1 text-[11px] font-semibold leading-4 text-ev hover:bg-ev hover:text-on-accent"
             style={{ left: `${(100 * ln.s) / total}%` }}
@@ -198,10 +206,10 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
             data-cid={r.c.id}
             onClick={() => onPin(r.c.id)}
             aria-label={`Потеря ${k + 1}: ${r.c.name}, ${mmss(ln.s)}`}
-            title={`Потеря ${k + 1}: ${r.c.name}, ${mmss(ln.s)}`}
           >
             {k + 1}
           </button>
+          </Tip>
         ))}
       </div>
       <div className="relative h-4 text-[11px] text-muted" aria-hidden="true">
@@ -212,7 +220,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
         ))}
       </div>
       <audio ref={media} preload="none" src={api.audioUrl(d.id)} />
-      <p className="text-xs text-muted">Запись монофоническая: участки окрашены по ролям из расшифровки, от начала реплики до начала следующей.</p>
+      <p className="text-xs text-muted">Нажмите на волну, чтобы перейти к моменту записи. Участки окрашены по ролям из расшифровки.</p>
     </section>
   );
 }

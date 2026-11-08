@@ -65,7 +65,7 @@ def test_na_criteria_show_their_condition_and_total_uses_applicable_only(
     expect(page.locator("[data-total]")).to_contain_text("100,00")
     for cid, cond in (("04", "клиент сформулировал запрос"), ("07", "оборвался до возможности")):
         page.click(f'.crit[data-cid="{cid}"] [data-act="crit"]')
-        expect(page.locator(f'.crit[data-cid="{cid}"] .box.na')).to_contain_text(cond)
+        expect(page.locator(f'.crit[data-cid="{cid}"] [data-note="na"]')).to_contain_text(cond)
     assert errors == []
 
 
@@ -100,7 +100,7 @@ def test_accepting_second_opinion_posts_review_decision(
 ) -> None:
     errors = open_card("p1-en-008")
     open_crit(page, "07")
-    block = page.locator('.crit[data-cid="07"] .box.info')
+    block = page.locator('.crit[data-cid="07"] [data-note="second"]')
     expect(block).to_contain_text("Второе мнение: Да")
     reason = "Оператор ответил на второй вопрос и попрощался."
     after = state_with(review_of("p1-en-008", "07", "no", "yes", reason))
@@ -124,7 +124,7 @@ def test_failed_quote_asks_for_check(page: Page, open_card: Callable[..., list[s
     errors = open_card("p1-kz-003")
     open_crit(page, "06")
     body = page.locator('.crit[data-cid="06"] .crit-body')
-    expect(body.locator(".box.ev")).to_contain_text("Цитата не нашлась")
+    expect(body.locator('[data-note="check"]')).to_contain_text("Цитата не нашлась")
     expect(body).to_contain_text("на проверку")
     expect(body.locator('[data-act="review"]')).to_have_count(2)
     assert errors == []
@@ -139,7 +139,7 @@ def test_jev_only_answer_shows_honest_why_without_quote_and_asks_for_check(
     open_crit(page, "01")
     body = page.locator('.crit[data-cid="01"] .crit-body')
     expect(body).to_contain_text(why)
-    expect(body.locator(".box.ev")).to_contain_text("Jev не уверен в ответе")
+    expect(body.locator('[data-note="check"]')).to_contain_text("Jev не уверен в ответе")
     expect(body).not_to_contain_text("Цитата не нашлась")
     expect(body).not_to_contain_text("Проверен участок")
     expect(body.locator(".quote")).to_have_count(0)
@@ -155,7 +155,7 @@ def test_reduced_criterion_shows_better_phrase_and_review_history(
 
     errors = open_card("call-024", add_better)
     open_crit(page, "06")
-    expect(page.locator('.crit[data-cid="06"] .box.good')).to_contain_text("Как сказать лучше")
+    expect(page.locator('.crit[data-cid="06"] [data-note="better"]')).to_contain_text("Как сказать лучше")
     after = state_with(review_of("call-024", "04", 15, 10, "Срок ответа не назван."))
     page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=after))
     page.reload()  # the routed /api/state now answers with the decision
@@ -164,7 +164,7 @@ def test_reduced_criterion_shows_better_phrase_and_review_history(
     history = page.locator('.crit[data-cid="04"] .hist')
     expect(history).to_contain_text("Решение")
     expect(history).to_contain_text("Срок ответа не назван.")
-    expect(page.locator('.crit[data-cid="04"] .box.info')).to_have_count(0)
+    expect(page.locator('.crit[data-cid="04"] [data-note="second"]')).to_have_count(0)
     assert errors == []
 
 

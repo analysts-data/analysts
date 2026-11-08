@@ -56,7 +56,7 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
       }
     };
     return (
-      <Modal open onOpenChange={v => !v && onClose()} title={r ? 'Изменить ответ' : 'Оценить вручную'} description={sub}>
+      <Modal open onOpenChange={v => !v && onClose()} title={r ? 'Исправить оценку' : 'Оценить вручную'} description={sub}>
         <Form onSubmit={save} onClose={onClose} ok="Сохранить ответ">
           {c.type === 'flag' ? (
             <fieldset className="flex flex-col gap-1.5">

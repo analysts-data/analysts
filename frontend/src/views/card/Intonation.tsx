@@ -1,6 +1,7 @@
 // Интонация звонка по звуку (GET /api/dialogs/{id}/prosody): один запрос на звонок, ответ кешируется на сессию.
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/state.js';
+import { Term } from '../../terms';
 import { Chip } from '../../ui';
 
 // id → 'loading' | ответ сервера | {off: true} (запись не получена) | null (записи нет: панели нет)
@@ -40,7 +41,9 @@ export function IntonationPanel({ p }: { p: any }) {
     );
   return (
     <section className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-4 shadow-card" data-prosody="on" aria-label="Интонация">
-      <h2 className="text-[15px] font-semibold">Интонация</h2>
+      <h2 className="text-[15px] font-semibold">
+        <Term k="prosody">Интонация по записи</Term>
+      </h2>
       {p.summary.length ? (
         <ul className="m-0 list-disc pl-5 text-[13px]">
           {p.summary.map((s: string, i: number) => (
@@ -50,7 +53,8 @@ export function IntonationPanel({ p }: { p: any }) {
       ) : (
         <p className="text-[13px]">Тон, громкость и темп в обычной манере говорящих, долгих пауз перед ответом нет.</p>
       )}
-      <p className="text-xs text-muted">По звуку записи: реплика сравнивается с обычной манерой того же говорящего. Пороги эвристические, на итог не влияют.</p>
+      <p className="text-xs text-muted">↑ тон: громче и выше обычного · быстро: темп выше обычного · перебивание · пауза N с перед ответом</p>
+      <p className="text-xs text-muted">Реплика сравнивается с обычной манерой того же говорящего. Подсказка для прослушивания, на балл не влияет.</p>
     </section>
   );
 }
@@ -60,7 +64,7 @@ export function ProsodyBadges({ p, n }: { p: any; n: number }) {
   const l = p && p.lines ? p.lines.find((x: any) => x.n === n) : null;
   if (!l) return null;
   return l.flags.map((f: string) => (
-    <Chip key={f} tone="info" className="pros" title="Интонация по звуку записи">
+    <Chip key={f} tone="info" className="pros">
       {f === 'long_pause' ? `пауза ${Math.round(l.pause)} с` : BADGE[f]}
     </Chip>
   ));

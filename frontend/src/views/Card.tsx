@@ -6,10 +6,11 @@ import { flushSync } from 'react-dom';
 import { ansTxt, f2, fn, mmss, titleOf } from '../lib/format.js';
 import { groupOf, queueOrder } from '../lib/queue.js';
 import { href } from '../lib/router.js';
-import { ans, calc, flagsOf, lastDec } from '../lib/scoring.js';
+import { ans, calc, flagsOf, flagWhy, lastDec } from '../lib/scoring.js';
 import { api, reload, startRun, toast } from '../lib/state.js';
 import { currentTheme, rerender, useS } from '../store';
-import { Button, Card, Chip, LinkButton, PageHead } from '../ui';
+import { TERMS, Term } from '../terms';
+import { Button, Card, Chip, LinkButton, PageHead, Tip } from '../ui';
 import { CountUp } from '../anim';
 import { AppealDialog } from './AppealDialog';
 import { ALL, Criteria, type Ctx } from './card/Criteria';
@@ -105,6 +106,9 @@ export function CardView({ id }: { id: string | null }) {
   const todo = cl.criteria.filter((c: any) => !d.res[c.id]).length;
   const running = Boolean(S.run && S.run.status === 'running');
   const qa = S.role === 'qa';
+  const group = groupOf(d, cl, S.appeals);
+  const flagLoss = flags.length && fr ? { c: fr } : null;
+  const fw = frr ? flagWhy(fr, frr) : null;
 
   const jump = (n: number) => setFlash(f => ({ n, k: (f?.k ?? 0) + 1 }));
   const seekLine = (l: any) => {
@@ -112,10 +116,10 @@ export function CardView({ id }: { id: string | null }) {
     seek(l.s);
     jump(l.n);
   };
-  const goto = (cid: string) => {
+  const goto = (cid: string, n?: number) => {
     setOpen(cid);
     const r = d.res[cid];
-    const l = r && r.ev && r.ev.length ? lineBy(d, r.ev[0]) : null;
+    const l = n != null ? lineBy(d, n) : r && r.ev && r.ev.length ? lineBy(d, r.ev[0]) : null;
     if (!l) return;
     jump(l.n);
     if (l.s != null) seek(l.s, false);
@@ -169,12 +173,12 @@ export function CardView({ id }: { id: string | null }) {
             {i + 1} из {ord.length} в очереди
           </span>
           {prev && (
-            <LinkButton size="sm" href={href('d', prev)} aria-label="Предыдущий диалог" title="Предыдущий диалог">
+            <LinkButton size="sm" href={href('d', prev)} aria-label="Предыдущий диалог">
               <ChevronLeft size={15} aria-hidden="true" /> Предыдущий
             </LinkButton>
           )}
           {next && (
-            <LinkButton size="sm" href={href('d', next)} aria-label="Следующий диалог" title="Следующий диалог">
+            <LinkButton size="sm" href={href('d', next)} aria-label="Следующий диалог">
               Следующий <ChevronRight size={15} aria-hidden="true" />
             </LinkButton>
           )}
@@ -182,23 +186,35 @@ export function CardView({ id }: { id: string | null }) {
       </nav>
 
       <PageHead title={titleOf(d)} sub={`${call ? `Звонок, ${mmss(d.dur || 0)}` : 'Чат'}, ${LANG[d.lang] || d.lang}, ${d.at}, чек-лист v${cl.version}`}>
-        {STATUS[groupOf(d, cl, S.appeals)]}
+        {(S.role !== 'operator' || group === 'risk') && STATUS[group]}
         {d.reviewed && <Chip tone="ok">Проверен</Chip>}
         {qa && todo > 0 && (
-          <Button variant="primary" data-act="evalone" disabled={running} onClick={evalOne} title={`Ждут оценки: ${todo}. Ответы, поставленные вручную, модель не меняет`}>
-            {running ? 'Идёт оценка…' : 'Оценить моделью'}
-          </Button>
+          <Tip content={running ? 'Идёт оценка набора. Кнопка станет активной, когда она закончится.' : null}>
+            <span>
+              <Button variant="primary" data-act="evalone" disabled={running} onClick={evalOne}>
+                {running ? 'Идёт оценка…' : 'Оценить моделью'}
+              </Button>
+            </span>
+          </Tip>
         )}
         {qa && (
-          <Button data-act="reviewed" disabled={busy} onClick={markReviewed} title="Проверенный диалог уходит из верхних групп очереди">
+          <Button data-act="reviewed" disabled={busy} onClick={markReviewed}>
             {d.reviewed ? 'Снять отметку' : 'Отметить проверенным'}
+          </Button>
+        )}
+        {S.role === 'operator' && (
+          <Button variant="primary" data-act="appealtop" onClick={() => setAppealCid((sum.losses[0] || flagLoss)?.c?.id ?? scored(cl)[0]?.id)}>
+            Оспорить оценку
           </Button>
         )}
       </PageHead>
 
       <Card className="sum grid grid-cols-1 divide-y divide-line2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0" aria-label="Сводка">
         <Panel>
-          <h2 className="text-[15px] font-semibold">Итог</h2>
+          {/* «Итог» — прямой потомок блока с числом: шаг защиты no_total читает родителя этой надписи */}
+          <Tip content={TERMS.total}>
+            <h2 className="cursor-help self-start text-[15px] font-semibold">Итог</h2>
+          </Tip>
           <div className="flex flex-wrap items-center gap-4" data-total={sum.total ?? ""}>
             <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={`Итог ${f2(sum.total)} из 100`} className="flex-none">
               <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent-soft" strokeWidth="11" />
@@ -221,11 +237,27 @@ export function CardView({ id }: { id: string | null }) {
               ))}
             </div>
           </div>
+          {flags.length > 0 && (
+            <Tip content={`Итог ${f2(sum.total)} считается без неё: грубая ошибка не снижает балл, а отправляет диалог на обязательную проверку.`}>
+              <span tabIndex={0} className="self-start">
+                <Chip tone="risk" className="cursor-help">
+                  Есть грубая ошибка
+                </Chip>
+              </span>
+            </Tip>
+          )}
           <details className="text-[13px]">
             <summary className="cursor-pointer font-semibold text-accent">Как посчитан итог</summary>
             <p className="mt-1.5 text-muted">
               {fn(sum.G)} балла из {sum.W} применимых, приведено к 100.
-              {naRows.length ? ` N/A у критериев ${naRows.map((x: any) => x.id).join(', ')}: их вес распределён между остальными.` : ' N/A нет, веса не перераспределялись.'}
+              {naRows.length ? (
+                <>
+                  {' '}
+                  <Term k="na">N/A</Term> у критериев {naRows.map((x: any) => x.id).join(', ')}: их вес распределён между остальными.
+                </>
+              ) : (
+                ' N/A нет, веса не перераспределялись.'
+              )}
               {sum.pending ? ` Ждут оценки: ${sum.pending}, итог предварительный.` : ''}
             </p>
           </details>
@@ -244,7 +276,6 @@ export function CardView({ id }: { id: string | null }) {
                   data-act="goto"
                   data-cid={r.c.id}
                   onClick={() => goto(r.c.id)}
-                  title="Открыть критерий и реплику-основание"
                 >
                   <span className="num pt-px text-[13px] font-semibold text-muted">{k + 1}.</span>
                   <span className="min-w-0 text-[13px]">
@@ -269,34 +300,55 @@ export function CardView({ id }: { id: string | null }) {
             <p className="text-muted">Все применимые критерии выполнены полностью.</p>
           )}
           <p className="text-xs text-muted">
-            {sum.losses.length > 3 ? `Ещё ${sum.losses.length - 3} в списке критериев. ` : ''}Потери посчитаны после перераспределения N/A и в сумме дают 100 − итог.
+            {sum.losses.length > 3 ? `Ещё ${sum.losses.length - 3} в списке критериев. ` : ''}Сумма потерь равна 100 − итог.
           </p>
         </Panel>
         <Panel>
           <div className="flex items-center justify-between gap-2">
-            <Label>Грубые ошибки</Label>
+            <Label>
+              <Term k="gross">Грубые ошибки</Term>
+            </Label>
             {flags.length ? <Chip tone="risk">Найдены: {flags.length}</Chip> : frr ? <Chip tone="ok">Не найдены</Chip> : <Chip tone="ev">Ждут оценки</Chip>}
           </div>
-          {fr &&
-            (fr.questions || []).map((q: any) => (
-              <div key={q.k} className="flex justify-between gap-2 text-[13px]">
-                <span>{q.label}</span>
-                {fa && fa[q.k] ? <b className="text-risk">да</b> : <span className="text-muted">нет</span>}
-              </div>
-            ))}
-          {flags.length > 0 && frr.ev && frr.ev.length > 0 && (
-            <div>
-              <Button size="sm" data-act="goto" data-cid={fr.id} onClick={() => goto(fr.id)}>
-                Показать реплику {frr.ev.join(', ')}
-              </Button>
-            </div>
+          {fw &&
+            fw.qs
+              .filter((x: any) => fa && fa[x.q.k])
+              .map((x: any) => {
+                const n = (x.ev.length ? x.ev : frr.ev || [])[0];
+                const ln = n != null ? lineBy(d, n) : null;
+                return (
+                  <div key={x.q.k} className="flex flex-col gap-1 text-[13px]">
+                    <span>
+                      <Chip tone="risk">{x.q.label}</Chip>
+                    </span>
+                    {x.why && <p>{x.why}</p>}
+                    {ln && <p className="border-l-2 border-ev pl-3 text-ink2">«{ln.text}»</p>}
+                    {ln && (
+                      <span>
+                        <Button size="sm" data-act="goto" data-cid={fr.id} onClick={() => goto(fr.id, ln.n)}>
+                          К реплике {ln.n}
+                        </Button>
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+          {fr && (
+            <p className="text-[13px] text-muted">
+              {flags.length ? 'Не найдено: ' : 'Проверено: '}
+              {(fr.questions || [])
+                .filter((q: any) => !(fa && fa[q.k]))
+                .map((q: any) => q.label)
+                .join(', ')}
+              .
+            </p>
           )}
           <p className="text-xs text-muted">
-            Каждый вид проверяется отдельным вопросом. Флаг ставится, если нарушение нашла {S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог он не обнуляет.
+            Каждый вид проверяется отдельным вопросом. Грубая ошибка ставится, если её нашла {S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог она не обнуляет.
           </p>
-          {answered > 0 && (
-            <p className="mt-auto border-t border-line2 pt-2.5 text-[13px]" title="Второе мнение: ответ второй модели по тем же критериям">
-              Второе мнение совпало по {answered - disagree(S, d).length} из {answered} критериев
+          {answered > 0 && S.role !== 'operator' && (
+            <p className="mt-auto border-t border-line2 pt-2.5 text-[13px]">
+              <Term k="second">Второе мнение</Term> совпало по {answered - disagree(S, d).length} из {answered} критериев
             </p>
           )}
         </Panel>
@@ -329,7 +381,7 @@ export function CardView({ id }: { id: string | null }) {
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
             <h2 className="text-base font-semibold">Оценка по критериям</h2>
             <span className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted">Наведите на критерий, чтобы подсветить реплики</span>
+              <span className="text-xs text-muted">Нажмите на критерий: обоснование и реплики-основания</span>
               <Button size="sm" data-act="critall" aria-expanded={open === ALL} onClick={() => setOpen(open === ALL ? null : ALL)}>
                 {open === ALL ? 'Свернуть' : 'Развернуть все обоснования'}
               </Button>
@@ -338,7 +390,7 @@ export function CardView({ id }: { id: string | null }) {
           <Criteria ctx={ctx} sum={sum} />
         </section>
       </div>
-      <p className="meta text-xs text-muted">{costLine(S, d)}</p>
+      {qa && <p className="meta text-xs text-muted">{costLine(S, d)}</p>}
 
       <CardForms d={d} p={form} onClose={() => setForm(null)} />
       <AppealDialog dialog={d} cid={appealCid} onClose={() => setAppealCid(null)} />
