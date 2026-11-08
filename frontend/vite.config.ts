@@ -9,6 +9,18 @@ export default defineConfig({
   plugins: [
     react(),
     {
+      // предзагрузка шрифта: текст сразу рисуется Onest, без сдвига макета при подмене шрифта
+      name: 'preload-font',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html, ctx) {
+          const fonts = Object.keys(ctx.bundle ?? {}).filter(f => /onest-(cyrillic|latin)-wght-normal\.woff2$/.test(f));
+          const tags = fonts.map(f => `<link rel="preload" href="./${f}" as="font" type="font/woff2" crossorigin>`).join('\n  ');
+          return tags ? html.replace('</title>', `</title>\n  ${tags}`) : html;
+        },
+      },
+    },
+    {
       name: 'scoring-js',
       generateBundle() {
         this.emitFile({ type: 'asset', fileName: 'js/scoring.js', source: readFileSync(new URL('./src/lib/scoring.js', import.meta.url), 'utf8') });

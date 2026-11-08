@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { mmss } from '../../lib/format.js';
+import { t } from '../../lib/i18n.js';
 import { api, toast } from '../../lib/state.js';
 import { Button, cn, Tip } from '../../ui';
 
@@ -46,12 +47,12 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
   const media = useRef<HTMLAudioElement>(null);
   const bars = useRef<HTMLDivElement>(null);
   const ws = useRef<WaveSurfer | null>(null);
-  const [t, setT] = useState(0);
+  const [pos, setT] = useState(0);
   const [paused, setPaused] = useState(true);
   const [rate, setRate] = useState(1);
   const [plain, setPlain] = useState(false); // волна не построилась: остаётся обычный плеер
   const total = d.dur || 1;
-  const cur = lineAt(d, t);
+  const cur = lineAt(d, pos);
   const nowN = cur && (cur.who === 'client' || cur.who === 'operator') ? cur.n : null;
 
   useEffect(() => onNow(nowN), [nowN]);
@@ -69,7 +70,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
     evs.forEach(e => a.addEventListener(e, sync));
     let warned = false;
     const fail = () => {
-      if (!warned && a.getAttribute('src')) toast('Запись недоступна. Расшифровка и основания остаются.');
+      if (!warned && a.getAttribute('src')) toast(t('Запись недоступна. Расшифровка и основания остаются.'));
       warned = true;
     };
     a.addEventListener('error', fail);
@@ -109,7 +110,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
           if (kind === 'ws' || end <= start) return;
           const r = regions.addRegion({ start, end, drag: false, resize: false, color: `color-mix(in srgb, ${TINT[kind]} 16%, transparent)` });
           r.element?.classList.add(kind);
-          r.element?.setAttribute('title', l.fold ? `${l.label}, не оценивается` : `Реплика ${l.n}, ${mmss(l.s)}`);
+          r.element?.setAttribute('title', l.fold ? t('{label}, не оценивается', { label: l.label }) : t('Реплика {n}, {at}', { n: l.n, at: mmss(l.s) }));
         });
       });
       ws.current = w;
@@ -151,53 +152,53 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
   for (let m = 0; m * 60 < total; m++) ticks.push(m * 60);
 
   return (
-    <section className="player flex flex-col gap-3 rounded-card border border-line bg-surface p-4 shadow-card" aria-label="Запись звонка">
-      <h2 className="sr">Запись звонка</h2>
+    <section className="player flex flex-col gap-3 rounded-card border border-line bg-surface p-4 shadow-card" aria-label={t('Запись звонка')}>
+      <h2 className="sr">{t('Запись звонка')}</h2>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Tip content={paused ? 'Слушать' : 'Пауза'}>
-            <Button className="w-10 !px-0" onClick={toggle} aria-label={paused ? 'Слушать' : 'Пауза'}>
+          <Tip content={paused ? t('Слушать') : t('Пауза')}>
+            <Button className="w-10 !px-0" onClick={toggle} aria-label={paused ? t('Слушать') : t('Пауза')}>
               {paused ? <Play size={18} /> : <Pause size={18} />}
             </Button>
           </Tip>
-          <Tip content="Назад на 5 секунд">
+          <Tip content={t('Назад на 5 секунд')}>
             <Button size="sm" onClick={() => skip(-5)}>
-              −5 с
+              {t('−5 с')}
             </Button>
           </Tip>
-          <Tip content="Вперёд на 5 секунд">
+          <Tip content={t('Вперёд на 5 секунд')}>
             <Button size="sm" onClick={() => skip(5)}>
-              +5 с
+              {t('+5 с')}
             </Button>
           </Tip>
-          <Tip content="Скорость: 1×, 1,5×, 2×">
-            <Button size="sm" onClick={nextRate} aria-label={`Скорость ${rate}×`}>
+          <Tip content={t('Скорость: 1×, 1,5×, 2×')}>
+            <Button size="sm" onClick={nextRate} aria-label={t('Скорость {rate}×', { rate })}>
               {rate}×
             </Button>
           </Tip>
           <span className="num">
-            <b>{mmss(t)}</b> / {mmss(total)}
+            <b>{mmss(pos)}</b> / {mmss(total)}
           </span>
-          {nowN != null && <span className="text-[13px] text-muted">звучит реплика {nowN}</span>}
+          {nowN != null && <span className="text-[13px] text-muted">{t('звучит реплика {n}', { n: nowN })}</span>}
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-muted">
-          <Legend tint="var(--na)">Клиент</Legend>
-          <Legend tint="var(--accent)">Оператор</Legend>
-          <Legend tint="var(--line-strong)">Не оценивается</Legend>
-          <Legend tint="var(--ev)">Потеря баллов</Legend>
+          <Legend tint="var(--na)">{t('Клиент')}</Legend>
+          <Legend tint="var(--accent)">{t('Оператор')}</Legend>
+          <Legend tint="var(--line-strong)">{t('Не оценивается')}</Legend>
+          <Legend tint="var(--ev)">{t('Потеря баллов')}</Legend>
         </div>
       </div>
       <div className="wave relative pt-5">
         {hatches.map((f: any) => (
           <div key={f.from} className="hatch pointer-events-none absolute bottom-0 top-0 z-[1] bg-[repeating-linear-gradient(135deg,transparent_0_6px,var(--line)_6px_8px)]" style={{ left: `${(100 * f.t0) / total}%`, width: `${(100 * (f.t1 - f.t0)) / total}%` }}>
-            <span className="block truncate text-center text-[11px] text-muted">{f.label}, не оценивается</span>
+            <span className="block truncate text-center text-[11px] text-muted">{t('{label}, не оценивается', { label: f.label })}</span>
           </div>
         ))}
         <div ref={bars} className="bars relative min-h-16">
           {plain && <PlainBars d={d} total={total} />}
         </div>
         {pins.map(({ k, r, ln }) => (
-          <Tip key={k} content={`Потеря ${k + 1}: ${r.c.name}, ${mmss(ln.s)}`}>
+          <Tip key={k} content={t('Потеря {k}: {name}, {at}', { k: k + 1, name: r.c.name, at: mmss(ln.s) })}>
           <button
             type="button"
             className="pin absolute top-0 z-[2] min-w-[18px] -translate-x-1/2 rounded border border-ev bg-ev-soft px-1 text-[11px] font-semibold leading-4 text-ev hover:bg-ev hover:text-on-accent"
@@ -205,7 +206,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
             data-act="pin"
             data-cid={r.c.id}
             onClick={() => onPin(r.c.id)}
-            aria-label={`Потеря ${k + 1}: ${r.c.name}, ${mmss(ln.s)}`}
+            aria-label={t('Потеря {k}: {name}, {at}', { k: k + 1, name: r.c.name, at: mmss(ln.s) })}
           >
             {k + 1}
           </button>
@@ -220,7 +221,7 @@ export function Player({ d, losses, theme, onNow, onPin }: { d: any; losses: any
         ))}
       </div>
       <audio ref={media} preload="none" src={api.audioUrl(d.id)} />
-      <p className="text-xs text-muted">Нажмите на волну, чтобы перейти к моменту записи. Участки окрашены по ролям из расшифровки.</p>
+      <p className="text-xs text-muted">{t('Нажмите на волну, чтобы перейти к моменту записи. Участки окрашены по ролям из расшифровки.')}</p>
     </section>
   );
 }

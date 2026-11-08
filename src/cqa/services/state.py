@@ -7,6 +7,7 @@ from typing import Any, Literal
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
+from cqa.domain.recommend import for_checklist, for_manager, for_operator, for_qa
 from cqa.domain.report import (
     DEFINITIONS,
     MIN_SCORED,
@@ -20,7 +21,7 @@ from cqa.domain.report import (
 from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
-from cqa.services.errors import NotFound, Unavailable
+from cqa.services.errors import Invalid, NotFound, Unavailable
 from cqa.settings import Settings
 
 
@@ -84,6 +85,27 @@ def report(
     return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 
 
+Audience = Literal["operator", "qa", "manager", "checklist"]
+
+
+def recommendations(store: Store, audience: Audience, operator: str | None) -> dict[str, Any]:
+    """Рекомендации из того же состояния, что GET /api/state; очереди — сохранённая интонация звонков."""
+    checklist, dialogs, appeals = current_state(store)
+    if audience == "operator":
+        if not operator:
+            raise Invalid("Укажите сотрудника: for=operator&id=<имя>")
+        rec = for_operator(checklist, dialogs, appeals, operator)
+        if rec is None:
+            raise NotFound(f"Нет диалогов сотрудника {operator}")
+        return rec
+    if audience == "qa":
+        sound = {d.id: p for d in dialogs if d.ch == "call" and (p := store.prosody(d.id)) is not None}
+        return for_qa(checklist, dialogs, appeals, sound)
+    if audience == "manager":
+        return for_manager(checklist, dialogs, appeals, store.get_owners())
+    return for_checklist(checklist, dialogs, appeals)
+
+
 def operator_rows(store: Store) -> dict[str, Any]:
     return {"definitions": DEFINITIONS, "min_n": MIN_SCORED, "operators": operators(*current_state(store))}
 
@@ -104,10 +126,13 @@ def scores_csv(store: Store, shape: Shape, *, lang: str | None, ch: str | None) 
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:
     checklist, dialogs, appeals = current_state(store)
+    status = store.latest_dialog_status()  # eval_status: диалог в последнем запуске, где он был
     return {
         "checklist": checklist.model_dump(mode="json", exclude_none=True),
         "versions": store.list_versions(),
-        "dialogs": [d.model_dump(mode="json", exclude_none=True) for d in dialogs],
+        "dialogs": [
+            {**d.model_dump(mode="json", exclude_none=True), "eval_status": status.get(d.id)} for d in dialogs
+        ],
         "appeals": [
             a.model_dump(mode="json", by_alias=True, exclude={"ask"} if a.kind == "review" else None)
             for a in appeals
