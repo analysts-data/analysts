@@ -7,7 +7,7 @@ from typing import Any, Literal
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
-from cqa.domain.report import build_report, to_html, to_markdown
+from cqa.domain.report import build_report, to_csv, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
 from cqa.services.errors import Unavailable
 from cqa.settings import Settings
@@ -50,7 +50,7 @@ def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
     return checklist, dialogs, appeals
 
 
-ReportFormat = Literal["html", "json", "md"]
+ReportFormat = Literal["html", "json", "md", "csv"]
 
 
 def report(
@@ -59,7 +59,7 @@ def report(
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
     rep = build_report(checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch)
-    return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
+    return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
 
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:

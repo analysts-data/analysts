@@ -117,7 +117,12 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
-| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/report?format=html\|json\|md\|csv&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/reports` | — | каталог отчётов `[{id, title, description, formats, href_template, items?}]` (раздел «Отчёты по замерам») |
+| `GET /api/quality` | — | прогоны `make eval`, новые первыми: `[{id, created, model, n_dialogs, agree_total, passed}]`; нет отчётов — `[]` |
+| `GET /api/quality/{id}?format=html\|json\|md\|csv` | — | отчёт прогона `make eval`; неизвестный `id` — 404, формат — 422 |
+| `GET /api/runs/{id}/report?format=html\|json\|md\|csv` | — | отчёт запуска оценки; неизвестный запуск — 404 |
+| `GET /api/results/{set}` | — | `set`: `dev` \| `prod`; файл `results/<set>/results.json` (`attachment; filename="results-<set>.json"`), нет файла — 404, другой `set` — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -207,3 +212,15 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Отчёты по замерам (eval-and-delivery, reports-hub)
+
+Все отчёты, кроме файлов результатов, отдаются в одних форматах: `json` — данные как есть, для аналитики; `csv` — UTF-8 с BOM и `;`, таблицы блоками через пустую строку, ячейка с `= + - @` в начале — с апострофом; `md` — для вики и почты; `html` — самодостаточная страница A4 в стиле памятки чек-листа. Без `format` — `html`. `html` — `Content-Disposition: inline`, `csv` и `md` — `attachment; filename="<имя>.<формат>"`.
+
+`GET /api/reports`: `[{"id": "quality", "title": "Качество оценки", "description": "…", "formats": ["html", "json", "md", "csv"], "href_template": "/api/quality/{id}?format={format}", "items": "/api/quality"}]`. В `href_template` интерфейс подставляет `{format}` из `formats`, `{id}` — `id` элемента списка `items`, `{from}` — версию чек-листа. Отчёт попадает в каталог, только если его путь есть в приложении. `id`: `executive`, `quality`, `run` (`items: "/api/runs"`), `scores`, `operators`, `checklist`, `checklist-diff`; `results-dev` и `results-prod` — только если файл есть.
+
+`GET /api/quality`: прогоны из `CQA_EVAL_REPORTS_DIR` (`eval/reports/<YYYYMMDDTHHMMSSZ>.json`, пишет `make eval`); `created` — время из имени файла, ISO UTC; `passed` — пустой `problems`. Файлы `holdout-*`, битые и чужого формата пропускаются.
+
+`GET /api/quality/{id}`: `json` — тело файла `make eval` (поля `Report`, `cost_per_dialog`, `calls_per_dialog`, `problems`) и `{id, created, thresholds: [{name, label, limit, upper, value, ok}]}` — каждый порог `eval/thresholds.yaml` против значения прогона: `upper` — порог сверху, `ok: null` — значения нет (у `baseline_drop_max_pts` всегда, регресс к лучшему прогону — в `problems`). `csv`, `md`, `html` — сводка, совпадение по языкам и критериям, полнота грубых ошибок по видам и языкам и ложные флаги, пропущенные грубые ошибки, N/A, цена и время, пороги, замечания прогона, расхождения (диалог, критерий, эталон, ответ модели). Обоснования и цитаты модели (`why`, `quote`) — только в `json`: печатные отчёты не несут текста, производного от диалогов. Отчёты `make eval` в git не попадают.
+
+`GET /api/runs/{id}/report`: `json` — `{id, total, done, cost, calls, errors, status, started, finished, started_at, finished_at, progress, models: [строка], checklist_versions: [число], criteria: [{cid, name, n, answers: {"yes": 5, "no": 2, "na": 1, "3": 4, "<k>+<k>": 1, "none": 3}}]}`; `answers` — ответы запуска по значению (флаг — отмеченные подвопросы через `+`, `none` — без нарушений). Ответы запуска — результаты, записанные между `started` и `finished` (у идущего — до сейчас), включая ручные.

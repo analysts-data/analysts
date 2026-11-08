@@ -60,7 +60,7 @@ def _na(c: Criterion) -> str:
 # --- CSV для Excel ---
 
 
-def _cell(s: str) -> str:
+def excel_cell(s: str) -> str:
     """Ячейка с = + - @ в начале — формула для Excel: апостроф оставляет её текстом."""
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
 
@@ -78,7 +78,7 @@ def to_csv(cl: Checklist) -> str:
             "да" if c.na else "нет", (c.naCond or "") if c.na else "", CHANNEL[c.channel], c.text,
             "; ".join(f"{s} — {t}" for s, t in _steps(c)), c.call or "", "; ".join(_questions(c)),
         ]  # fmt: skip
-        out.writerow([_cell(x) for x in row])
+        out.writerow([excel_cell(x) for x in row])
     return "﻿" + buf.getvalue()
 
 

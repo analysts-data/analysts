@@ -53,3 +53,5 @@ class Settings(BaseSettings):
     db_path: str = "data/cqa.db"
     eval_dataset: Path = Path("data/dev.json")
     holdout_dir: Path | None = None
+    eval_reports_dir: Path = Path("eval/reports")  # отчёты make eval для GET /api/quality
+    results_dir: Path = Path("results")  # файлы организаторов <set>/results.json

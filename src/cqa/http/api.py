@@ -1,16 +1,18 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
+import time
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.services import reports
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import (
@@ -123,7 +125,52 @@ async def get_report(
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
+    return _file(body, fmt, "report")
+
+
+def _file(body: dict[str, Any] | str, fmt: str, name: str) -> Response:
+    """json — ответ JSON; html открывается во вкладке, csv и md скачиваются файлом name.<fmt>."""
+    if isinstance(body, dict):
+        return JSONResponse(body)
+    how = "inline" if fmt == "html" else "attachment"
+    return Response(
+        body, media_type=MEDIA[fmt], headers={"Content-Disposition": f'{how}; filename="{name}.{fmt}"'}
+    )
+
+
+@router.get("/reports")
+async def get_reports(request: Request) -> list[dict[str, Any]]:
+    """Каталог отчётов для страницы «Отчёты»."""
+    routes = set(request.app.openapi()["paths"])  # пути всех роутеров; схема кэшируется
+    return reports.catalogue(routes, request.app.state.settings.results_dir)
+
+
+@router.get("/quality")
+async def get_quality_runs(request: Request) -> list[dict[str, Any]]:
+    return reports.quality_runs(request.app.state.settings.eval_reports_dir)
+
+
+@router.get("/quality/{report_id}")
+async def get_quality(
+    report_id: str, request: Request, fmt: Annotated[reports.Format, Query(alias="format")] = "html"
+) -> Response:
+    state = request.app.state
+    body = reports.quality(state.store, state.settings.eval_reports_dir, report_id, fmt)
+    return _file(body, fmt, f"quality-{report_id}")
+
+
+@router.get("/runs/{run_id}/report")
+async def get_run_report(
+    run_id: int, request: Request, fmt: Annotated[reports.Format, Query(alias="format")] = "html"
+) -> Response:
+    return _file(reports.run(request.app.state.store, run_id, fmt, time.time()), fmt, f"run-{run_id}")
+
+
+@router.get("/results/{which}")
+async def get_results(which: Literal["dev", "prod"], request: Request) -> FileResponse:
+    """Файл организаторов results/<which>/results.json, собранный make results."""
+    path = reports.results_file(request.app.state.settings.results_dir, which)
+    return FileResponse(path, media_type="application/json", filename=f"results-{which}.json")
 
 
 @router.post("/dialogs/text")
@@ -151,9 +198,7 @@ async def get_checklist_export(
 ) -> Response:
     """Файл версии v (без v — текущей); памятка html открывается во вкладке, остальное скачивается."""
     version, body = export_checklist(request.app.state.store, v, fmt)
-    how = "inline" if fmt == "html" else "attachment"
-    disposition = f'{how}; filename="checklist-v{version}.{fmt}"'
-    return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
+    return _file(body, fmt, f"checklist-v{version}")
 
 
 def _diff_out(result: dict[str, Any] | str) -> Response:
