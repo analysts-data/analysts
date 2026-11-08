@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ansTxt, f2, fn, mmss, titleOf } from '../lib/format.js';
 import { groupOf, queueOrder } from '../lib/queue.js';
+import { t } from '../lib/i18n.js';
 import { href } from '../lib/router.js';
 import { ans, calc, flagsOf, flagWhy, lastDec } from '../lib/scoring.js';
 import { api, reload, startRun, toast } from '../lib/state.js';
@@ -16,15 +17,18 @@ import { AppealDialog } from './AppealDialog';
 import { ALL, Criteria, type Ctx } from './card/Criteria';
 import { CardForms, type Pending } from './card/Forms';
 import { IntonationPanel, useProsody } from './card/Intonation';
+import { evalOf, OpsBar, rerun } from './card/Ops';
 import { Player, seek } from './card/Player';
 import { Transcript } from './card/Transcript';
 import { lineBy, plural, scored } from './card/util';
+import { Why } from './card/Why';
 
-const LANG: Record<string, string> = { RU: 'Русский', KZ: 'Қазақша', EN: 'English' };
-const STATUS: Record<string, React.ReactNode> = {
-  risk: <Chip tone="risk">Грубая ошибка, нужна проверка</Chip>,
-  review: <Chip tone="info">Нужна проверка человека</Chip>,
-  next: <Chip tone="ev">Без следующего шага</Chip>,
+// функции, а не значения: t() срабатывает при отрисовке, на выбранном языке
+const LANG: Record<string, () => string> = { RU: () => t('Русский'), KZ: () => t('Қазақша'), EN: () => t('English') };
+const STATUS: Record<string, () => React.ReactNode> = {
+  risk: () => <Chip tone="risk">{t('Грубая ошибка, нужна проверка')}</Chip>,
+  review: () => <Chip tone="info">{t('Нужна проверка человека')}</Chip>,
+  next: () => <Chip tone="ev">{t('Без следующего шага')}</Chip>,
 };
 
 function disagree(S: any, d: any) {
@@ -45,9 +49,17 @@ function defaultOpen(S: any, d: any, sum: any) {
 // Стоимость последней оценки — Dialog.cost как есть, по критериям не пересчитывается.
 function costLine(S: any, d: any) {
   const model = S.mode ? S.mode.model : '';
-  if (!d.cost) return `Модель ${model}. Диалог ещё не оценивался.`;
+  if (!d.cost) return t('Модель {model}. Диалог ещё не оценивался.', { model });
   const { calls, verifier_calls: v, usd, ms } = d.cost;
-  return `Оценка: ${model}. ${calls} ${plural(calls, 'вызов', 'вызова', 'вызовов')} основной модели и ${v} ${plural(v, 'запрос', 'запроса', 'запросов')} второго мнения, ${fn(ms / 1000)} с, $${f2(usd)}.`;
+  return t('Оценка: {model}. {calls} {callsWord} основной модели и {v} {vWord} второго мнения, {sec} с, ${usd}.', {
+    model,
+    calls,
+    callsWord: plural(calls, t('вызов'), t('вызова'), t('вызовов')),
+    v,
+    vWord: plural(v, t('запрос'), t('запроса'), t('запросов')),
+    sec: fn(ms / 1000),
+    usd: f2(usd),
+  });
 }
 
 const Label = ({ children }: { children: React.ReactNode }) => <h2 className="text-[15px] font-semibold">{children}</h2>;
@@ -63,6 +75,7 @@ export function CardView({ id }: { id: string | null }) {
   const [form, setForm] = useState<Pending>(null);
   const [appealCid, setAppealCid] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [again, setAgain] = useState(false);
 
   // Переход к реплике: прокрутка после отрисовки (критерий мог только что раскрыться).
   useEffect(() => {
@@ -74,10 +87,10 @@ export function CardView({ id }: { id: string | null }) {
   if (!d)
     return (
       <PageHead
-        title="Диалог не найден"
+        title={t('Диалог не найден')}
         sub={
           <>
-            Диалога «{id}» нет в загруженном наборе. <a href="#/queue">Вернуться к списку</a>
+            {t('Диалога «{id}» нет в загруженном наборе.', { id })} <a href="#/queue">{t('Вернуться к списку')}</a>
           </>
         }
       />
@@ -144,18 +157,19 @@ export function CardView({ id }: { id: string | null }) {
     try {
       await api.postReviewed(d.id, on);
     } catch (e: any) {
-      toast(`Отметка не сохранена: ${e.message}`);
+      toast(t('Отметка не сохранена: {err}', { err: e.message }));
       return;
     } finally {
       setBusy(false);
     }
     await reload();
-    toast(on ? `${titleOf(d)} отмечен проверенным и уходит из верхних групп очереди.` : 'Отметка снята, диалог вернулся в очередь.');
+    toast(on ? t('{title} отмечен проверенным и уходит из верхних групп очереди.', { title: titleOf(d) }) : t('Отметка снята, диалог вернулся в очередь.'));
   };
+  const evalNow = evalOf(S, d.id);
   const evalOne = () => {
     if (running) return;
     // запуск в replay заканчивается за миллисекунды: уведомление о старте рисуется сразу, до итогового
-    flushSync(() => toast(`Оценка ${titleOf(d)} запущена.`));
+    flushSync(() => toast(t('Оценка {title} запущена.', { title: titleOf(d) })));
     startRun({ dialogs: [d.id], criteria: null });
   };
 
@@ -164,66 +178,95 @@ export function CardView({ id }: { id: string | null }) {
 
   return (
     <>
-      <nav className="flex flex-wrap items-center justify-between gap-2" aria-label="Навигация по очереди">
+      <nav className="flex flex-wrap items-center justify-between gap-2" aria-label={t('Навигация по очереди')}>
         <a href="#/queue" className="inline-flex items-center gap-1 text-[13px]">
-          <ChevronLeft size={15} aria-hidden="true" /> Все диалоги
+          <ChevronLeft size={15} aria-hidden="true" /> {t('Все диалоги')}
         </a>
         <div className="flex items-center gap-2 text-[13px]">
           <span className="text-muted">
-            {i + 1} из {ord.length} в очереди
+            {t('{n} из {total} в очереди', { n: i + 1, total: ord.length })}
           </span>
           {prev && (
-            <LinkButton size="sm" href={href('d', prev)} aria-label="Предыдущий диалог">
-              <ChevronLeft size={15} aria-hidden="true" /> Предыдущий
+            <LinkButton size="sm" href={href('d', prev)} aria-label={t('Предыдущий диалог')}>
+              <ChevronLeft size={15} aria-hidden="true" /> {t('Предыдущий')}
             </LinkButton>
           )}
           {next && (
-            <LinkButton size="sm" href={href('d', next)} aria-label="Следующий диалог">
-              Следующий <ChevronRight size={15} aria-hidden="true" />
+            <LinkButton size="sm" href={href('d', next)} aria-label={t('Следующий диалог')}>
+              {t('Следующий')} <ChevronRight size={15} aria-hidden="true" />
             </LinkButton>
           )}
         </div>
       </nav>
 
-      <PageHead title={titleOf(d)} sub={`${call ? `Звонок, ${mmss(d.dur || 0)}` : 'Чат'}, ${LANG[d.lang] || d.lang}, ${d.at}, чек-лист v${cl.version}`}>
-        {(S.role !== 'operator' || group === 'risk') && STATUS[group]}
-        {d.reviewed && <Chip tone="ok">Проверен</Chip>}
+      <PageHead title={titleOf(d)} sub={`${call ? t('Звонок, {dur}', { dur: mmss(d.dur || 0) }) : t('Чат')}, ${LANG[d.lang]?.() || d.lang}, ${d.at}, ${t('чек-лист v{v}', { v: cl.version })}`}>
+        {(S.role !== 'operator' || group === 'risk') && STATUS[group]?.()}
+        {d.reviewed && <Chip tone="ok">{t('Проверен')}</Chip>}
+        {(evalNow === 'queued' || evalNow === 'running') && (
+          <span className="text-[13px] text-muted" role="status" data-eval={evalNow}>
+            {evalNow === 'queued' ? t('В очереди на оценку') : t('Оценивается…')}
+          </span>
+        )}
         {qa && todo > 0 && (
-          <Tip content={running ? 'Идёт оценка набора. Кнопка станет активной, когда она закончится.' : null}>
+          <Tip content={running ? t('Идёт оценка набора. Кнопка станет активной, когда она закончится.') : null}>
             <span>
               <Button variant="primary" data-act="evalone" disabled={running} onClick={evalOne}>
-                {running ? 'Идёт оценка…' : 'Оценить моделью'}
+                {running ? t('Идёт оценка…') : t('Оценить моделью')}
+              </Button>
+            </span>
+          </Tip>
+        )}
+        {qa && todo < cl.criteria.length && (
+          <Tip
+            content={
+              running
+                ? t('Идёт оценка. Кнопка станет активной, когда она закончится.')
+                : t('Модель оценит диалог ещё раз. Ручные ответы и решения по апелляциям не меняются, прежние оценки остаются в истории.')
+            }
+          >
+            <span>
+              <Button
+                data-act="rerun"
+                disabled={running || again}
+                onClick={async () => {
+                  setAgain(true);
+                  await rerun(d);
+                  setAgain(false);
+                }}
+              >
+                {t('Оценить заново')}
               </Button>
             </span>
           </Tip>
         )}
         {qa && (
           <Button data-act="reviewed" disabled={busy} onClick={markReviewed}>
-            {d.reviewed ? 'Снять отметку' : 'Отметить проверенным'}
+            {d.reviewed ? t('Снять отметку') : t('Отметить проверенным')}
           </Button>
         )}
         {S.role === 'operator' && (
           <Button variant="primary" data-act="appealtop" onClick={() => setAppealCid((sum.losses[0] || flagLoss)?.c?.id ?? scored(cl)[0]?.id)}>
-            Оспорить оценку
+            {t('Оспорить оценку')}
           </Button>
         )}
       </PageHead>
+      <OpsBar d={d} onLine={jump} />
 
-      <Card className="sum grid grid-cols-1 divide-y divide-line2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0" aria-label="Сводка">
+      <Card className="sum grid grid-cols-1 divide-y divide-line2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0" aria-label={t('Сводка')}>
         <Panel>
           {/* «Итог» — прямой потомок блока с числом: шаг защиты no_total читает родителя этой надписи */}
           <Tip content={TERMS.total}>
-            <h2 className="cursor-help self-start text-[15px] font-semibold">Итог</h2>
+            <h2 className="cursor-help self-start text-[15px] font-semibold">{t('Итог')}</h2>
           </Tip>
           <div className="flex flex-wrap items-center gap-4" data-total={sum.total ?? ""}>
-            <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={`Итог ${f2(sum.total)} из 100`} className="flex-none">
+            <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={t('Итог {total} из 100', { total: f2(sum.total) })} className="flex-none">
               <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent-soft" strokeWidth="11" />
               <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${dash} ${C}`} transform="rotate(-90 62 62)" />
               <text x="62" y="66" textAnchor="middle" fontSize="25" fontWeight="700" className="fill-ink">
                 <CountUp value={sum.total} format={f2} />
               </text>
               <text x="62" y="86" textAnchor="middle" fontSize="12" className="fill-muted">
-                из 100
+                {t('из 100')}
               </text>
             </svg>
             <div className="secs flex min-w-[150px] flex-1 flex-col gap-1 text-[13px]">
@@ -238,32 +281,32 @@ export function CardView({ id }: { id: string | null }) {
             </div>
           </div>
           {flags.length > 0 && (
-            <Tip content={`Итог ${f2(sum.total)} считается без неё: грубая ошибка не снижает балл, а отправляет диалог на обязательную проверку.`}>
+            <Tip content={t('Итог {total} считается без неё: грубая ошибка не снижает балл, а отправляет диалог на обязательную проверку.', { total: f2(sum.total) })}>
               <span tabIndex={0} className="self-start">
                 <Chip tone="risk" className="cursor-help">
-                  Есть грубая ошибка
+                  {t('Есть грубая ошибка')}
                 </Chip>
               </span>
             </Tip>
           )}
           <details className="text-[13px]">
-            <summary className="cursor-pointer font-semibold text-accent">Как посчитан итог</summary>
+            <summary className="cursor-pointer font-semibold text-accent">{t('Как посчитан итог')}</summary>
             <p className="mt-1.5 text-muted">
-              {fn(sum.G)} балла из {sum.W} применимых, приведено к 100.
+              {t('{g} балла из {w} применимых, приведено к 100.', { g: fn(sum.G), w: sum.W })}
               {naRows.length ? (
                 <>
                   {' '}
-                  <Term k="na">N/A</Term> у критериев {naRows.map((x: any) => x.id).join(', ')}: их вес распределён между остальными.
+                  <Term k="na">N/A</Term> {t('у критериев {ids}: их вес распределён между остальными.', { ids: naRows.map((x: any) => x.id).join(', ') })}
                 </>
               ) : (
-                ' N/A нет, веса не перераспределялись.'
+                ' ' + t('N/A нет, веса не перераспределялись.')
               )}
-              {sum.pending ? ` Ждут оценки: ${sum.pending}, итог предварительный.` : ''}
+              {sum.pending ? ' ' + t('Ждут оценки: {n}, итог предварительный.', { n: sum.pending }) : ''}
             </p>
           </details>
         </Panel>
         <Panel>
-          <Label>Почему снижена оценка</Label>
+          <Label>{t('Почему снижена оценка')}</Label>
           {sum.losses.length ? (
             sum.losses.slice(0, 3).map((r: any, k: number) => {
               const rr = d.res[r.c.id] || {},
@@ -286,7 +329,7 @@ export function CardView({ id }: { id: string | null }) {
                       <>
                         <br />
                         <span className="text-accent">
-                          Реплика {ln.n}
+                          {t('Реплика {n}', { n: ln.n })}
                           {call ? `, ${mmss(ln.t)}` : ''}
                         </span>
                       </>
@@ -297,18 +340,22 @@ export function CardView({ id }: { id: string | null }) {
               );
             })
           ) : (
-            <p className="text-muted">Все применимые критерии выполнены полностью.</p>
+            <p className="text-muted">{t('Все применимые критерии выполнены полностью.')}</p>
           )}
           <p className="text-xs text-muted">
-            {sum.losses.length > 3 ? `Ещё ${sum.losses.length - 3} в списке критериев. ` : ''}Сумма потерь равна 100 − итог.
+            {sum.losses.length > 3 ? t('Ещё {n} в списке критериев.', { n: sum.losses.length - 3 }) + ' ' : ''}
+            {t('Сумма потерь равна 100 − итог.')}
           </p>
         </Panel>
         <Panel>
           <div className="flex items-center justify-between gap-2">
             <Label>
-              <Term k="gross">Грубые ошибки</Term>
+              <Term k="gross">{t('Грубые ошибки')}</Term>
             </Label>
-            {flags.length ? <Chip tone="risk">Найдены: {flags.length}</Chip> : frr ? <Chip tone="ok">Не найдены</Chip> : <Chip tone="ev">Ждут оценки</Chip>}
+            <span className="flex items-center gap-2">
+              {frr?.basis != null && <Why title={t('Почему: грубые ошибки')} basis={frr.basis} d={d} onLine={jump} />}
+              {flags.length ? <Chip tone="risk">{t('Найдены: {n}', { n: flags.length })}</Chip> : frr ? <Chip tone="ok">{t('Не найдены')}</Chip> : <Chip tone="ev">{t('Ждут оценки')}</Chip>}
+            </span>
           </div>
           {fw &&
             fw.qs
@@ -326,7 +373,7 @@ export function CardView({ id }: { id: string | null }) {
                     {ln && (
                       <span>
                         <Button size="sm" data-act="goto" data-cid={fr.id} onClick={() => goto(fr.id, ln.n)}>
-                          К реплике {ln.n}
+                          {t('К реплике {n}', { n: ln.n })}
                         </Button>
                       </span>
                     )}
@@ -335,7 +382,7 @@ export function CardView({ id }: { id: string | null }) {
               })}
           {fr && (
             <p className="text-[13px] text-muted">
-              {flags.length ? 'Не найдено: ' : 'Проверено: '}
+              {flags.length ? t('Не найдено:') : t('Проверено:')}{' '}
               {(fr.questions || [])
                 .filter((q: any) => !(fa && fa[q.k]))
                 .map((q: any) => q.label)
@@ -344,11 +391,13 @@ export function CardView({ id }: { id: string | null }) {
             </p>
           )}
           <p className="text-xs text-muted">
-            Каждый вид проверяется отдельным вопросом. Грубая ошибка ставится, если её нашла {S.mode?.verifier || answered ? 'хотя бы одна из двух моделей' : 'модель'}. Итог она не обнуляет.
+            {S.mode?.verifier || answered
+              ? t('Каждый вид проверяется отдельным вопросом. Грубая ошибка ставится, если её нашла хотя бы одна из двух моделей. Итог она не обнуляет.')
+              : t('Каждый вид проверяется отдельным вопросом. Грубая ошибка ставится, если её нашла модель. Итог она не обнуляет.')}
           </p>
           {answered > 0 && S.role !== 'operator' && (
             <p className="mt-auto border-t border-line2 pt-2.5 text-[13px]">
-              <Term k="second">Второе мнение</Term> совпало по {answered - disagree(S, d).length} из {answered} критериев
+              <Term k="second">{t('Второе мнение')}</Term> {t('совпало по {n} из {total} критериев', { n: answered - disagree(S, d).length, total: answered })}
             </p>
           )}
         </Panel>
@@ -362,10 +411,10 @@ export function CardView({ id }: { id: string | null }) {
       )}
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-        <section className="min-w-0 rounded-card border border-line bg-surface shadow-card" aria-label="Расшифровка">
+        <section className="min-w-0 rounded-card border border-line bg-surface shadow-card" aria-label={t('Расшифровка')}>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
-            <h2 className="text-base font-semibold">{call ? 'Расшифровка звонка' : 'Переписка'}</h2>
-            <span className="text-xs text-muted">{call ? 'Время от начала записи. ▶ ставит запись на начало реплики' : 'Время из чата, исходные метки сохранены'}</span>
+            <h2 className="text-base font-semibold">{call ? t('Расшифровка звонка') : t('Переписка')}</h2>
+            <span className="text-xs text-muted">{call ? t('Время от начала записи. ▶ ставит запись на начало реплики') : t('Время из чата, исходные метки сохранены')}</span>
           </div>
           <div className="tr flex max-h-[78vh] flex-col gap-2 overflow-y-auto p-3" id="tr">
             <Transcript
@@ -377,13 +426,13 @@ export function CardView({ id }: { id: string | null }) {
             />
           </div>
         </section>
-        <section className="min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-card" aria-label="Оценка по критериям">
+        <section className="min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-card" aria-label={t('Оценка по критериям')}>
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-            <h2 className="text-base font-semibold">Оценка по критериям</h2>
+            <h2 className="text-base font-semibold">{t('Оценка по критериям')}</h2>
             <span className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted">Нажмите на критерий: обоснование и реплики-основания</span>
+              <span className="text-xs text-muted">{t('Нажмите на критерий: обоснование и реплики-основания')}</span>
               <Button size="sm" data-act="critall" aria-expanded={open === ALL} onClick={() => setOpen(open === ALL ? null : ALL)}>
-                {open === ALL ? 'Свернуть' : 'Развернуть все обоснования'}
+                {open === ALL ? t('Свернуть') : t('Развернуть все обоснования')}
               </Button>
             </span>
           </div>
