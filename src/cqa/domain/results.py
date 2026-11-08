@@ -42,6 +42,9 @@ def _record(
 ) -> dict[str, Any]:
     if dialog is None:
         return _error(conversation_id, "диалога нет в базе: запись источника не загружена")
+    if (s := dialog.sufficiency) is not None and s.status == "block":  # не выдумывать итог: error с причиной
+        why = "; ".join(f"{r.text} ({r.basis})" for r in s.reasons if r.outcome == "block")
+        return _error(conversation_id, f"недостаточно данных: {why}")
     by_id = {c.id: c for c in checklist.criteria}
     pairs = {cid: [x for x in appeals if x.dlg == dialog.id and x.cid == cid] for cid in dialog.res}
     answers = {cid: effective_answer(r, pairs[cid]) for cid, r in dialog.res.items()}

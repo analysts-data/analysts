@@ -2914,6 +2914,69 @@
         "description": "Текущая версия → черновик из тела; ничего не сохраняет."
       }
     },
+    "/api/sufficiency": {
+      "get": {
+        "summary": "Get Sufficiency",
+        "description": "Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий.",
+        "operationId": "get_sufficiency_api_sufficiency_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Sufficiency Api Sufficiency Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Put Sufficiency",
+        "operationId": "put_sufficiency_api_sufficiency_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Put Sufficiency Api Sufficiency Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/owners": {
       "put": {
         "summary": "Владельцы причин",
@@ -10186,6 +10249,17 @@
             "title": "Ms",
             "default": 0
           },
+          "reviewWhy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewwhy"
+          },
           "cid": {
             "type": "string",
             "title": "Cid",
@@ -10347,6 +10421,17 @@
             "type": "integer",
             "title": "Ms",
             "default": 0
+          },
+          "reviewWhy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewwhy"
           }
         },
         "type": "object",
@@ -10502,6 +10587,16 @@
               }
             ],
             "title": "Operator"
+          },
+          "sufficiency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Sufficiency"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10795,6 +10890,19 @@
           "label"
         ],
         "title": "Fold"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
       },
       "JevQuestion": {
         "properties": {
@@ -11115,6 +11223,39 @@
         ],
         "title": "Question"
       },
+      "Reason": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "basis": {
+            "type": "string",
+            "title": "Basis"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "block",
+              "flag",
+              "info"
+            ],
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "basis",
+          "outcome"
+        ],
+        "title": "Reason"
+      },
       "RecordIn": {
         "properties": {
           "conversation_id": {
@@ -11366,6 +11507,32 @@
         ],
         "title": "SourceIn"
       },
+      "Sufficiency": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "flag",
+              "block"
+            ],
+            "title": "Status"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Sufficiency"
+      },
       "TextIn": {
         "properties": {
           "title": {
@@ -11429,6 +11596,46 @@
           "text"
         ],
         "title": "TurnIn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     },
     "securitySchemes": {

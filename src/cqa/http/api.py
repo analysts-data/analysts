@@ -68,6 +68,8 @@ from cqa.services.state import (
     report,
     scores_csv,
 )
+from cqa.services.sufficiency import configure as configure_sufficiency
+from cqa.services.sufficiency import view as sufficiency_view
 from cqa.services.sync import Syncer
 from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
@@ -370,6 +372,19 @@ async def post_checklist_diff(
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
+@router.get("/sufficiency")
+async def get_sufficiency(request: Request) -> dict[str, Any]:
+    """Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий."""
+    return sufficiency_view(request.app.state.store)
+
+
+@router.put("/sufficiency")
+async def put_sufficiency(body: dict[str, str], request: Request) -> dict[str, Any]:
+    saved = configure_sufficiency(request.app.state.store, body)
+    _log(request, "sufficiency.save", "sufficiency", "", dict(body))
+    return saved
+
+
 @router.put("/owners", summary="Назначить ответственных за причины снижения")
 async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]:
     owners = save_owners(request.app.state.store, body)
@@ -477,6 +492,7 @@ FEATURES = {
     "batches": "/api/batches",
     "routing": "/api/routing",
     "automation": "/api/automation",
+    "sufficiency": "/api/sufficiency",
 }
 
 
