@@ -137,6 +137,12 @@ const Item = ({ k, name, children }: { k: string; name: string; children: React.
 /** Есть что показать в «Почему»: не пустые поля basis. */
 const hasBasis = (b: any) => (typeof b === 'string' ? Boolean(b) : b != null && Object.values(b).some(v => v != null && v !== '' && !(Array.isArray(v) && !v.length)));
 
+const LineLink = ({ n, onLine }: { n: number; onLine: (n: number) => void }) => (
+  <button type="button" className="text-xs font-semibold text-accent hover:text-accent-ink" onClick={() => onLine(n)}>
+    {t('Реплика {n}', { n })}
+  </button>
+);
+
 export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
   const S = useS();
   const [undo, setUndo] = useState<any>(null);
@@ -145,6 +151,9 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
   const qa = S.role === 'qa';
   const p = d.product;
   const markers: any[] = d.markers || [];
+  // риск модели приходит и маркером «risk:<k>»: такой риск рисуется один раз, в строке маркеров (там его можно снять)
+  const riskOf = (m: any) => (m.k.startsWith('risk:') ? (d.risks ?? []).find((r: any) => 'risk:' + r.k === m.k) : null);
+  const loose = (d.risks ?? []).filter((r: any) => !markers.some(m => m.k === 'risk:' + r.k));
   const people: Opt[] = (S.employees || []).filter((e: any) => e.role === 'operator' && e.active !== false).map((e: any) => ({ v: e.name, t: e.team || '' }));
 
   const putMarkers = async (body: { add?: string[]; remove?: string[] }) => {
@@ -236,21 +245,25 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
 
       <Item k={t('Маркеры')} name="markers">
         {!markers.length && !undo && <span className="text-muted">{t('нет')}</span>}
-        {markers.map(m => (
-          <span key={m.k} className="inline-flex items-center gap-1" data-marker={m.k}>
-            <Chip tone={m.auto ? 'ev' : 'na'}>
-              {m.label}
-              {qa && (
-                <Tip content={t('Снять маркер «{label}»', { label: m.label })}>
-                  <button type="button" className="-mr-1 rounded-full hover:bg-hover" data-act="unmark" aria-label={t('Снять маркер «{label}»', { label: m.label })} disabled={busy} onClick={() => unmark(m)}>
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </Tip>
-              )}
-            </Chip>
-            {m.auto && hasBasis(m.basis) && <Why title={t('Почему маркер «{label}»', { label: m.label })} basis={m.basis} d={d} onLine={onLine} />}
-          </span>
-        ))}
+        {markers.map(m => {
+          const risk = riskOf(m);
+          return (
+            <span key={m.k} className="inline-flex items-center gap-1" data-marker={m.k}>
+              <Chip tone={risk ? 'risk' : m.auto ? 'ev' : 'na'}>
+                {m.label}
+                {qa && (
+                  <Tip content={t('Снять маркер «{label}»', { label: m.label })}>
+                    <button type="button" className="-mr-1 rounded-full hover:bg-hover" data-act="unmark" aria-label={t('Снять маркер «{label}»', { label: m.label })} disabled={busy} onClick={() => unmark(m)}>
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </Tip>
+                )}
+              </Chip>
+              {risk?.lines?.length > 0 && <LineLink n={risk.lines[0]} onLine={onLine} />}
+              {m.auto && hasBasis(m.basis) && <Why title={t('Почему маркер «{label}»', { label: m.label })} basis={m.basis} d={d} onLine={onLine} />}
+            </span>
+          );
+        })}
         {undo && (
           <Button size="sm" variant="ghost" data-act="unmark-undo" disabled={busy} onClick={restore}>
             {t('Вернуть «{label}»', { label: undo.label })}
@@ -274,16 +287,12 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
           />
         )}
       </Item>
-      {(d.risks?.length ?? 0) > 0 && (
+      {loose.length > 0 && (
         <Item k={t('Риски')} name="risks">
-          {d.risks.map((r: any) => (
+          {loose.map((r: any) => (
             <span key={r.k} className="inline-flex items-center gap-1.5" data-risk={r.k}>
               <Chip tone="risk">{r.label}</Chip>
-              {r.lines?.length > 0 && (
-                <button type="button" className="text-xs font-semibold text-accent hover:text-accent-ink" onClick={() => onLine(r.lines[0])}>
-                  {t('Реплика {n}', { n: r.lines[0] })}
-                </button>
-              )}
+              {r.lines?.length > 0 && <LineLink n={r.lines[0]} onLine={onLine} />}
               {r.basis && (
                 <Tip content={typeof r.basis === 'string' ? r.basis : (r.basis.why ?? '')}>
                   <span tabIndex={0} className="cursor-help text-xs text-muted underline decoration-dotted underline-offset-2">

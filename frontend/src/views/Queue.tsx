@@ -110,13 +110,37 @@ function Total({ x }: { x: Row }) {
   );
 }
 
+/** Метка в строке: длинное название обрезано, полное — в подсказке. */
+function Tag({ label, tone, ...p }: { label: string; tone: Tone } & Record<string, string>) {
+  const chip = (
+    <Chip tone={tone} className="max-w-[15rem]" {...p}>
+      <span className="truncate">{label}</span>
+    </Chip>
+  );
+  return label.length > 30 ? (
+    <Tip content={label}>
+      <span className="inline-flex min-w-0">{chip}</span>
+    </Tip>
+  ) : (
+    chip
+  );
+}
+
+/** Маркеры и риски диалога; маркер «risk:<k>» дублирует риск, поэтому риск рисуется один раз, красным. */
+const tags = (d: any) => [
+  ...markersOf(d)
+    .filter(m => !m.k.startsWith('risk:'))
+    .map(m => <Tag key={m.k} tone="na" className="mark" data-k={m.k} label={m.label || m.k} />),
+  ...(d.risks ?? []).map((r: any) => <Tag key={'r' + r.k} tone="risk" data-risk={r.k} label={r.label} />),
+];
+
 /** «Почему в очереди»: чип причины; у грубой ошибки ещё причина модели и ссылка на реплику. */
 function Why({ x, op }: { x: Row; op: boolean }) {
   const S = useS();
   if (op && x.g === 'review') return null; // оператор не видит «Нужна проверка человека»
   const why = reasonOf(x.d, S.checklist, S.appeals);
   if (!why.text) return null;
-  const chip = <Chip tone={TONE[why.cls] ?? 'na'} className="!whitespace-normal md:!whitespace-nowrap">{why.text}</Chip>;
+  const chip = <Chip tone={TONE[why.cls] ?? 'na'} className="!whitespace-normal !rounded-[10px] min-[1360px]:!whitespace-nowrap">{why.text}</Chip>;
   if (x.g === 'review') {
     // в тексте причины номер критерия: подсказка с названием
     const c = S.checklist.criteria.find((c: any) => c.id === why.text.match(/\b\d{2}\b/)?.[0]);
@@ -371,26 +395,9 @@ export function Queue() {
                             <Status d={x.d} c={x.c} />
                             <SufficiencyChip d={x.d} />
                           </span>
-                          {markersOf(x.d).length > 0 && (
-                            <span className="mt-1 flex flex-wrap gap-1">
-                              {markersOf(x.d).map(m => (
-                                <Chip key={m.k} tone="na" className="mark" data-k={m.k}>
-                                  {m.label || m.k}
-                                </Chip>
-                              ))}
-                            </span>
-                          )}
-                          {(x.d.risks?.length ?? 0) > 0 && (
-                            <span className="mt-1 flex flex-wrap gap-1">
-                              {x.d.risks.map((r: any) => (
-                                <Chip key={r.k} tone="risk" data-risk={r.k}>
-                                  {r.label}
-                                </Chip>
-                              ))}
-                            </span>
-                          )}
+                          {tags(x.d).length > 0 && <span className="mt-1 flex flex-wrap gap-1">{tags(x.d)}</span>}
                         </td>
-                        {withOp && <td className={cn('hidden md:table-cell', !x.d.operator && 'text-muted')}>{x.d.operator || t('Не указан')}</td>}
+                        {withOp && <td className={cn('hidden whitespace-nowrap md:table-cell', !x.d.operator && 'text-muted')}>{x.d.operator || t('Не указан')}</td>}
                         <td className="hidden md:table-cell">
                           {chOf(x.d)}, {x.d.lang}
                           {productOf(x.d) && <span className="block text-xs text-muted">{productOf(x.d).name}</span>}

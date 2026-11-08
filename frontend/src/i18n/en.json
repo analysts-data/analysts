@@ -1788,5 +1788,7 @@
   "Справочник тем сохранён. Темы диалогов обновятся при следующей оценке набора.": "Topic list saved. Dialog topics update at the next dataset evaluation.",
   "Описание для модели": "Description for the model",
   "Удалить тему": "Delete topic",
-  "Добавить тему": "Add topic"
+  "Добавить тему": "Add topic",
+  "Перепроверить другой моделью или с другими настройками": "Recheck with another model or other settings",
+  "Показать ещё {n}": "Show {n} more"
 }
