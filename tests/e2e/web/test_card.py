@@ -15,7 +15,7 @@ def test_call_card_shows_total_sections_losses_and_points(
     page: Page, open_card: Callable[..., list[str]]
 ) -> None:
     errors = open_card("call-024")
-    expect(page.locator(".ring")).to_contain_text("82,94")
+    expect(page.locator("[data-total]")).to_contain_text("82,94")
     expect(page.locator(".secs")).to_contain_text("Безопасность и решение")
     expect(page.locator(".loss").nth(1)).to_contain_text("Реплика 30")
     expect(page.locator('.crit[data-cid="06"] .crit-row')).to_contain_text("10,5 / 15")
@@ -62,7 +62,7 @@ def test_na_criteria_show_their_condition_and_total_uses_applicable_only(
     page: Page, open_card: Callable[..., list[str]]
 ) -> None:
     errors = open_card("p1-ru-025")
-    expect(page.locator(".ring")).to_contain_text("100,00")
+    expect(page.locator("[data-total]")).to_contain_text("100,00")
     for cid, cond in (("04", "клиент сформулировал запрос"), ("07", "оборвался до возможности")):
         page.click(f'.crit[data-cid="{cid}"] [data-act="crit"]')
         expect(page.locator(f'.crit[data-cid="{cid}"] .box.na')).to_contain_text(cond)

@@ -10,6 +10,7 @@ import { ans, calc, flagsOf, lastDec } from '../lib/scoring.js';
 import { api, reload, startRun, toast } from '../lib/state.js';
 import { currentTheme, rerender, useS } from '../store';
 import { Button, Card, Chip, LinkButton, PageHead } from '../ui';
+import { CountUp } from '../anim';
 import { AppealDialog } from './AppealDialog';
 import { ALL, Criteria, type Ctx } from './card/Criteria';
 import { CardForms, type Pending } from './card/Forms';
@@ -198,12 +199,12 @@ export function CardView({ id }: { id: string | null }) {
       <Card className="sum grid grid-cols-1 divide-y divide-line2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] lg:divide-x lg:divide-y-0" aria-label="Сводка">
         <Panel>
           <h2 className="text-[15px] font-semibold">Итог</h2>
-          <div className="ring flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4" data-total={sum.total ?? ""}>
             <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={`Итог ${f2(sum.total)} из 100`} className="flex-none">
               <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent-soft" strokeWidth="11" />
               <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${dash} ${C}`} transform="rotate(-90 62 62)" />
               <text x="62" y="66" textAnchor="middle" fontSize="25" fontWeight="700" className="fill-ink">
-                {f2(sum.total)}
+                <CountUp value={sum.total} format={f2} />
               </text>
               <text x="62" y="86" textAnchor="middle" fontSize="12" className="fill-muted">
                 из 100
