@@ -1646,5 +1646,15 @@
   "мало данных (n={n}, нужно ≥{min})": "not enough data (n={n}, need ≥{min})",
   "мало данных, n={n}": "not enough data, n={n}",
   "проверок специалиста: {n}": "specialist reviews: {n}",
-  "Создайте первый кнопкой «Новый пакет»: можно взять диалоги по фильтрам очереди или списком.": "Create the first one with “New batch”: take dialogs by queue filters or by a list."
+  "Создайте первый кнопкой «Новый пакет»: можно взять диалоги по фильтрам очереди или списком.": "Create the first one with “New batch”: take dialogs by queue filters or by a list.",
+  "Риски": "Risks",
+  "Темы обращений": "Request topics",
+  "По этим темам модель определяет, о чём диалог; разрез «По продуктам» в аналитике строится по ним": "The model uses these topics to decide what a dialog is about; the “By product” analytics view is built on them",
+  "Код: латиница, цифры и дефис, до 32 знаков": "Code: Latin letters, digits and hyphen, up to 32 characters",
+  "Такой код уже есть": "This code already exists",
+  "Название не может быть пустым": "Name cannot be empty",
+  "Справочник тем сохранён. Темы диалогов обновятся при следующей оценке набора.": "Topic list saved. Dialog topics update at the next dataset evaluation.",
+  "Описание для модели": "Description for the model",
+  "Удалить тему": "Delete topic",
+  "Добавить тему": "Add topic"
 }
