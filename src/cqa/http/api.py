@@ -26,7 +26,7 @@ from cqa.services.checklists import (
     save_checklist,
 )
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import paste_text, save_owners, set_reviewed
+from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
@@ -37,6 +37,8 @@ from cqa.services.state import (
     ReportFormat,
     build_state,
     mode_from_settings,
+    operator_page,
+    operator_rows,
     product_stats_of,
     report,
     scores_csv,
@@ -53,6 +55,10 @@ AppealValue = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class OperatorIn(BaseModel):
+    operator: str | None = Field(max_length=200)  # обязательное: null снимает назначение
 
 
 class PasteIn(BaseModel):
@@ -150,10 +156,12 @@ async def get_report(
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
+    store = request.app.state.store
+    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
@@ -184,6 +192,27 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     _log(request, "dialog.reviewed" if body.reviewed else "dialog.unreviewed", "dialog", dialog_id)
     return {"ok": True}
+
+
+@router.put("/dialogs/{dialog_id}/operator")
+async def put_operator(dialog_id: str, body: OperatorIn, request: Request) -> dict[str, str | None]:
+    return {"operator": set_operator(request.app.state.store, dialog_id, body.operator)}
+
+
+@router.post("/operators/import")
+async def post_operators_import(request: Request) -> dict[str, object]:
+    """Сырое тело CSV, как у `/datasets/upload`: файл или вставленный текст."""
+    return import_operators(request.app.state.store, await request.body())
+
+
+@router.get("/operators")
+async def get_operators(request: Request) -> dict[str, Any]:
+    return operator_rows(request.app.state.store)
+
+
+@router.get("/operators/{name:path}")
+async def get_operator(name: str, request: Request) -> dict[str, Any]:
+    return operator_page(request.app.state.store, name)
 
 
 @router.put("/checklist")
@@ -405,7 +434,9 @@ async def get_run(run_id: int, request: Request) -> dict[str, Any]:
 
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
-    return _runner(request).cancel(run_id)
+    out = _runner(request).cancel(run_id)
+    _log(request, "run.cancel", "run", run_id)
+    return out
 
 
 @router.get("/products")
@@ -415,7 +446,9 @@ async def get_products(request: Request) -> list[dict[str, Any]]:
 
 @router.put("/products")
 async def put_products(body: list[Product], request: Request) -> list[dict[str, Any]]:
-    return [p.model_dump() for p in save_products(request.app.state.store, body)]
+    saved = save_products(request.app.state.store, body)
+    _log(request, "products.save", "products", "", {"ids": [p.id for p in saved]})
+    return [p.model_dump() for p in saved]
 
 
 @router.get("/products/stats")
@@ -425,10 +458,9 @@ async def get_product_stats(request: Request) -> list[dict[str, Any]]:
 
 @router.put("/dialogs/{dialog_id}/product")
 async def put_dialog_product(dialog_id: str, body: ProductIn, request: Request) -> dict[str, Any]:
-    return set_manual(request.app.state.store, dialog_id, body.id, body.reason).model_dump(mode="json")
-    out = _runner(request).cancel(run_id)
-    _log(request, "run.cancel", "run", run_id)
-    return out
+    tag = set_manual(request.app.state.store, dialog_id, body.id, body.reason)
+    _log(request, "dialog.product", "dialog", dialog_id, {"id": body.id})
+    return tag.model_dump(mode="json")
 
 
 class EmployeeIn(BaseModel):

@@ -95,6 +95,9 @@ def connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     conn.row_factory = sqlite3.Row
+    # миграция: сотрудник диалога появился после первых баз (data/demo.db, data/cqa.db)
+    if "operator" not in {row["name"] for row in conn.execute("PRAGMA table_info(dialogs)")}:
+        conn.execute("ALTER TABLE dialogs ADD COLUMN operator TEXT")
     return conn
 
 
@@ -107,21 +110,50 @@ class Store:
     # --- диалоги ---
 
     def add_dialogs(self, dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]:
-        """Сохранить новые диалоги, пропустить дубли по id. Возвращает (added, дубли)."""
+        """Сохранить новые диалоги, пропустить дубли по id. Возвращает (added, дубли).
+
+        У дубля дописывается только сотрудник, если его ещё нет: назначенного вручную повтор не меняет.
+        """
         added = duplicates = 0
         with self._conn:
             for dialog in dialogs:
                 exists = self._conn.execute("SELECT 1 FROM dialogs WHERE id = ?", (dialog.id,)).fetchone()
                 if exists is not None:
                     duplicates += 1
+                    self._conn.execute(
+                        "UPDATE dialogs SET operator = ? WHERE id = ? AND operator IS NULL",
+                        (dialog.operator, dialog.id),
+                    )
                     continue
-                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost", "product"})
+                body = dialog.model_dump(
+                    mode="json", exclude={"res", "reviewed", "cost", "operator", "product", "risks"}
+                )
                 self._conn.execute(
-                    "INSERT INTO dialogs (id, body, audio_url) VALUES (?, ?, ?)",
-                    (dialog.id, _dump(body), audio.get(dialog.id)),
+                    "INSERT INTO dialogs (id, body, audio_url, operator) VALUES (?, ?, ?, ?)",
+                    (dialog.id, _dump(body), audio.get(dialog.id), dialog.operator),
                 )
                 added += 1
         return added, duplicates
+
+    def set_operator(self, dialog_id: str, operator: str | None) -> None:
+        with self._conn:
+            cur = self._conn.execute("UPDATE dialogs SET operator = ? WHERE id = ?", (operator, dialog_id))
+            if cur.rowcount == 0:
+                raise KeyError(dialog_id)
+
+    def set_operators(self, pairs: Sequence[tuple[str, str | None]]) -> tuple[int, list[str]]:
+        """Назначить сотрудников одной транзакцией. Возвращает (обновлено, неизвестные id по порядку)."""
+        updated, unknown = 0, []
+        with self._conn:
+            for dialog_id, operator in pairs:
+                cur = self._conn.execute(
+                    "UPDATE dialogs SET operator = ? WHERE id = ?", (operator, dialog_id)
+                )
+                if cur.rowcount:
+                    updated += 1
+                else:
+                    unknown.append(dialog_id)
+        return updated, unknown
 
     def audio_url(self, dialog_id: str) -> str | None:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
@@ -150,6 +182,7 @@ class Store:
         data = json.loads(row["body"])
         data["res"] = {}
         data["reviewed"] = bool(row["reviewed"])
+        data["operator"] = row["operator"]
         if row["cost"] is not None:
             data["cost"] = json.loads(row["cost"])
         else:
@@ -159,7 +192,7 @@ class Store:
         return Dialog.model_validate(data)
 
     _DIALOG = (
-        "SELECT d.body, d.reviewed, d.cost, p.body AS product, p.risks FROM dialogs d "
+        "SELECT d.body, d.reviewed, d.cost, d.operator, p.body AS product, p.risks FROM dialogs d "
         "LEFT JOIN dialog_products p ON p.dialog_id = d.id"
     )
 

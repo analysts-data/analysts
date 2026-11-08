@@ -90,6 +90,10 @@ def test_manual_topic_overrides_the_model_and_is_kept(api: TestClient) -> None:
     )
     _wait(api, api.post("/api/runs", json={"dialogs": None, "criteria": None}).json()["run_id"])
     assert _products(api)["call-024"]["id"] == "kyc"
+    actions = [(e["action"], e["target_id"]) for e in api.get("/api/audit").json()]
+    assert ("dialog.product", "call-024") in actions
+    api.put("/api/products", json=SEED)
+    assert "products.save" in [e["action"] for e in api.get("/api/audit").json()]
     assert api.put("/api/dialogs/nope/product", json={"id": "kyc"}).status_code == 404
     assert api.put("/api/dialogs/call-024/product", json={"id": "loans"}).status_code == 422
 

@@ -175,6 +175,7 @@ class Dialog(BaseModel):
     cost: Cost | None = None
     product: ProductTag | None = None
     risks: list[RiskMark] | None = None  # None — ещё не определены, [] — не найдены
+    operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
 
 
 class Appeal(BaseModel):
