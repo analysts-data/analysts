@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { flagsOf, flagWhy } from '../../../web/js/scoring.js';
-import { ansTxt } from '../../../web/js/format.js';
+import { flagsOf, flagWhy } from '../../../frontend/src/lib/scoring.js';
+import { ansTxt } from '../../../frontend/src/lib/format.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'fixtures');
 const checklist = JSON.parse(readFileSync(join(fixtures, 'checklist_v3.json'), 'utf8'));
