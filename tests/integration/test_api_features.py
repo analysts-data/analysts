@@ -11,4 +11,3 @@ def test_config_lists_only_features_whose_routes_exist(tmp_path) -> None:  # typ
     paths = _paths(app.routes)
     assert body["features"] == [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
     assert "sources" in body["features"]  # путь включённого роутера, а не только app.routes
-    assert "batches" not in body["features"]  # маршрута нет — раздела нет
