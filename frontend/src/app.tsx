@@ -2,13 +2,15 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Scale, Search, Settings2 } from 'lucide-react';
+import { Bell, ExternalLink, BarChart3, BookOpen, CircleHelp, ListChecks, MessageSquare, Scale, Search, Settings2 } from 'lucide-react';
 import { TERMS } from './terms';
 import { t } from './i18n';
 import { LangMenu, ThemeMenu } from './menus';
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { modeText } from './lib/config.js';
-import { reload } from './lib/state.js';
+import { api, currentUser, reload, setUser } from './lib/state.js';
+import { track } from './lib/telemetry.js';
+import { useOps } from './ops';
 import { groupOf } from './lib/queue.js';
 import { load, rerender, ROLES, save, setRole, useRoute, useS, type Role } from './store';
 import { Button, Card, cn, LinkButton, Skeleton, Tip, TipProvider } from './ui';
@@ -19,13 +21,14 @@ import { Checklist } from './views/Checklist';
 import { Coaching } from './views/Coaching';
 import { ModeDialog } from './views/ModeDialog';
 import { Palette } from './palette';
+import { available, GROUPS, PAGES, type PageDef } from './pages';
 import { PasteHost } from './views/PasteDialog';
 
 // Аналитика тянет ECharts: отдельный кусок сборки, грузится при первом открытии экрана.
 const Analytics = lazy(() => import('./views/Analytics').then(m => ({ default: m.Analytics })));
 
 export const NAME = 'CQA';
-const NAMES: Record<string, string> = { queue: 'Диалоги', d: 'Карточка разговора', appeals: 'Апелляции', analytics: 'Аналитика', coaching: 'Обучение', checklist: 'Чек-лист' };
+const NAMES: Record<string, string> = { d: 'Карточка разговора', ...Object.fromEntries(PAGES.map(p => [p.page, p.label])) };
 
 function Logo() {
   return (
@@ -226,7 +229,19 @@ function View({ page, id }: { page: string; id: string | null }) {
       );
     case 'coaching':
       return <Coaching />;
-    default:
+    case 'queue':
+      return <Queue />;
+    default: {
+      const def = PAGES.find(p => p.page === page && p.view && available(p, S.features));
+      if (def) {
+        const V = def.view!;
+        return (
+          <Suspense fallback={<Skeleton className="h-72" />}>
+            <V id={id} />
+          </Suspense>
+        );
+      }
+    }
       return <Queue />;
   }
 }
@@ -247,6 +262,21 @@ export function App() {
     const t = setInterval(() => reload(), 3000);
     return () => clearInterval(t);
   }, [running]);
+
+  useOps();
+  // Метрики (если сервер их собирает): экран, открытие диалога, действия с data-act — без текста и значений полей.
+  useEffect(() => {
+    track('page_view');
+    if (r.page === 'd') track('dialog_open');
+  }, [r.page, r.id]);
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const el = (e.target as Element)?.closest?.('[data-act]') as HTMLElement | null;
+      if (el) track('action', { act: el.dataset.act });
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
 
   // Смена экрана: фокус на область содержимого, прокрутка вверх (как в прежнем интерфейсе).
   useEffect(() => {
@@ -284,32 +314,64 @@ export function App() {
               <span className="text-xs text-muted">Freedom Broker</span>
             </div>
           </div>
-          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">{t('Работа')}</div>
-          <nav className="flex gap-0.5 md:flex-col" aria-label={t('Работа')}>
-            <NavLink page="queue" current={navPage} icon={<MessageSquare />} badge={queueBadge} badgeId="bQueue">
-              {t('Диалоги')}
-            </NavLink>
-            <NavLink page="appeals" current={navPage} icon={<Scale />} badge={appealsBadge} badgeId="bAppeals">
-              {t('Апелляции')}
-            </NavLink>
-            <NavLink page="coaching" current={navPage} icon={<BookOpen />}>
-              {t('Обучение')}
-            </NavLink>
-          </nav>
-          <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">{t('Обзор и настройка')}</div>
-          <nav className="flex gap-0.5 md:flex-col" aria-label={t('Обзор и настройка')}>
-            <NavLink page="analytics" current={navPage} icon={<BarChart3 />}>
-              {t('Аналитика')}
-            </NavLink>
-            <NavLink page="checklist" current={navPage} icon={<ListChecks />}>
-              {t('Чек-лист')}
-            </NavLink>
-          </nav>
-          <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
+          {(Object.keys(GROUPS) as PageDef['group'][]).map(g => {
+            const items = PAGES.filter(p => p.group === g && available(p, S.features));
+            if (!items.length) return null;
+            return (
+              <div key={g} className="contents">
+                <div className="hidden px-3 pb-1 pt-3.5 text-xs font-semibold text-muted md:block">{t(GROUPS[g])}</div>
+                <nav className="flex gap-0.5 md:flex-col" aria-label={t(GROUPS[g])}>
+                  {items.map(p => (
+                    <NavLink
+                      key={p.page}
+                      page={p.page}
+                      current={navPage}
+                      icon={p.icon}
+                      badge={p.page === 'queue' ? queueBadge : p.page === 'appeals' ? appealsBadge : p.page === 'alerts' ? S.alertsNew : undefined}
+                      badgeId={p.page === 'queue' ? 'bQueue' : p.page === 'appeals' ? 'bAppeals' : p.page === 'alerts' ? 'bAlerts' : undefined}
+                    >
+                      {t(p.label)}
+                    </NavLink>
+                  ))}
+                </nav>
+              </div>
+            );
+          })}
+          <div className="mt-auto hidden gap-2 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
+            {S.features?.includes('employees') && S.employees?.length > 0 && (
+              <label className="grid gap-1">
+                <span>{t('Вы вошли как')}</span>
+                <select
+                  data-act="user"
+                  value={currentUser() ?? ''}
+                  onChange={e => {
+                    const id = e.target.value;
+                    setUser(id || null);
+                    const emp = S.employees.find((x: any) => x.id === id);
+                    if (emp && emp.role in ROLES) setRole(emp.role as Role);
+                    reload();
+                  }}
+                >
+                  <option value="">{t('Не выбран')}</option>
+                  {S.employees
+                    .filter((x: any) => x.active !== false)
+                    .map((x: any) => (
+                      <option key={x.id} value={x.id}>
+                        {x.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
             <span id="clVer">{S.checklist ? t('Чек-лист v{v}', { v: S.checklist.version }) : ''}</span>
             <span>
               {t('Команды:')} <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
+            {S.features?.includes('docs') && (
+              <a href={`${api.base.replace(/\/api\/?$/, '')}/docs/`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 font-medium no-underline" onClick={() => track('help_open')}>
+                {t('Документация')} <ExternalLink size={12} aria-hidden="true" />
+              </a>
+            )}
           </div>
         </aside>
         <div className="min-w-0">
@@ -369,6 +431,20 @@ export function App() {
                   </Tip>
                 ))}
               </div>
+              {S.features?.includes('alerts') && (
+                <Tip content={S.alertsNew ? t('Новых алертов: {n}', { n: S.alertsNew }) : t('Алерты')}>
+                  <a
+                    href="#/alerts"
+                    className="relative grid h-9 w-9 place-items-center rounded-lg border border-line-strong bg-surface text-ink2 no-underline hover:bg-hover hover:text-ink"
+                    aria-label={S.alertsNew ? t('Алерты, новых: {n}', { n: S.alertsNew }) : t('Алерты')}
+                  >
+                    <Bell size={17} />
+                    {S.alertsNew > 0 && (
+                      <span className="absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-risk px-1 text-center text-[11px] font-semibold leading-[18px] text-white">{S.alertsNew}</span>
+                    )}
+                  </a>
+                </Tip>
+              )}
               <Tip content={t('Показать подсказки к этому экрану')}>
                 <button
                   type="button"

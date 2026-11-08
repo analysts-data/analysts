@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from collections.abc import Callable, Iterator
 from functools import partial
@@ -33,6 +34,13 @@ def live_config(page: Page) -> None:
         "**/api/config",
         lambda r: r.fulfill(status=200, content_type="application/json", body='{"llm_mode": "live"}'),
     )
+    # Сотрудники, алерты и метрики шапки: у статического сервера их нет, а 404 и 501 — ошибки в консоли.
+    page.route(
+        re.compile(r".*/api/(employees|alerts)(\?.*)?$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body="[]"),
+    )
+    page.route(re.compile(r".*/api/me$"), lambda r: r.fulfill(status=200, content_type="application/json", body="null"))
+    page.route("**/api/telemetry", lambda r: r.fulfill(status=204))
 
 
 @pytest.fixture(autouse=True)

@@ -21,6 +21,7 @@ resumeRun(); // перезагрузка во время оценки: прод�
 api.getConfig().then(
   (c: any) => {
     S.llmMode = c.llm_mode;
+    S.features = Array.isArray(c.features) ? c.features : []; // разделы, которые объявил сервер (pages.tsx)
     rerender();
   },
   () => {},

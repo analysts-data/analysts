@@ -8,8 +8,14 @@ export const S = {
   role: 'qa', q: '', open: {}, run: null, toast: null,
 };
 
-export let api = createApi('/api');
-export const init = base => { api = createApi(base); };
+// «Вы вошли как»: id сотрудника из localStorage уходит заголовком X-CQA-User в каждом запросе.
+const USER_KEY = 'cqa.user';
+export const currentUser = () => { try { return globalThis.localStorage?.getItem(USER_KEY) || null; } catch { return null; } };
+export const setUser = id => { try { id ? globalThis.localStorage?.setItem(USER_KEY, id) : globalThis.localStorage?.removeItem(USER_KEY); } catch { /* без хранилища */ } };
+export const userHeader = () => { const u = currentUser(); return u ? { 'X-CQA-User': u } : {}; };
+
+export let api = createApi('/api', undefined, userHeader);
+export const init = base => { api = createApi(base, undefined, userHeader); };
 
 export const render = focus => S.app?.render(focus);
 
