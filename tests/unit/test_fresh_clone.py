@@ -11,6 +11,7 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
 from gitrepo import commit_all, init_repo, run_script
 
 DIR_LOG = '$(dirname "$0")/calls.log'
@@ -149,3 +150,15 @@ def test_make_run_takes_the_port_variable() -> None:
 
     assert "PORT ?= 8000" in makefile
     assert "--port $(PORT)" in makefile
+
+
+def test_port_exported_by_the_caller_does_not_leak_into_the_tests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PORT=8001 scripts/fresh_clone.sh: make check клона гоняет эти тесты с тем же окружением."""
+    monkeypatch.setenv("PORT", "8001")
+    (tmp_path / "tmp").mkdir()
+    bin_dir = stubs(tmp_path)
+
+    assert run_clone(bin_dir, tmp_path, seed_repo(tmp_path)).returncode == 0
+    assert "make run PORT=8000" in calls(bin_dir)
