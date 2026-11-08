@@ -25,7 +25,8 @@ def _routes() -> set[str]:
 
 
 def _front() -> str:
-    return "\n".join(f.read_text(encoding="utf-8") for f in FRONT.rglob("*") if f.suffix in {".js", ".ts", ".tsx"})
+    files = (f for f in FRONT.rglob("*") if f.suffix in {".js", ".ts", ".tsx"})
+    return "\n".join(f.read_text(encoding="utf-8") for f in files)
 
 
 def test_every_backend_route_is_reachable_from_the_interface() -> None:
