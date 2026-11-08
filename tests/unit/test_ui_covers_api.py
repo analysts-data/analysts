@@ -24,6 +24,8 @@ EXEMPT = {
 }
 # UI в работе: оценки по сотрудникам (PR #80)
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# страницы документации, не API интерфейса (src/cqa/http/docs.py)
+EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 # UI в работе: темы обращений (PR #95)
 EXEMPT |= {"/products", "/products/stats", "/dialogs/{dialog_id}/product"}
 
