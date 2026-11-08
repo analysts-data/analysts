@@ -22,6 +22,8 @@ EXEMPT = {
     "/me",
     "/overview",
 }
+# UI в работе: оценки по сотрудникам (PR #80)
+EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
 # UI в работе: экран «Правила обработки» (спецификация в PR «правила обработки по типу взаимодействия»).
 EXEMPT |= {"/routing", "/routing/explain"}
 

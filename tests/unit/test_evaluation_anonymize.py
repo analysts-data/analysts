@@ -129,6 +129,17 @@ async def test_model_and_verifier_see_only_labels_when_anonymize_on() -> None:
     assert "900101300123" not in verifier.seen_text
 
 
+@pytest.mark.parametrize("anonymize", [True, False])
+async def test_operator_field_never_reaches_the_model(anonymize: bool) -> None:
+    model, verifier = FakeModel(_reply_json("Привет")), FakeVerifier()
+    dialog = _chat("Привет").model_copy(update={"operator": "Сотрудник Тестовый"})
+
+    await _evaluator(model, verifier, anonymize=anonymize).evaluate(dialog, _checklist(), [_criterion()])
+
+    assert model.seen and verifier.seen_text
+    assert "Тестовый" not in "\n".join(model.seen) + verifier.seen_text
+
+
 async def test_quote_with_label_passes_evidence_check() -> None:
     model = FakeModel(_reply_json(_LABEL_QUOTE))
 
