@@ -34,6 +34,7 @@ from cqa.services.batches import Batches
 from cqa.services.errors import Conflict, NotFound, Upstream
 from cqa.services.runs import Runner, plan_run
 from cqa.services.state import current_results
+from cqa.services.sufficiency import assess_dialogs
 from cqa.services.sync import Syncer
 
 ACTOR = "Автоматизация"
@@ -126,7 +127,8 @@ def wire(
         sync=sync,
         evaluate=lambda ids, priority, stop: batch_evaluate(batches, runner, ids, priority, stop),
         source_of=source_of,
-        # blocked → lambda d: sufficiency(d).level == "block"; notify → lambda h: store.add_alerts([h], now)
+        blocked=lambda d: assess_dialogs(store, [d])[d.id].status == "block",
+        # notify → lambda h: store.add_alerts([h], now) — когда алерты (#87) в main
         audit=lambda action, kind, target, details: record(store, AUTOMATION, action, kind, target, details),
         steps={"prosody_for_calls": prosody_for_calls},  # → + classify_products, evaluate_alerts
     )
