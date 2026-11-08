@@ -263,9 +263,31 @@ def _apply(request: Request) -> Apply:
     return apply
 
 
+# раздел интерфейса → путь, по которому сервер его умеет; интерфейс показывает раздел только при наличии ключа
+FEATURES = {
+    "alerts": "/api/alerts",
+    "employees": "/api/employees",
+    "audit": "/api/audit",
+    "reports": "/api/reports",
+    "usage": "/api/usage",
+    "telemetry": "/api/telemetry",
+    "docs": "/docs/",
+    "sources": "/api/sources",
+    "batches": "/api/batches",
+    "routing": "/api/routing",
+    "automation": "/api/automation",
+}
+
+
+def features(app: Any) -> list[str]:
+    """Ключи разделов, чьи пути есть среди маршрутов приложения."""
+    paths = {getattr(r, "path", "") for r in app.routes}
+    return [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
+
+
 @router.get("/config")
 async def get_config(request: Request) -> dict[str, Any]:
-    return view(request.app.state.settings)
+    return {**view(request.app.state.settings), "features": features(request.app)}
 
 
 @router.put("/config")
