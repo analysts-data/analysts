@@ -162,3 +162,8 @@ def jev_risks(probs: Mapping[str, float], kinds: Sequence[RiskKind]) -> list[Ris
         for r in kinds
         if probs.get(r.k, 0.0) >= RISK_SURE
     ]
+
+
+def topic_name(d: Dialog) -> str | None:
+    """Тема строкой для разрезов (аналитика, рекомендации, правила обработки): название, если определена."""
+    return d.product.name if d.product and d.product.status == "done" else None

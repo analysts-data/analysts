@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from cqa.adapters.store import Store
 from cqa.domain.models import Checklist, Criterion, Dialog, DialogEvaluation, Line
+from cqa.domain.products import topic_name
 from cqa.domain.routing import DEFAULT, Facts, Match, Rule, Use, conditions, first_match, matches
 from cqa.services.errors import ConfigError, Invalid, NotFound
 from cqa.services.llm_config import Apply, as_llm, config_error
@@ -91,7 +92,7 @@ def facts(store: Store, dialog: Dialog) -> Facts:
         ch=dialog.ch,
         lang=dialog.lang,
         source_id=getattr(dialog, "source_id", None),  # Dialog.source_id и product добавляют соседние ветки
-        product=getattr(dialog, "product", None),
+        product=topic_name(dialog),
         lines=sum(isinstance(x, Line) and x.who != "system" for x in dialog.lines or []),
         has_audio=store.audio_url(dialog.id) is not None,
     )

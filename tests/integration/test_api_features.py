@@ -11,4 +11,4 @@ def test_config_lists_only_features_whose_routes_exist(tmp_path) -> None:  # typ
     paths = _paths(app.routes)
     assert body["features"] == [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
     assert "routing" in body["features"]  # пути подключённых роутеров тоже видны
-    assert "sources" not in body["features"] or "/api/sources" in paths
+    assert "sources" in body["features"]

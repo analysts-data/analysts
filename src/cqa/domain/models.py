@@ -197,6 +197,8 @@ class Dialog(BaseModel):
     product: ProductTag | None = None
     risks: list[RiskMark] | None = None  # None — ещё не определены, [] — не найдены
     operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
+    source_id: str | None = None  # источник из реестра (GET /api/sources); колонка dialogs.source_id
+    external_id: str | None = None  # id записи в источнике; дубли по (source_id, external_id)
     sufficiency: Sufficiency | None = None
 
 

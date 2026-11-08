@@ -12,6 +12,7 @@ from cqa.domain.products import (
     model_tag,
     product_key,
     product_messages,
+    topic_name,
 )
 from cqa.domain.prompt import build_messages, render_dialog
 from cqa.domain.report import build_report, product_stats, to_html, to_markdown
@@ -242,3 +243,13 @@ def test_jev_risks_above_half_with_probability_as_basis() -> None:
 def test_cache_key_changes_with_risk_markers() -> None:
     d = prototype_dialogs()[0]
     assert product_key(PRODUCTS, d, RISKS) != product_key(PRODUCTS, d, RISKS[:1])
+
+
+def test_topic_name_is_the_string_other_slices_group_by() -> None:
+    d = prototype_dialogs()[0]
+    assert topic_name(d) is None
+    assert (
+        topic_name(d.model_copy(update={"product": jev_tag("ipo", {}, 0.9, PRODUCTS, cost=0)}))
+        == NAMES["ipo"]
+    )
+    assert topic_name(d.model_copy(update={"product": ProductTag(status="pending")})) is None
