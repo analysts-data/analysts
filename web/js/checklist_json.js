@@ -61,7 +61,7 @@ export function importQuestions(draft, input) {
       result.criteria.push({ ...c, sec: 0 }); added++;
     } else {
       const old = result.criteria[index];
-      result.criteria[index] = { ...c, sec: old.sec, name: old.name, w: old.w, channel: old.channel || 'all', ...(old.signal ? { signal: old.signal } : {}) };
+      result.criteria[index] = { ...c, sec: old.sec, name: old.name, w: old.w, channel: old.channel || 'all', ...(old.signal ? { signal: old.signal } : {}), ...(old.call ? { call: old.call } : {}) };
       if (result.criteria[index].channel !== 'all' && !c.na) fail(c.id, 'сохранённый канал требует N/A; выберите «Все каналы» перед импортом');
       updated++;
     }
