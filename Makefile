@@ -1,8 +1,11 @@
-.PHONY: openapi check e2e eval eval-holdout record run share fmt backup demo results docker-build docker-run
+.PHONY: openapi web check e2e eval eval-holdout record run share fmt backup demo results docker-build docker-run
 
 PORT ?= 8000
 
-PORT ?= 8000
+web:
+	# интерфейс: frontend/ (React) собирается в web/, собранный web/ коммитится
+	npm --prefix frontend ci
+	npm --prefix frontend run build
 
 check:
 	uv run ruff check --no-cache src tests

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { S, cancelRun, failedDialogs, init, runNote, startRun } from '../../../web/js/state.js';
+import { S, cancelRun, failedDialogs, init, runNote, startRun } from '../../../frontend/src/lib/state.js';
 
 const until = async (check, ms = 3000) => {
   const end = Date.now() + ms;

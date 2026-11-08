@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configBody, modeText, providerBody, risks, whereOf } from '../../../web/js/config.js';
+import { configBody, modeText, providerBody, risks, whereOf } from '../../../frontend/src/lib/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
 const FORM = { llm_provider: 'ds', verifier: '', evaluator: 'llm', anonymize: true, jev_api_key: ' j ', allow_real_data: false };
