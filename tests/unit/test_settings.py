@@ -19,6 +19,8 @@ DEFAULTS = {
     "llm_timeout_s": 180.0,
     "llm_price_in": 0.0,
     "llm_price_out": 0.0,
+    "llm_provider": "env",
+    "providers": {},
     "verifier": None,
     "evaluator": "llm",
     "jev_api_key": None,

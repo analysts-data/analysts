@@ -201,6 +201,20 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `tests/fixtures/state_prototype.json` | ответ `GET /api/state` на данных прототипа | cqa-web-ui |
 | `tests/cassettes/{llm,jev}/{sha}.json` | `{"request": тело, "status": код, "response": JSON}`, без заголовков; `sha = sha256(json.dumps(тело, ensure_ascii=False, sort_keys=True, separators=(",", ":")))` | llm-evaluation |
 
+## Провайдеры моделей (llm-evaluation)
+
+Дополняет таблицы выше; форма HTTP — раздел «Провайдеры моделей» в `design/contract.md`.
+
+| Имя | Где | Смысл |
+| --- | --- | --- |
+| `CQA_LLM_PROVIDER` → `llm_provider` | `Settings`, `str`, `env` | код основной модели; `effective` переносит поля провайдера в `llm_base_url`, `llm_model`, `llm_profile`, `llm_api_key`, `data_where` |
+| `CQA_PROVIDERS` → `providers` | `Settings`, `dict[str, Provider]`, `{}` | JSON `{код: {label, base_url, model, profile, where, key}}`; `effective` добавляет `env`, список из базы (`overrides["providers"]`) заменяет этот |
+| `CQA_VERIFIER` → `verifier` | `Settings`, `str \| None` | `"jev"` или код провайдера; `Mode.verifier` — `str \| None` |
+| `Provider` | `src/cqa/settings.py` | `label`, `base_url: str \| None`, `model`, `profile`, `where`, `key: SecretStr \| None` |
+| `put_provider`, `delete_provider`, `provider`, `as_llm` | `src/cqa/services/llm_config.py` | `put_provider(store, settings, pid, body, apply)`, `delete_provider(store, settings, pid, apply)` -> `Settings`, как `configure`; `provider(settings, pid)` — `NotFound`; `as_llm(provider)` — поля основной модели |
+| `ChatVerifier` | `src/cqa/services/evaluation.py` | `Verifier` на `ChatModel` провайдера: те же запросы по критериям без повтора; `build_evaluator` собирает его, если `verifier` — код провайдера |
+| `check_provider`, `ping` | `src/cqa/compose.py`, `src/cqa/adapters/llm.py` | `POST /api/providers/{id}/check`: `{ok, ms, error}` мимо записей |
+
 ## Режим «только Jev» (llm-evaluation, jev-only)
 
 | Имя | Модуль | Сигнатура и смысл |
