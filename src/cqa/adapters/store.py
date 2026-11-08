@@ -116,6 +116,10 @@ class Store:
         row = self._conn.execute("SELECT body FROM prosody WHERE dialog_id = ?", (dialog_id,)).fetchone()
         return json.loads(row["body"]) if row is not None else None
 
+    def prosodies(self) -> list[dict[str, Any]]:
+        """Все сохранённые разборы интонации: нормы статистики разговора."""
+        return [json.loads(r["body"]) for r in self._conn.execute("SELECT body FROM prosody ORDER BY rowid")]
+
     def set_prosody(self, dialog_id: str, body: Mapping[str, Any]) -> None:
         with self._conn:
             self._conn.execute(

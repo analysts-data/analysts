@@ -1,4 +1,5 @@
-"""Свежая ссылка на запись, запасной плеер и интонация; подписанные адреса не попадают в ответы и журнал."""
+"""Свежая ссылка на запись, запасной плеер, интонация и статистика разговора; подписанные адреса не попадают
+в ответы и журнал."""
 
 from typing import Any
 
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Request, Response
 
 from cqa.services.errors import NotFound, Upstream
 from cqa.services.prosody import dialog_prosody
+from cqa.services.talkstats import dialog_talkstats, team_norms
 
 router = APIRouter()
 
@@ -36,3 +38,16 @@ async def prosody(id: str, request: Request) -> dict[str, Any]:
     """Интонация звонка по звуку; 404 — чат и неизвестный id, 502 — запись не получена."""
     state = request.app.state
     return await dialog_prosody(state.store, state.source, state.voice, id)
+
+
+@router.get("/api/dialogs/{id}/talkstats")
+async def talkstats(id: str, request: Request) -> dict[str, Any]:
+    """Статистика разговора с нормами команды; 404 — нет данных, 502 — запись звонка не получена."""
+    state = request.app.state
+    return await dialog_talkstats(state.store, state.source, state.voice, id)
+
+
+@router.get("/api/talkstats/norms")
+async def talkstats_norms(request: Request) -> dict[str, Any]:
+    """Медиана, квартили и границы Тьюки по звонкам с разбором и по чатам."""
+    return team_norms(request.app.state.store)

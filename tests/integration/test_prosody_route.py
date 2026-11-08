@@ -73,7 +73,7 @@ async def test_prosody_of_a_call_has_lines_speakers_and_summary() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"lines", "speakers", "summary"}
+    assert set(body) == {"lines", "speakers", "summary", "talk"}
     assert set(body["speakers"]) == {"client", "operator"}
     assert body["lines"]
     assert all(set(x) == {"n", "f0", "range_st", "db", "wps", "pause", "flags"} for x in body["lines"])
