@@ -1,6 +1,6 @@
 // Экран очереди: группы приоритета, плитки-фильтры из хеша, поиск и панель оценки. DOM-модуль.
 import { S, startRun, cancelRun, postDataset, uploadDataset, saveSource, render, failedDialogs, runNote } from '../state.js';
-import { groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../queue.js';
+import { byJev, groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../queue.js';
 import { calc, flagsOf, r2, frac, ans } from '../scoring.js';
 import { esc, titleOf, f2, fn, ansTxt } from '../format.js';
 import { href, parseHash } from '../router.js';
@@ -121,7 +121,7 @@ export function view() {
   <section class="card pad row only-qa" aria-label="Оценка набора">${runPanel(S.run, all)}${runErrors(S.run)}</section>
   <section class="tiles" aria-label="Быстрые фильтры">
     ${tile('risk', 'Грубые ошибки', cnt('risk'), `ещё ${S.dialogs.filter(d => d.reviewed && flagsOf(d, S.checklist, S.appeals).length).length} проверено`)}
-    ${tile('review', 'Нужна проверка', cnt('review'), two ? 'модели разошлись или цитата не найдена' : 'цитата не найдена в реплике')}
+    ${tile('review', 'Нужна проверка', cnt('review'), byJev(S.mode) ? 'Jev не уверен в ответе' : two ? 'модели разошлись или цитата не найдена' : 'цитата не найдена в реплике')}
     ${tile('next', 'Без следующего шага', cnt('next'), 'следующий шаг не назван или неполный')}
     <a class="tile" href="${href('appeals')}"><span class="t">Апелляции</span><strong>${pa}</strong><span class="muted small">ждут решения проверяющего</span></a>
     <a class="tile" href="${href('analytics')}"><span class="t">Средний итог</span><strong>${f2(avg)}</strong><span class="muted small">по ${totals.length} диалогам, открыть аналитику</span></a>

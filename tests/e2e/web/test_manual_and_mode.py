@@ -102,6 +102,7 @@ def test_mode_badge_opens_the_mode_and_saves_a_local_model(
             "data_where": "local",
             "anonymize": False,
             "verifier": None,
+            "evaluator": "llm",
             "jev_api_key": "",
             "allow_real_data": False,
         }
@@ -126,3 +127,15 @@ def test_raw_text_abroad_needs_a_confirmation(page: Page, open_card: Callable[..
     page.click('#dlgForm button[value="ok"]')
     expect(page.locator("#toast")).to_contain_text("Режим сохранён")
     assert (sent[0]["anonymize"], sent[0]["data_where"]) == (False, "kz")
+
+
+def test_mode_window_switches_to_jev_only(page: Page, open_card: Callable[..., list[str]]) -> None:
+    errors = open_card("call-024")
+    sent = _capture(page, "**/api/config", {**CONFIG, "evaluator": "llm", "has_jev_key": True})
+    _open_mode(page)
+    expect(page.locator('#dlgForm input[name="evaluator"][value="llm"]')).to_be_checked()
+    page.get_by_label("Только Jev (быстро, без обоснований)").check()
+    page.click('#dlgForm button[value="ok"]')
+    expect(page.locator("#toast")).to_contain_text("Режим сохранён")
+    assert sent[0]["evaluator"] == "jev"
+    assert errors == []

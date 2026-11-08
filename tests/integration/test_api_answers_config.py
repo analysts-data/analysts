@@ -63,3 +63,14 @@ def test_bad_config_is_422_and_keeps_the_mode(
     response = client.put("/api/config", json={**CONFIG, "llm_profile": "nope"})
     assert response.status_code == 422
     assert client.get("/api/state").json()["mode"]["model"] == settings.llm_model
+
+
+def test_config_switches_to_jev_only_and_the_mode_shows_jev(
+    settings: Settings, store: Store, conn: sqlite3.Connection
+) -> None:
+    client = _client(settings, conn)
+    response = client.put("/api/config", json={**CONFIG, "evaluator": "jev"})
+    assert response.status_code == 200 and response.json()["evaluator"] == "jev"
+    mode = client.get("/api/state").json()["mode"]
+    assert (mode["model"], mode["verifier"]) == ("jev-latest", None)
+    assert client.put("/api/config", json={**CONFIG, "evaluator": "gpt"}).status_code == 422

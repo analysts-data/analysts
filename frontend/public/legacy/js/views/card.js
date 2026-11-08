@@ -1,7 +1,7 @@
 // Карточка разговора: сводка, критерии по секциям, расшифровка со свёрнутыми участками (прототип, «2. Карточка»).
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { ans, calc, flagsOf, flagWhy, frac, lastDec } from '../scoring.js';
-import { groupOf, queueOrder } from '../queue.js';
+import { byJev, groupOf, queueOrder } from '../queue.js';
 import { ansTxt, esc, f2, fn, mmss, titleOf } from '../format.js';
 import { href } from '../router.js';
 import * as player from '../player.js';
@@ -49,9 +49,38 @@ function defaultOpen(d, sum) {
   return flagsOf(d, S.checklist, S.appeals).length && fc ? fc.id : scored(S.checklist)[0]?.id;
 }
 
+// Интонация звонка по звуку (GET /api/dialogs/{id}/prosody): один запрос на звонок при открытии карточки.
+// id → 'loading' | ответ сервера | {off: true} (запись не получена) | null (записи нет: панели нет)
+const prosody = {};
+const BADGE = { raised: '↑ тон', monotone: 'монотонно', fast: 'быстро', overlap: 'перебивание' };
+
+function loadProsody(d) {
+  if (d.id in prosody) return;
+  prosody[d.id] = 'loading';
+  api.getProsody(d.id)
+    .then(p => { prosody[d.id] = p; }, e => { prosody[d.id] = e.status === 404 ? null : { off: true }; })
+    .then(() => { if (current()?.id === d.id) render(); });
+}
+
+function prosodyHTML(d) {
+  const p = prosody[d.id];
+  if (!p) return '';
+  if (p === 'loading') return '<p class="muted xs" data-prosody="loading">Интонация: разбираем запись…</p>';
+  if (p.off) return '<p class="muted xs" data-prosody="off">Интонация недоступна: запись не загрузилась.</p>';
+  return `<section class="card pad stack" data-prosody="on" aria-label="Интонация" style="gap:6px">
+    <h2 class="label">Интонация</h2>
+    ${p.summary.length ? `<ul class="small" style="margin:0;padding-left:18px">${p.summary.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : '<p class="small">Тон, громкость и темп в обычной манере говорящих, долгих пауз перед ответом нет.</p>'}
+    <p class="muted xs">По звуку записи: реплика сравнивается с обычной манерой того же говорящего. Пороги эвристические, на итог не влияют.</p></section>`;
+}
+
+function badges(d, n) {
+  const p = prosody[d.id], l = p && p.lines ? p.lines.find(x => x.n === n) : null;
+  return l ? l.flags.map(f => `<span class="chip c-info pros">${f === 'long_pause' ? `пауза ${Math.round(l.pause)} с` : BADGE[f]}</span>`).join('') : '';
+}
+
 export function view(S, id) {
   const d = S.dialogs.find(x => x.id === id);
-  if (d && d.ch === 'call' && d.lines) player.mount(d);
+  if (d && d.ch === 'call' && d.lines) { player.mount(d); loadProsody(d); }
   else player.unmount();
   if (!d) return `<div class="head"><div><h1 class="h1">Диалог не найден</h1>
     <p class="sub">Диалога «${esc(id)}» нет в загруженном наборе. <a href="#/queue">Вернуться к списку</a></p></div></div>`;
@@ -117,7 +146,7 @@ export function view(S, id) {
     </div>
   </section>
 
-  ${call && d.lines ? player.html(d, sum.losses) : ''}
+  ${call && d.lines ? player.html(d, sum.losses) + prosodyHTML(d) : ''}
 
   <div class="cols">
     <section class="card" aria-label="Расшифровка">
@@ -180,7 +209,7 @@ function trHTML(d, open) {
       continue;
     }
     out.push(`<div class="msg ${l.who}${cls}" id="L${l.n}" data-n="${l.n}">
-      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${call ? listen(d, l, true) : ''}${tg}</header>${esc(l.text)}</div>`);
+      <header><span>${l.n}</span><b>${l.who === 'client' ? 'Клиент' : 'Оператор'}</b><span>${time}</span>${call ? listen(d, l, true) + badges(d, l.n) : ''}${tg}</header>${esc(l.text)}</div>`);
   }
   return out.join('');
 }
@@ -255,12 +284,13 @@ function scoredBody(d, c, r, a) {
   if (a === 'na') out += `<div class="box na"><b>Условие N/A выполнено.</b> ${esc(c.naCond)} ${esc(r.why)} Вес ${c.w} распределён между применимыми критериями.</div>`;
   else out += `<div><span class="label">Обоснование</span><p>${esc(r.why)}</p></div>`;
   // пропущенное действие: реплик-оснований нет, модель называет проверенный участок
-  if ((a === 'no' && (r.seg || !evs)) || (c.type === 'scale' && f != null && f < 1 && !evs)) {
+  // Jev участок не называет: не выдумываем его
+  if (!byJev(r) && ((a === 'no' && (r.seg || !evs)) || (c.type === 'scale' && f != null && f < 1 && !evs))) {
     out += `<p class="small">Проверен участок: <b>${esc(r.seg || 'весь диалог')}</b>. ${a === 'no' ? 'Ожидаемого действия там нет.' : 'Полностью действие там не выполнено.'}</p>`;
   }
   if (evs) out += `<div class="stack" style="gap:6px"><span class="label">Основание</span>${evs}</div>`;
   const dec = lastDec(d, c.id, S.appeals), cid = esc(c.id);
-  if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span><b>Цитата не нашлась в указанной реплике</b> и после повтора. Ответ <span class="chip c-ev">на проверку</span></span>
+  if (r.evFail && !dec) out += `<div class="box ev stack" style="gap:8px"><span>${byJev(r) ? '<b>Jev не уверен в ответе</b>: вероятность ниже порога.' : '<b>Цитата не нашлась в указанной реплике</b> и после повтора.'} Ответ <span class="chip c-ev">на проверку</span></span>
     <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(a)}">Оставить ${esc(ansTxt(c, a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}">Изменить</button></span></div>`;
   if (r.alt != null && r.alt !== r.a && !dec) out += `<div class="box info stack" style="gap:8px"><span><b>Второе мнение: ${esc(ansTxt(c, r.alt))}.</b> Модели разошлись, ответ ждёт решения специалиста.</span>
     <span class="row only-qa"><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.a)}">Оставить ${esc(ansTxt(c, r.a))}</button><button type="button" class="btn sm" data-act="review" data-cid="${cid}" data-val="${esc(r.alt)}">Принять ${esc(ansTxt(c, r.alt))}</button></span></div>`;

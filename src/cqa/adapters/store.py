@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS owners (
 CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
 CREATE TRIGGER IF NOT EXISTS results_no_update BEFORE UPDATE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
@@ -110,6 +111,17 @@ class Store:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
         return row["audio_url"] if row is not None else None
 
+    def prosody(self, dialog_id: str) -> dict[str, Any] | None:
+        """Интонация звонка, посчитанная раньше (`GET /api/dialogs/{id}/prosody`)."""
+        row = self._conn.execute("SELECT body FROM prosody WHERE dialog_id = ?", (dialog_id,)).fetchone()
+        return json.loads(row["body"]) if row is not None else None
+
+    def set_prosody(self, dialog_id: str, body: Mapping[str, Any]) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO prosody (dialog_id, body) VALUES (?, ?)", (dialog_id, _dump(body))
+            )
+
     def set_cost(self, dialog_id: str, cost: Cost) -> None:
         with self._conn:
             cur = self._conn.execute(
@@ -157,6 +169,10 @@ class Store:
 
     def current_checklist(self) -> Checklist | None:
         row = self._conn.execute("SELECT body FROM checklists ORDER BY version DESC LIMIT 1").fetchone()
+        return Checklist.model_validate(json.loads(row["body"])) if row is not None else None
+
+    def checklist(self, version: int) -> Checklist | None:
+        row = self._conn.execute("SELECT body FROM checklists WHERE version = ?", (version,)).fetchone()
         return Checklist.model_validate(json.loads(row["body"])) if row is not None else None
 
     def list_versions(self) -> list[dict[str, object]]:

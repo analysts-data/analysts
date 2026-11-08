@@ -1,8 +1,11 @@
-"""Свежая ссылка на запись и запасной плеер; подписанные адреса не попадают в ответы и журнал."""
+"""Свежая ссылка на запись, запасной плеер и интонация; подписанные адреса не попадают в ответы и журнал."""
+
+from typing import Any
 
 from fastapi import APIRouter, Request, Response
 
 from cqa.services.errors import NotFound, Upstream
+from cqa.services.prosody import dialog_prosody
 
 router = APIRouter()
 
@@ -26,3 +29,10 @@ async def org_player(id: str, request: Request) -> Response:
     if audio_url is None:
         raise NotFound(f"У диалога {id} нет записи")
     return Response(status_code=302, headers={"Location": audio_url})
+
+
+@router.get("/api/dialogs/{id}/prosody")
+async def prosody(id: str, request: Request) -> dict[str, Any]:
+    """Интонация звонка по звуку; 404 — чат и неизвестный id, 502 — запись не получена."""
+    state = request.app.state
+    return await dialog_prosody(state.store, state.source, state.voice, id)

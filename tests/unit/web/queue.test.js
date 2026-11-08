@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../../../frontend/src/lib/queue.js';
+import { byJev, groupOf, queueOrder, reasonOf, twoModels, syncNote } from '../../../frontend/src/lib/queue.js';
 
 const CL = {
   sections: ['Раздел'],
@@ -78,4 +78,13 @@ test('syncNote tells the group, the last sync and its error, never a link', () =
     `Автосинхронизация DEV раз в 5 минут, последняя в ${time}: добавлено 3`);
   assert.equal(syncNote({ group_id: 'DEV', synced_at: at, added: 0, skipped: 0, error: 'набор DEV: API организаторов недоступен' }),
     `Автосинхронизация DEV раз в 5 минут, последняя в ${time}: ошибка — набор DEV: API организаторов недоступен`);
+});
+
+test('a low-confidence Jev-only answer goes to review and says Jev is unsure, not that a quote is missing', () => {
+  const d = dlg('j', { b: { a: 'no', evFail: true, model: 'jev-latest', ev: [] } });
+  assert.equal(groupOf(d, CL, []), 'review');
+  assert.equal(reasonOf(d, CL, []).text, 'Jev не уверен в ответе: b');
+  assert.equal(reasonOf(dlg('q', { b: { a: 'no', evFail: true, model: 'qwen3-6' } }), CL, []).text, 'Цитата для b не найдена в реплике');
+  assert.equal(byJev({ model: 'jev-latest' }), true);
+  assert.equal(byJev(undefined), false);
 });

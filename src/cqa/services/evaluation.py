@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol
 
 from cqa.domain.anonymize import anonymize
@@ -36,6 +37,7 @@ class ChatModel(Protocol):
 class Verdict:
     answers: dict[str, str | int | dict[str, bool]]  # id критерия → ответ той же формы, что a
     cost: float
+    confidence: dict[str, float] = field(default_factory=dict)  # id → вероятность ответа, у флага наименьшая
 
 
 class Verifier(Protocol):
@@ -95,7 +97,35 @@ class _Usage:
     ms: int = 0
 
 
-class LlmEvaluator:
+class _Gate:
+    """Общее для оценщиков: ошибка конфигурации, запрет реальных звонков, обезличивание, другой канал."""
+
+    model_name: str
+    anonymize: bool
+    sends_real_data: bool
+    allow_real_data: bool
+    config_error: str | None
+
+    def _admit(self, dialog: Dialog) -> Dialog:
+        """Диалог, который можно отправить модели; иначе ConfigError, ValueError или RealDataBlocked."""
+        if self.config_error:
+            raise ConfigError(self.config_error)
+        if dialog.lines is None:
+            raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
+        # реальный звонок уходит наружу только с разрешения человека (design.md п. 19)
+        if dialog.ch == "call" and self.sends_real_data and not self.allow_real_data:
+            raise RealDataBlocked(
+                f"Диалог {dialog.id}: реальный звонок можно отправлять модели только с CQA_ALLOW_REAL_DATA=1"
+            )
+        return anonymize(dialog) if self.anonymize else dialog
+
+    def _other_channel(self) -> CriterionResult:
+        return CriterionResult(
+            a="na", why="Критерий для другого канала", model=self.model_name, calls=0, cost=0, ms=0
+        )
+
+
+class LlmEvaluator(_Gate):
     """Реализует ports.Evaluator."""
 
     def __init__(
@@ -122,18 +152,8 @@ class LlmEvaluator:
     async def evaluate(
         self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
     ) -> DialogEvaluation:
-        if self.config_error:
-            raise ConfigError(self.config_error)
-        if dialog.lines is None:
-            raise ValueError(f"Расшифровка диалога {dialog.id} не загружена")
-        # реальный звонок уходит наружу только с разрешения человека (design.md п. 19)
-        if dialog.ch == "call" and self.sends_real_data and not self.allow_real_data:
-            raise RealDataBlocked(
-                f"Диалог {dialog.id}: реальный звонок можно отправлять модели только с CQA_ALLOW_REAL_DATA=1"
-            )
-        if self.anonymize:
-            dialog = anonymize(dialog)
-        assert dialog.lines is not None  # проверено выше, anonymize список реплик не меняет
+        dialog = self._admit(dialog)
+        assert dialog.lines is not None  # проверено в _admit, anonymize список реплик не меняет
         text = render_dialog(dialog)
         lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
@@ -166,11 +186,6 @@ class LlmEvaluator:
             results=results,
             verifier_calls=1 if verdict else 0,
             verifier_usd=verdict.cost if verdict else 0.0,
-        )
-
-    def _other_channel(self) -> CriterionResult:
-        return CriterionResult(
-            a="na", why="Критерий для другого канала", model=self.model_name, calls=0, cost=0, ms=0
         )
 
     async def _criterion(
@@ -231,3 +246,70 @@ class LlmEvaluator:
         usage.cost += reply.cost
         usage.ms += reply.ms
         return reply
+
+
+JEV_SURE = 0.6  # ponytail: порог не подобран на эталоне; ниже — evFail, ответ в «Нужна проверка»
+
+
+def _jev_why(p: float | None) -> str:
+    """Честное обоснование без причин: Jev отдаёт только ответ и вероятность."""
+    if p is None:
+        return "Jev не вернул вероятность ответа, нужна проверка; модель не пишет обоснований"
+    low = f" — ниже порога {JEV_SURE:.1f}, нужна проверка" if p < JEV_SURE else ""
+    return f"Ответ Jev с вероятностью {p:.2f}{low}".replace(".", ",") + "; модель не пишет обоснований"
+
+
+class JevEvaluator(_Gate):
+    """Реализует ports.Evaluator только на Jev: один запрос на диалог, без обоснований и оснований."""
+
+    def __init__(
+        self,
+        jev: Verifier,
+        *,
+        model_name: str,
+        anonymize: bool,
+        sends_real_data: bool,
+        allow_real_data: bool,
+        config_error: str | None = None,
+    ) -> None:
+        self.jev = jev
+        self.model_name = model_name
+        self.anonymize = anonymize
+        self.sends_real_data = sends_real_data
+        self.allow_real_data = allow_real_data
+        self.config_error = config_error
+
+    async def evaluate(
+        self, dialog: Dialog, checklist: Checklist, criteria: Sequence[Criterion]
+    ) -> DialogEvaluation:
+        dialog = self._admit(dialog)
+        asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
+        verdict, ms = Verdict(answers={}, cost=0.0), 0
+        if asked:  # сбой Jev — сбой всего диалога, как у основной модели
+            start = time.monotonic()
+            verdict = await self.jev.verify(render_dialog(dialog), checklist.rules, asked)
+            ms = round((time.monotonic() - start) * 1000)
+        found = {c.id: r for c in asked if (r := self._result(c, verdict, ms)) is not None}
+        # один запрос на все ответы: calls = 1 у первого, цена запроса поровну
+        for i, r in enumerate(found.values()):
+            r.calls, r.cost = int(i == 0), verdict.cost / len(found)
+        results = [
+            Evaluation(c.id, found[c.id] if c.id in found else self._other_channel())
+            for c in criteria
+            if c.id in found or c.channel not in ("all", dialog.ch)
+        ]
+        return DialogEvaluation(results=results, verifier_calls=0, verifier_usd=0.0)
+
+    def _result(self, criterion: Criterion, verdict: Verdict, ms: int) -> CriterionResult | None:
+        """Ответ Jev в CriterionResult; нет ответа по критерию — None (ждёт оценки), флаг — всегда."""
+        answer: Any = verdict.answers.get(criterion.id)  # форма a: Verdict уже отсеял чужие значения
+        p = verdict.confidence.get(criterion.id)
+        unsure = p is None or p < JEV_SURE
+        if criterion.type == "flag":
+            given = answer if isinstance(answer, dict) else {}
+            questions = criterion.questions or []
+            answer = {q.k: bool(given.get(q.k)) for q in questions}
+            unsure = unsure or any(q.k not in given for q in questions)  # нет ответа — «не найдено»
+        elif answer is None:
+            return None
+        return CriterionResult(a=answer, why=_jev_why(p), evFail=unsure, model=self.model_name, ms=ms)
