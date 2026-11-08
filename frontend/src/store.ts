@@ -1,7 +1,7 @@
 // Мост между lib/state.js (единственное хранилище: данные GET /api/state, запуск оценки, toast) и React.
 // state.js меняет S и зовёт S.app.render(); здесь это увеличивает версию, и подписанные компоненты перерисовываются.
 import { useMemo, useSyncExternalStore } from 'react';
-import { S as RAW, toast } from './lib/state.js';
+import { S as RAW } from './lib/state.js';
 import { parseHash } from './lib/router.js';
 
 // ponytail: данные не типизированы (strict: false), форма — design/contract.md; типы, если появится время.
@@ -61,19 +61,19 @@ export const save = (k: string, v: string) => {
 
 export const ROLES = { qa: 'Специалист КК', operator: 'Оператор', reviewer: 'Проверяющий' } as const;
 export type Role = keyof typeof ROLES;
-const ROLE_LOWER: Record<Role, string> = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
 const stored = load('cqa.role');
 if (stored && stored in ROLES) S.role = stored;
 
+// Смена роли не уводит с экрана: шаги защиты меняют роль прямо в карточке и сразу жмут её кнопки.
 export function setRole(role: Role) {
   S.role = role;
   save('cqa.role', role);
-  toast(`Роль: ${ROLE_LOWER[role]}.`);
+  rerender();
 }
 
 /** Домашний экран роли: только для пустого адреса. */
-export const homeOf = (role: string) => (role === 'reviewer' ? '#/appeals' : '#/queue');
+export const homeOf = (role: string) => (role === 'reviewer' ? '#/appeals' : role === 'operator' ? '#/coaching' : '#/queue');
 
 export type Theme = 'light' | 'dark';
 export const systemTheme = (): Theme => (matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');

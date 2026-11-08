@@ -2,7 +2,8 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
+import { TERMS } from './terms';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
 import { reload } from './lib/state.js';
@@ -79,7 +80,7 @@ function Toast() {
 // Первый вход в роли: одна фраза о том, с чего начать. «Понятно» скрывает её навсегда для этой роли.
 const HINTS: Record<string, string> = {
   qa: 'Начните с очереди: сверху диалоги, которые стоит проверить первым. В карточке у каждого критерия балл, обоснование и реплика, на которой он основан.',
-  operator: 'Здесь ваши оценки. Откройте диалог, чтобы увидеть, за что снижен балл. Не согласны с оценкой? Нажмите «Оспорить оценку» у критерия.',
+  operator: 'Здесь оценки диалогов и примеры для обучения. Откройте диалог, чтобы увидеть, за что снижен балл. Не согласны с оценкой? Нажмите «Оспорить оценку» у критерия.',
   reviewer: 'На экране «Апелляции» собраны оспоренные оценки. Укажите причину решения, и итог диалога пересчитается.',
 };
 
@@ -234,20 +235,27 @@ export function App() {
               >
                 <Search size={15} /> Поиск <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
-              {S.mode && (
-                <button
-                  type="button"
-                  id="mode"
-                  data-act="cfg"
-                  onClick={() => setModeOpen(true)}
-                  title="Сменить режим оценки: модель, ключи, обезличивание, второе мнение"
-                  className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
-                >
-                  {modeText(S.mode, S.llmMode)}
-                </button>
-              )}
-              <span className="sr" id="roleLbl">
-                Роль
+              {S.mode &&
+                (S.role === 'qa' ? (
+                  <button
+                    type="button"
+                    id="mode"
+                    data-act="cfg"
+                    onClick={() => setModeOpen(true)}
+                    aria-label={`Сменить режим оценки. ${modeText(S.mode, S.llmMode)}`}
+                    title={`${TERMS.mode} Нажмите, чтобы сменить.`}
+                    className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
+                  >
+                    {modeText(S.mode, S.llmMode)}
+                    <Settings2 size={14} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span id="mode" title={TERMS.mode} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
+                    {modeText(S.mode, S.llmMode)}
+                  </span>
+                ))}
+              <span className="hidden text-[13px] text-muted lg:inline" id="roleLbl">
+                Смотреть как:
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
                 {(Object.keys(ROLES) as Role[]).map((k, i) => (
