@@ -165,6 +165,22 @@
               ],
               "title": "Ch"
             }
+          },
+          {
+            "name": "operator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operator"
+            }
           }
         ],
         "responses": {
@@ -756,6 +772,521 @@
           "Диалоги"
         ],
         "description": "Снятие отметки возвращает диалог в верхние группы очереди."
+      }
+    },
+    "/api/dialogs/{dialog_id}/operator": {
+      "put": {
+        "summary": "Назначить оператора диалогу",
+        "operationId": "put_operator_api_dialogs__dialog_id__operator_put",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dialog Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperatorIn"
+              },
+              "example": {
+                "operator": "Айгерим С."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Response Put Operator Api Dialogs  Dialog Id  Operator Put"
+                },
+                "example": {
+                  "operator": "Айгерим С."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Диалоги"
+        ],
+        "description": "Имя оператора до 200 символов; `null` снимает назначение."
+      }
+    },
+    "/api/operators/import": {
+      "post": {
+        "summary": "Загрузить операторов из CSV",
+        "description": "Сырое тело CSV, как у `/datasets/upload`: файл или текст; назначает операторов диалогам.",
+        "operationId": "post_operators_import_api_operators_import_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Operators Import Api Operators Import Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/operators": {
+      "get": {
+        "summary": "Операторы",
+        "operationId": "get_operators_api_operators_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Operators Api Operators Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Список операторов с числом диалогов и средними оценками для коучинга."
+      }
+    },
+    "/api/operators/{name}": {
+      "get": {
+        "summary": "Страница оператора",
+        "operationId": "get_operator_api_operators__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Operator Api Operators  Name  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Не найден диалог, критерий, апелляция, запуск или версия",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "dialog": {
+                    "value": {
+                      "detail": "Диалог crm-2026-000123 не найден"
+                    }
+                  },
+                  "run": {
+                    "value": {
+                      "detail": "Запуск 42 не найден"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Диалоги, оценки и слабые места одного оператора."
       }
     },
     "/api/checklist": {
@@ -4198,6 +4729,596 @@
         "description": "Диалоги в работе завершаются и сохраняются, новые не начинаются; повторный запуск продолжает."
       }
     },
+    "/api/employees": {
+      "get": {
+        "summary": "Сотрудники",
+        "operationId": "get_employees_api_employees_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Employees Api Employees Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Режим и модели"
+        ],
+        "description": "Список сотрудников с ролью, командой и активностью."
+      }
+    },
+    "/api/employees/{employee_id}": {
+      "put": {
+        "summary": "Добавить или изменить сотрудника",
+        "operationId": "put_employee_route_api_employees__employee_id__put",
+        "parameters": [
+          {
+            "name": "employee_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Employee Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployeeIn"
+              },
+              "example": {
+                "name": "Айгерим С.",
+                "role": "qa",
+                "team": "Чаты",
+                "active": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Employee Route Api Employees  Employee Id  Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Режим и модели"
+        ],
+        "description": "Имя, роль, команда, активность; действие пишется в журнал."
+      }
+    },
+    "/api/employees/import": {
+      "post": {
+        "summary": "Загрузить сотрудников из CSV",
+        "description": "Сырое тело CSV `id;name;role;team`; действие пишется в журнал.",
+        "operationId": "post_employees_import_api_employees_import_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object",
+                  "title": "Response Post Employees Import Api Employees Import Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Режим и модели"
+        ]
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Текущий сотрудник",
+        "operationId": "get_me_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Me Api Me Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Режим и модели"
+        ],
+        "description": "Кто выполняет запросы: по заголовку `X-CQA-User`."
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "summary": "Журнал действий",
+        "description": "Новые первыми, фильтры `actor`, `action`, `since`; json — 500 последних без `limit`, csv — весь отбор, выгрузка тоже пишется в журнал.",
+        "operationId": "get_audit_api_audit_get",
+        "parameters": [
+          {
+            "name": "actor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Режим и модели"
+        ]
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "summary": "Обзор работы",
+        "operationId": "get_overview_api_overview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Overview Api Overview Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Источник наборов или оценщик не подключён",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "unavailable": {
+                    "value": {
+                      "detail": "Оценка моделью не подключена"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ],
+        "description": "Сводка работы команды КК: оценено, проверено, апелляции, действия."
+      }
+    },
     "/api/evaluate": {
       "post": {
         "summary": "Оценить один диалог",
@@ -6563,6 +7684,17 @@
                 "type": "null"
               }
             ]
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator"
           }
         },
         "type": "object",
@@ -6683,6 +7815,41 @@
           "error"
         ],
         "title": "DialogStatus"
+      },
+      "EmployeeIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "qa",
+              "reviewer",
+              "manager",
+              "admin"
+            ],
+            "title": "Role"
+          },
+          "team": {
+            "type": "string",
+            "title": "Team",
+            "default": ""
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "role"
+        ],
+        "title": "EmployeeIn"
       },
       "EvaluateOut": {
         "properties": {
@@ -6959,6 +8126,27 @@
           "text"
         ],
         "title": "Line"
+      },
+      "OperatorIn": {
+        "properties": {
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operator"
+        ],
+        "title": "OperatorIn"
       },
       "PasteIn": {
         "properties": {
@@ -7461,7 +8649,7 @@
     },
     {
       "name": "Режим и модели",
-      "description": "Режим оценки, провайдеры моделей, проверка связи."
+      "description": "Режим оценки, провайдеры моделей, проверка связи, сотрудники и журнал действий."
     }
   ],
   "security": [

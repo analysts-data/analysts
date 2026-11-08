@@ -90,8 +90,8 @@ def create_app(
         allow_origin_regex=r"https://[a-z0-9-]+(\.[a-z0-9-]+)*\.dynamics\.com",
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT"],
-        allow_headers=["Content-Type", "Authorization", "Idempotency-Key"],
-        allow_headers=["Content-Type", "X-CQA-User"],  # X-CQA-User — текущий сотрудник
+        # X-CQA-User — текущий сотрудник; Authorization и Idempotency-Key — интеграционный API
+        allow_headers=["Content-Type", "X-CQA-User", "Authorization", "Idempotency-Key"],
     )
     settings = settings or Settings()
     app.state.settings = settings
