@@ -3,6 +3,7 @@
 import type { FormEvent, ReactNode } from 'react';
 import { allowed, answerOf, signOf } from '../../lib/appeal.js';
 import { ansTxt, f2, titleOf } from '../../lib/format.js';
+import { t } from '../../lib/i18n.js';
 import { ans, calc } from '../../lib/scoring.js';
 import { api, reload, toast } from '../../lib/state.js';
 import { S } from '../../store';
@@ -25,7 +26,7 @@ function Form({ onSubmit, onClose, ok, children }: { onSubmit: (fd: FormData) =>
         {children}
         <footer className="flex justify-end gap-2">
           <Button value="cancel" onClick={onClose}>
-            Отмена
+            {t('Отмена')}
           </Button>
           <Button type="submit" variant="primary" value="ok">
             {ok}
@@ -50,17 +51,17 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
       try {
         await api.putAnswer(d.id, c.id, { a, reason: String(fd.get('reason')).trim(), by: signOf(S.role) });
         await reload();
-        toast(`Ответ сохранён. Итог ${titleOf(d)}: ${before} → ${totalOf(d.id)}.`);
+        toast(t('Ответ сохранён. Итог {title}: {before} → {after}.', { title: titleOf(d), before, after: totalOf(d.id) }));
       } catch (e: any) {
-        toast(`Ответ не сохранён: ${e.message}`);
+        toast(t('Ответ не сохранён: {err}', { err: e.message }));
       }
     };
     return (
-      <Modal open onOpenChange={v => !v && onClose()} title={r ? 'Исправить оценку' : 'Оценить вручную'} description={sub}>
-        <Form onSubmit={save} onClose={onClose} ok="Сохранить ответ">
+      <Modal open onOpenChange={v => !v && onClose()} title={r ? t('Исправить оценку') : t('Оценить вручную')} description={sub}>
+        <Form onSubmit={save} onClose={onClose} ok={t('Сохранить ответ')}>
           {c.type === 'flag' ? (
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="mb-1 text-[13px] font-semibold text-ink2">Грубые ошибки</legend>
+              <legend className="mb-1 text-[13px] font-semibold text-ink2">{t('Грубые ошибки')}</legend>
               {(c.questions || []).map((q: any) => (
                 <label key={q.k} className="flex items-center gap-2 text-[13px]">
                   <input type="checkbox" name="q" value={q.k} defaultChecked={Boolean(cur && cur[q.k])} /> {q.label}
@@ -68,7 +69,7 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
               ))}
             </fieldset>
           ) : (
-            <Field label="Ответ">
+            <Field label={t('Ответ')}>
               <select name="a" className="fld" defaultValue={cur == null ? undefined : String(cur)}>
                 {allowed(c).map((v: any) => (
                   <option key={v} value={String(v)}>
@@ -79,10 +80,10 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
               </select>
             </Field>
           )}
-          <Field label="Обоснование, по желанию">
-            <textarea name="reason" className="fld" placeholder="Что в разговоре подтверждает ответ" />
+          <Field label={t('Обоснование, по желанию')}>
+            <textarea name="reason" className="fld" placeholder={t('Что в разговоре подтверждает ответ')} />
           </Field>
-          <p className="text-xs text-muted">Ручной ответ заменяет ответ модели, повторная оценка моделью его не меняет. Прежний ответ остаётся в истории базы.</p>
+          <p className="text-xs text-muted">{t('Ручной ответ заменяет ответ модели, повторная оценка моделью его не меняет. Прежний ответ остаётся в истории базы.')}</p>
         </Form>
       </Modal>
     );
@@ -96,16 +97,16 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
     try {
       await api.postReview({ dlg: d.id, cid: c.id, from, to, reason: String(fd.get('reason')).trim(), reviewer: signOf(S.role) });
       await reload();
-      toast(`Решение сохранено. Итог ${titleOf(d)}: ${before} → ${totalOf(d.id)}.`);
+      toast(t('Решение сохранено. Итог {title}: {before} → {after}.', { title: titleOf(d), before, after: totalOf(d.id) }));
     } catch (e: any) {
-      toast(`Решение не сохранено: ${e.message}`);
+      toast(t('Решение не сохранено: {err}', { err: e.message }));
     }
   };
   return (
-    <Modal open onOpenChange={v => !v && onClose()} title={pick ? 'Изменить ответ' : keep ? 'Оставить оценку модели' : 'Принять второе мнение'} description={sub}>
-      <Form onSubmit={save} onClose={onClose} ok="Сохранить решение">
+    <Modal open onOpenChange={v => !v && onClose()} title={pick ? t('Изменить ответ') : keep ? t('Оставить оценку модели') : t('Принять второе мнение')} description={sub}>
+      <Form onSubmit={save} onClose={onClose} ok={t('Сохранить решение')}>
         {pick ? (
-          <Field label="Верный ответ">
+          <Field label={t('Верный ответ')}>
             <select name="to" className="fld">
               {allowed(c)
                 .filter((v: any) => v !== from)
@@ -120,18 +121,18 @@ export function CardForms({ d, p, onClose }: { d: any; p: Pending; onClose: () =
           <p className="box na">
             {keep ? (
               <>
-                Оценка остаётся <b>{ansTxt(c, p.val)}</b>.
+                {t('Оценка остаётся')} <b>{ansTxt(c, p.val)}</b>.
               </>
             ) : (
               <>
-                Оценка меняется с <b>{ansTxt(c, from)}</b> на <b>{ansTxt(c, p.val)}</b>.
+                {t('Оценка меняется с')} <b>{ansTxt(c, from)}</b> {t('на')} <b>{ansTxt(c, p.val)}</b>.
               </>
             )}{' '}
-            Итог: {before} → <b>{f2(calc(d, S.checklist, S.appeals, { cid: c.id, val: p.val }).total)}</b>
+            {t('Итог:')} {before} → <b>{f2(calc(d, S.checklist, S.appeals, { cid: c.id, val: p.val }).total)}</b>
           </p>
         )}
-        <Field label="Причина решения, обязательно">
-          <textarea name="reason" className="fld" required minLength={5} placeholder="Что в разговоре подтверждает этот ответ" />
+        <Field label={t('Причина решения, обязательно')}>
+          <textarea name="reason" className="fld" required minLength={5} placeholder={t('Что в разговоре подтверждает этот ответ')} />
         </Field>
       </Form>
     </Modal>

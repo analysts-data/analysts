@@ -1,6 +1,7 @@
 // «Добавить диалоги»: меню из трёх пунктов (набор организаторов, файл JSON, текст диалога). Только специалисту КК.
 import { ChevronDown, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../../lib/i18n.js';
 import { postDataset, saveSource, uploadDataset } from '../../lib/state.js';
 import { Button, Field, Modal } from '../../ui';
 import { openPaste } from '../PasteDialog';
@@ -37,18 +38,23 @@ function DatasetDialog({ onClose }: { onClose: () => void }) {
     onClose();
   }
   return (
-    <Modal open onOpenChange={v => !v && onClose()} title="Набор организаторов" description="Диалоги загрузятся по коду набора. Со ссылкой API набор обновляется раз в 5 минут.">
+    <Modal
+      open
+      onOpenChange={v => !v && onClose()}
+      title={t('Набор организаторов')}
+      description={t('Диалоги загрузятся по коду набора. Со ссылкой API набор обновляется раз в 5 минут.')}
+    >
       <form className="flex flex-col gap-4" onSubmit={load}>
-        <Field label="Код набора" hint="например, DEV">
+        <Field label={t('Код набора')} hint={t('например, DEV')}>
           <input id="gid" ref={gid} className="fld" defaultValue="DEV" required autoFocus />
         </Field>
-        <Field label="Ссылка API, необязательно">
+        <Field label={t('Ссылка API, необязательно')}>
           <input id="orgurl" ref={url} type="url" className="fld" autoComplete="off" />
         </Field>
         <div className="flex justify-end gap-2.5">
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{t('Отмена')}</Button>
           <Button type="submit" variant="primary" data-act="load" disabled={busy}>
-            {busy ? 'Получаем…' : 'Получить набор'}
+            {busy ? t('Получаем…') : t('Получить набор')}
           </Button>
         </div>
       </form>
@@ -75,7 +81,7 @@ export function AddMenu({ primary }: { primary?: boolean }) {
   return (
     <div className="relative" ref={ref}>
       <Button variant={primary ? 'primary' : 'default'} aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(!open)}>
-        <Plus size={16} aria-hidden="true" /> Добавить диалоги <ChevronDown size={16} aria-hidden="true" />
+        <Plus size={16} aria-hidden="true" /> {t('Добавить диалоги')} <ChevronDown size={16} aria-hidden="true" />
       </Button>
       {open && (
         <div className="absolute right-0 z-30 mt-1 flex w-64 flex-col rounded-lg border border-line bg-surface p-1 shadow-card">
@@ -87,10 +93,10 @@ export function AddMenu({ primary }: { primary?: boolean }) {
               setDataset(true);
             }}
           >
-            Набор организаторов…
+            {t('Набор организаторов…')}
           </button>
           <label htmlFor="jsonf" className={item} onClick={() => setTimeout(() => setOpen(false))}>
-            Файл JSON…
+            {t('Файл JSON…')}
           </label>
           <button
             type="button"
@@ -101,7 +107,7 @@ export function AddMenu({ primary }: { primary?: boolean }) {
               openPaste();
             }}
           >
-            Вставить текст диалога…
+            {t('Вставить текст диалога…')}
           </button>
         </div>
       )}

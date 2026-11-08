@@ -4,15 +4,20 @@ import { ChevronDown } from 'lucide-react';
 import { ansTxt, f2, fn, mmss } from '../../lib/format.js';
 import { byJev } from '../../lib/queue.js';
 import { ans, calc, flagWhy, frac, lastDec } from '../../lib/scoring.js';
+import { t } from '../../lib/i18n.js';
 import { href } from '../../lib/router.js';
 import { S } from '../../store';
 import { Term } from '../../terms';
 import { Button, Chip, cn, Tip, type Tone } from '../../ui';
+import { History } from './History';
+import { RecheckMenu } from './Recheck';
+import { evalOf } from './Ops';
 import { OrgPlayer } from './Transcript';
 import { lineBy, MANUAL, ptsTxt, tone } from './util';
+import { Why } from './Why';
 
 export const ALL = '*'; // S.open[dialog]: раскрыты все критерии
-const WHO: Record<string, string> = { client: 'клиент', operator: 'оператор', bot: 'бот', system: 'система' };
+const WHO: Record<string, () => string> = { client: () => t('клиент'), operator: () => t('оператор'), bot: () => t('бот'), system: () => t('система') };
 
 export type Ctx = {
   d: any;
@@ -44,6 +49,12 @@ export function Criteria({ ctx, sum }: { ctx: Ctx; sum: any }) {
   const cl = S.checklist;
   return (
     <>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_5rem_18px] gap-2 border-t border-line py-1.5 pl-4 pr-2 text-xs text-muted" aria-hidden="true">
+        <span />
+        <span className="text-right">{t('Ответ модели')}</span>
+        <span className="text-right">{t('Баллы / вес')}</span>
+        <span />
+      </div>
       {cl.sections.map((s: string, si: number) => {
         const cs = cl.criteria.filter((x: any) => x.sec === si);
         if (!cs.length) return null;
@@ -69,16 +80,26 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
   const r = d.res[c.id];
   const a = ans(d, c.id, S.appeals);
   const isOpen = open === c.id || open === ALL;
+  const busy = !r && evalOf(S, d.id) === 'running';
   let chip, pts, lowered, gist;
   if (c.type === 'flag') {
-    lowered = Boolean(r && a && Object.values(a).some(Boolean));
-    chip = !r ? <Chip tone="ev">ждёт оценки</Chip> : lowered ? <Chip tone="risk">Да</Chip> : <Chip tone="ok">Нет</Chip>;
-    pts = 'без баллов';
-    gist = r ? ansTxt(c, a) : '';
+    const found = r && a ? (c.questions || []).filter((q: any) => a[q.k]) : [];
+    lowered = found.length > 0;
+    chip = !r ? (
+      <Chip tone="ev">{busy ? t('оценивается…') : t('ждёт оценки')}</Chip>
+    ) : lowered ? (
+      <Chip tone="risk" className="max-w-[40vw]">
+        <span className="truncate">{found.length === 1 ? t('Найдена: {kind}', { kind: found[0].label }) : t('Найдены: {n}', { n: found.length })}</span>
+      </Chip>
+    ) : (
+      <Chip tone="ok">{t('Не найдены')}</Chip>
+    );
+    pts = t('без баллов');
+    gist = found.length > 1 ? ansTxt(c, a) : '';
   } else {
     const f = frac(c, a);
     lowered = Boolean(r && f != null && f < 1);
-    chip = <AnsChip c={c} a={a} tone={tone(c, a)} />;
+    chip = busy ? <Chip tone="ev">{t('оценивается…')}</Chip> : <AnsChip c={c} a={a} tone={tone(c, a)} />;
     pts = ptsTxt(c, a);
     gist = r ? firstSentence(r.why) : '';
   }
@@ -95,7 +116,7 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
       <div className="flex items-center hover:bg-hover">
         <button
           type="button"
-          className="crit-row grid min-w-0 flex-1 grid-cols-[2.2rem_minmax(0,1fr)_auto_auto_18px] items-center gap-2 py-2.5 pl-4 pr-2 text-left"
+          className="crit-row grid min-w-0 flex-1 grid-cols-[2.2rem_minmax(0,1fr)_auto_5rem_18px] items-center gap-2 py-2.5 pl-4 pr-2 text-left"
           data-act="crit"
           data-cid={c.id}
           aria-expanded={isOpen}
@@ -107,19 +128,19 @@ function Crit({ c, ctx }: { c: any; ctx: Ctx }) {
             {!isOpen && gist && <span className="block truncate text-xs text-muted">{gist}</span>}
           </span>
           {chip}
-          <span className="num text-[13px] font-semibold">{pts}</span>
+          <span className="num text-right text-[13px] font-semibold">{pts}</span>
           <ChevronDown size={16} className={cn('text-muted transition-transform', isOpen && 'rotate-180')} aria-hidden="true" />
         </button>
         {S.role === 'operator' &&
           (pa ? (
             <Chip tone="info" className="mr-3">
-              Апелляция на рассмотрении
+              {t('Апелляция на рассмотрении')}
             </Chip>
           ) : (
             lowered &&
             !isOpen && (
               <Button variant="ghost" size="sm" className="mr-2" data-act="appealrow" data-cid={c.id} onClick={() => ctx.appeal(c.id)}>
-                Оспорить
+                {t('Оспорить')}
               </Button>
             )
           ))}
@@ -138,11 +159,11 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
   if (!r || a == null)
     return (
       <Note kind="check">
-        <span>Критерий ждёт оценки. Пока итог считается без него.</span>
+        <span>{t('Критерий ждёт оценки. Пока итог считается без него.')}</span>
         {qa() && (
           <span>
             <Button size="sm" data-act="manual" data-cid={c.id} onClick={() => ctx.manual(c)}>
-              Оценить вручную
+              {t('Оценить вручную')}
             </Button>
           </span>
         )}
@@ -156,19 +177,19 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
       {c.type === 'flag' ? <FlagBody c={c} r={r} a={a} ctx={ctx} /> : <ScoredBody c={c} r={r} a={a} ctx={ctx} />}
       {hist.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Label>История оценки</Label>
+          <Label>{t('История оценки')}</Label>
           <div className="hist grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 text-[13px]">
-            <span className="text-muted">Исходная</span>
-            <span>Модель, {d.at}</span>
+            <span className="text-muted">{t('Исходная')}</span>
+            <span>{t('Модель, {at}', { at: d.at })}</span>
             <Chip tone="na">{ansTxt(c, r.a)}</Chip>
             {hist.map((h: any) => (
               <Hist key={h.id} c={c} h={h} />
             ))}
             {c.type !== 'flag' && (
               <>
-                <span className="text-muted">Итог</span>
+                <span className="text-muted">{t('Итог')}</span>
                 <span>
-                  Пересчитан по формуле чек-листа, было{' '}
+                  {t('Пересчитан по формуле чек-листа, было')}{' '}
                   <span className="num">{f2(calc(d, S.checklist, S.appeals.filter((x: any) => !(x.dlg === d.id && x.cid === c.id))).total)}</span>
                 </span>
                 <b className="num">{f2(calc(d, S.checklist, S.appeals).total)}</b>
@@ -181,28 +202,30 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
         <div className="flex flex-wrap items-center gap-2">
           {r.model === MANUAL && (
             <Chip tone="info">
-              <Term k="manual">Исправлено специалистом</Term>
+              <Term k="manual">{t('Исправлено специалистом')}</Term>
             </Chip>
           )}
           {!blocked && qa() && (
             <Button size="sm" data-act="manual" data-cid={c.id} onClick={() => ctx.manual(c)}>
-              Исправить оценку
+              {t('Исправить оценку')}
             </Button>
           )}
+          {!blocked && qa() && <RecheckMenu dialogs={[d.id]} criteria={[c.id]} size="sm" />}
         </div>
       )}
+      {S.role !== 'operator' && <History d={d} c={c} lock={pa ? t('По критерию есть апелляция на рассмотрении: прежнюю оценку можно сделать текущей после решения.') : null} />}
       {pa ? (
         <p className="flex items-center gap-2">
-          <Chip tone="info">Апелляция на рассмотрении</Chip>
+          <Chip tone="info">{t('Апелляция на рассмотрении')}</Chip>
           <a href={href('appeals', pa.id)} className="text-[13px]">
-            Открыть апелляцию
+            {t('Открыть апелляцию')}
           </a>
         </p>
       ) : (
         S.role !== 'reviewer' && (
           <div>
             <Button variant={qa() ? 'ghost' : 'default'} size={qa() ? 'sm' : 'md'} data-act="appeal" data-cid={c.id} onClick={() => ctx.appeal(c.id)}>
-              Оспорить оценку
+              {t('Оспорить оценку')}
             </Button>
           </div>
         )
@@ -213,11 +236,11 @@ function Body({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
 
 const Hist = ({ c, h }: { c: any; h: any }) => (
   <>
-    <span className="text-muted">{h.kind === 'appeal' ? 'Апелляция' : 'Решение'}</span>
+    <span className="text-muted">{h.kind === 'appeal' ? t('Апелляция') : t('Решение')}</span>
     <span>
       {h.reviewer}, {h.decidedAt}: «{h.reason}»
     </span>
-    <Chip tone={h.status === 'changed' ? 'info' : 'ok'}>{h.status === 'changed' ? ansTxt(c, h.to) : 'подтверждено'}</Chip>
+    <Chip tone={h.status === 'changed' ? 'info' : 'ok'}>{h.status === 'changed' ? ansTxt(c, h.to) : t('подтверждено')}</Chip>
   </>
 );
 
@@ -233,20 +256,20 @@ function Evidence({ ev, ctx }: { ev: number[]; ctx: Ctx }) {
           <div key={n} className="quote flex flex-wrap items-start justify-between gap-2 border-l-2 border-ev py-0.5 pl-3">
             <div className="min-w-0 flex-1">
               <span className="text-xs text-muted">
-                {n}, {WHO[l.who] || l.who}
+                {n}, {WHO[l.who]?.() || l.who}
               </span>
               <br />«{l.text}»
             </div>
             <span className="flex gap-1.5">
               <Button size="sm" data-act="ev" data-n={n} onClick={() => ctx.jump(n)}>
-                К реплике
+                {t('К реплике')}
               </Button>
               {call &&
                 (l.s == null ? (
                   <OrgPlayer d={d} />
                 ) : (
-                  <Tip content={`Слушать запись с ${mmss(l.s)}`}>
-                    <Button size="sm" data-act="seek" data-n={l.n} onClick={() => ctx.seekLine(l)} aria-label={`Перейти к фрагменту, ${mmss(l.s)}`}>
+                  <Tip content={t('Слушать запись с {at}', { at: mmss(l.s) })}>
+                    <Button size="sm" data-act="seek" data-n={l.n} onClick={() => ctx.seekLine(l)} aria-label={t('Перейти к фрагменту, {at}', { at: mmss(l.s) })}>
                       ▶ {mmss(l.s)}
                     </Button>
                   </Tip>
@@ -269,7 +292,7 @@ function FlagBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
           <div key={x.q.k} className="flex flex-col gap-1.5 border-t border-line2 pt-2" data-k={x.q.k}>
             <div className="flex items-center justify-between gap-2">
               <b>{x.q.label}</b>
-              {a[x.q.k] ? <Chip tone="risk">найдено</Chip> : <span className="text-[13px] text-muted">нет</span>}
+              {a[x.q.k] ? <Chip tone="risk">{t('найдено')}</Chip> : <span className="text-[13px] text-muted">{t('не найдено')}</span>}
             </div>
             {x.why && <p className="text-[13px]">{x.why}</p>}
             <Evidence ev={x.ev} ctx={ctx} />
@@ -277,9 +300,14 @@ function FlagBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
         ))}
       </div>
       {fw.rest && <p>{fw.rest}</p>}
+      {r.basis != null && (
+        <span>
+          <Why title={t('Почему: {name}', { name: c.name })} basis={r.basis} d={ctx.d} onLine={ctx.jump} />
+        </span>
+      )}
       {fw.ev.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Label>Основание</Label>
+          <Label>{t('Основание')}</Label>
           <Evidence ev={fw.ev} ctx={ctx} />
         </div>
       )}
@@ -298,10 +326,15 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
     <>
       <div className="flex flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 text-[13px]">
-          <span>Ответ:</span>
-          <AnsChip c={c} a={a} tone={tone(c, a)} />
+          <span>
+            {f == null
+              ? `${t('Ответ:')} ${ansTxt(c, a)}`
+              : c.type === 'scale'
+                ? t('Ответ: {a} по шкале, это {p} из {w} баллов', { a: ansTxt(c, a), p: fn(c.w * f), w: c.w })
+                : t('Ответ: {a}, это {p} из {w} баллов', { a: ansTxt(c, a), p: fn(c.w * f), w: c.w })}
+          </span>
           {altDiff && !op && (
-            <span className="text-muted">Второе мнение: {ansTxt(c, r.alt)}</span>
+            <span className="text-muted">{t('Второе мнение: {a}', { a: ansTxt(c, r.alt) })}</span>
           )}
         </p>
         {c.type === 'scale' && c.stepText && c.stepText[a] && (
@@ -313,25 +346,24 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
       {a === 'na' ? (
         <Note kind="na">
           <p>
-            <b>N/A: не применимо.</b>{' '}
-            Условие N/A выполнено: {c.naCond} {r.why} Вес {c.w} распределён между применимыми критериями.
+            <b>{t('N/A: не применимо.')}</b> {t('Условие N/A выполнено:')} {c.naCond} {r.why} {t('Вес {w} распределён между применимыми критериями.', { w: c.w })}
           </p>
         </Note>
       ) : (
         <div>
-          <Label>Обоснование</Label>
+          <Label>{t('Обоснование')}</Label>
           <p>{r.why}</p>
         </div>
       )}
       {/* пропущенное действие: реплик-оснований нет, модель называет проверенный участок; Jev участок не называет */}
       {!byJev(r) && ((a === 'no' && (r.seg || !hasEv)) || (c.type === 'scale' && f != null && f < 1 && !hasEv)) && (
         <p className="text-[13px]">
-          Проверен участок: <b>{r.seg || 'весь диалог'}</b>. {a === 'no' ? 'Ожидаемого действия там нет.' : 'Полностью действие там не выполнено.'}
+          {t('Проверен участок:')} <b>{r.seg || t('весь диалог')}</b>. {a === 'no' ? t('Ожидаемого действия там нет.') : t('Полностью действие там не выполнено.')}
         </p>
       )}
       {hasEv && (
         <div className="flex flex-col gap-1.5">
-          <Label>Основание</Label>
+          <Label>{t('Основание')}</Label>
           <Evidence ev={r.ev} ctx={ctx} />
         </div>
       )}
@@ -340,22 +372,22 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
           <span>
             {byJev(r) ? (
               <>
-                <b>Jev не уверен в ответе</b>: вероятность ниже порога.
+                <b>{t('Jev не уверен в ответе')}</b>: {t('вероятность ниже порога.')}
               </>
             ) : (
               <>
-                <b>Цитата не нашлась в указанной реплике</b> и после повтора.
+                <b>{t('Цитата не нашлась в указанной реплике')}</b> {t('и после повтора.')}
               </>
             )}{' '}
-            Ответ <Chip tone="ev">на проверку</Chip>
+            {t('Ответ')} <Chip tone="ev">{t('на проверку')}</Chip>
           </span>
           {qa() && (
             <span className="flex flex-wrap gap-2">
               <Button size="sm" data-act="review" data-cid={c.id} data-val={String(a)} onClick={() => ctx.review(c, a)}>
-                Оставить {ansTxt(c, a)}
+                {t('Оставить {a}', { a: ansTxt(c, a) })}
               </Button>
               <Button size="sm" data-act="review" data-cid={c.id} onClick={() => ctx.review(c, null)}>
-                Изменить
+                {t('Изменить')}
               </Button>
             </span>
           )}
@@ -364,15 +396,15 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
       {op ? null : r.alt != null && r.alt !== r.a && !dec ? (
         <Note kind="second">
           <span>
-            <b>Второе мнение: {ansTxt(c, r.alt)}.</b> Ответы моделей разошлись, выберите верный.
+            <b>{t('Второе мнение: {a}.', { a: ansTxt(c, r.alt) })}</b> {t('Ответы моделей разошлись, выберите верный.')}
           </span>
           {qa() && (
             <span className="flex flex-wrap gap-2">
               <Button size="sm" data-act="review" data-cid={c.id} data-val={String(r.a)} onClick={() => ctx.review(c, r.a)}>
-                Оставить {ansTxt(c, r.a)}
+                {t('Оставить {a}', { a: ansTxt(c, r.a) })}
               </Button>
               <Button size="sm" data-act="review" data-cid={c.id} data-val={String(r.alt)} onClick={() => ctx.review(c, r.alt)}>
-                Принять {ansTxt(c, r.alt)}
+                {t('Принять {a}', { a: ansTxt(c, r.alt) })}
               </Button>
             </span>
           )}
@@ -380,13 +412,13 @@ function ScoredBody({ c, r, a, ctx }: { c: any; r: any; a: any; ctx: Ctx }) {
       ) : (
         r.alt != null &&
         r.alt === r.a && (
-          <p className="text-xs text-muted">Второе мнение совпало: {ansTxt(c, r.alt)}.</p>
+          <p className="text-xs text-muted">{t('Второе мнение совпало: {a}.', { a: ansTxt(c, r.alt) })}</p>
         )
       )}
       {r.better && f != null && f < 1 && (
         <Note kind="better">
           <p>
-            <b>Как сказать лучше:</b> «{r.better}»
+            <b>{t('Как сказать лучше:')}</b> «{r.better}»
           </p>
         </Note>
       )}
