@@ -14,14 +14,15 @@ import { currentTheme, go, rerender, useRoute, useS } from '../store';
 import { Term, TERMS } from '../terms';
 import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip } from '../ui';
 import { Recommendations } from './Recommendations';
-import { Chart, type Bar } from './analytics/Chart';
+import { Chart, heat, heatStyle, type Bar } from './analytics/Chart';
 import { Products } from './analytics/Products';
 import { Runs } from './analytics/Runs';
+import { Slices } from './analytics/Slices';
 import { DownloadButton } from './people/net';
 
 // Вкладки: «Обзор» считается из /api/state; остальные зовут новые пути сервера только при открытии вкладки.
-const TABS = ['overview', 'products', 'runs'] as const;
-const tabName = (k: string) => ({ overview: t('Обзор'), products: t('По продуктам'), runs: t('Прогоны') })[k];
+const TABS = ['overview', 'products', 'runs', 'slices'] as const;
+const tabName = (k: string) => ({ overview: t('Обзор'), products: t('По продуктам'), runs: t('Прогоны'), slices: t('Срезы') })[k];
 
 const LANGS = ['RU', 'KZ', 'EN'];
 // значения — данные сервера (PUT /api/owners), переводится только подпись
@@ -37,20 +38,6 @@ const BANDS: [string, number][] = [
 ];
 const pct = (x: number | null) => (x == null ? '—' : `${Math.round(100 * x)}%`);
 const lost = (cid: string, lang?: string) => href('queue', null, { lost: cid, lang });
-// 0..4: насколько часто теряют баллы (классы hm* — метки старой вёрстки)
-const heat = (k: number, n: number) => (!n ? 0 : k / n >= 0.6 ? 4 : k / n >= 0.4 ? 3 : k / n >= 0.2 ? 2 : k ? 1 : 0);
-const HEAT_BG = [
-  'var(--sunken)',
-  'color-mix(in srgb, var(--ev) 14%, var(--surface))',
-  'color-mix(in srgb, var(--ev) 32%, var(--surface))',
-  'color-mix(in srgb, var(--ev) 58%, var(--surface))',
-  'var(--ev)',
-];
-// в тёмной теме насыщенная ячейка светлая: текст на ней тёмный, иначе контраст ниже 4,5:1
-const heatStyle = (h: number, dark: boolean) => ({
-  background: HEAT_BG[h],
-  color: h === 4 ? 'var(--surface)' : h === 3 && dark ? 'var(--bg)' : h ? 'var(--ink)' : 'var(--muted)',
-});
 
 function download(name: string, text: string) {
   const a = document.createElement('a');
@@ -234,7 +221,7 @@ export function Analytics() {
         ))}
       </div>
 
-      {tab === 'products' ? <Products /> : tab === 'runs' ? <Runs /> : (
+      {tab === 'products' ? <Products /> : tab === 'runs' ? <Runs /> : tab === 'slices' ? <Slices /> : (
       <>
 
       <section className="lens grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line shadow-card [&>*:last-child:nth-child(odd)]:col-span-2 lg:grid-cols-5 lg:[&>*:last-child:nth-child(odd)]:col-span-1" aria-label={t('Сводка')}>

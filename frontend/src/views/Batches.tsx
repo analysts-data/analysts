@@ -414,7 +414,7 @@ export function Batches({ id }: { id: string | null }) {
         ) : !jobs.length ? (
           <div className="flex flex-col items-start gap-3 p-5">
             <p className="text-muted">{t('Пакетов пока нет.')}</p>
-            {create}
+            {canRun && <p className="text-[13px] text-muted">{t('Создайте первый кнопкой «Новый пакет»: можно взять диалоги по фильтрам очереди или списком.')}</p>}
           </div>
         ) : (
           <div className="overflow-x-auto">

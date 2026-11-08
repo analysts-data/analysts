@@ -380,6 +380,15 @@ export function Queue() {
                               ))}
                             </span>
                           )}
+                          {(x.d.risks?.length ?? 0) > 0 && (
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {x.d.risks.map((r: any) => (
+                                <Chip key={r.k} tone="risk" data-risk={r.k}>
+                                  {r.label}
+                                </Chip>
+                              ))}
+                            </span>
+                          )}
                         </td>
                         {withOp && <td className={cn('hidden md:table-cell', !x.d.operator && 'text-muted')}>{x.d.operator || t('Не указан')}</td>}
                         <td className="hidden md:table-cell">

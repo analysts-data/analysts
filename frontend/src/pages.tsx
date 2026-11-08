@@ -16,6 +16,7 @@ import {
   Route,
   Scale,
   ShieldCheck,
+  Tags,
   Users,
 } from 'lucide-react';
 import { lazy, type ComponentType, type ReactNode } from 'react';
@@ -48,6 +49,7 @@ export const PAGES: PageDef[] = [
   { page: 'automation', label: msg('Автоматизация'), group: 'data', icon: <Bot />, feature: 'automation', view: lazyView(() => import('./views/Automation'), 'Automation') },
   { page: 'checklist', label: msg('Чек-лист'), group: 'settings', icon: <ListChecks /> },
   { page: 'routing', label: msg('Правила обработки'), group: 'settings', icon: <Route />, feature: 'routing', view: lazyView(() => import('./views/Routing'), 'Routing') },
+  { page: 'products', label: msg('Темы обращений'), group: 'settings', icon: <Tags />, feature: 'products', view: lazyView(() => import('./views/Products'), 'Products') },
   { page: 'sufficiency', label: msg('Достаточность данных'), group: 'settings', icon: <ShieldCheck />, feature: 'sufficiency', view: lazyView(() => import('./views/Sufficiency'), 'Sufficiency') },
   { page: 'audit', label: msg('Журнал действий'), group: 'settings', icon: <History />, feature: 'audit', view: lazyView(() => import('./views/Audit'), 'Audit') },
   { page: 'usage', label: msg('Использование'), group: 'settings', icon: <Activity />, feature: 'usage', view: lazyView(() => import('./views/Usage'), 'Usage') },

@@ -3,7 +3,7 @@
 
     scripts/demo.py pick  [--base URL]                > pick.json
     scripts/demo.py check [--base URL] --pick pick.json [--run ID ...] [--call ID] [--draft FILE]
-    scripts/demo.py serve                             # make demo: replay, data/demo.db, набор защиты
+    scripts/demo.py serve [--port N]                  # make demo: replay, data/demo.db, набор защиты
     scripts/demo.py showcase [--port N]               # make showcase: replay, data/showcase.db, + витрина
 
 pick берёт только поля GET /api/state и снимок DEV (CQA_EVAL_DATASET), итог не считает: он только в scoring.js.
@@ -439,7 +439,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_pick = sub.add_parser("pick", help="подобрать диалоги для шагов защиты")
     p_check = sub.add_parser("check", help="проверка готовности за 15 минут")
-    sub.add_parser("serve", help="make demo")
+    p_serve = sub.add_parser("serve", help="make demo")
+    p_serve.add_argument("--port", type=int, default=8000)
     p_show = sub.add_parser("showcase", help="make showcase: витрина для экранов аналитики")
     p_show.add_argument("--port", type=int, default=8000)
     for p in (p_pick, p_check):
@@ -454,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     p_check.add_argument("--where")
     args = parser.parse_args(argv)
     if args.cmd == "serve":
-        return serve()
+        return serve(args.port)
     if args.cmd == "showcase":
         return showcase(args.port)
     settings = Settings()

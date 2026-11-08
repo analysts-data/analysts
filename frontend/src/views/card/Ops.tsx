@@ -14,7 +14,7 @@ const items = (x: any): any[] => (Array.isArray(x) ? x : x?.items ?? []);
 type Opt = { v: string; t: string };
 
 /** Сервер отдаёт оператора, продукт или маркеры хотя бы у одного диалога: блок показывается. */
-export const opsOn = (s: any) => s.dialogs.some((x: any) => 'markers' in x || 'operator' in x || 'product' in x);
+export const opsOn = (s: any) => s.dialogs.some((x: any) => 'markers' in x || 'operator' in x || 'product' in x || 'risks' in x);
 
 /** Статус диалога в идущей оценке (GET /api/runs/{id} → dialogs), иначе null. */
 export const evalOf = (s: any, id: string): string | null =>
@@ -204,10 +204,11 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
             {t('определяется…')}
           </span>
         ) : p.status === 'error' || !p.name ? (
-          <span className="text-muted">
-            {t('не определён')}
-            {p.error ? `: ${p.error}` : ''}
-          </span>
+          <Tip content={p.error ? String(p.error).replace(/\s*\(make record[^)]*\)/, '') : null}>
+            <span className="text-muted" tabIndex={p.error ? 0 : undefined}>
+              {t('не определён')}
+            </span>
+          </Tip>
         ) : (
           <>
             <b data-ops="product">{p.name}</b>
@@ -273,6 +274,27 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
           />
         )}
       </Item>
+      {(d.risks?.length ?? 0) > 0 && (
+        <Item k={t('Риски')} name="risks">
+          {d.risks.map((r: any) => (
+            <span key={r.k} className="inline-flex items-center gap-1.5" data-risk={r.k}>
+              <Chip tone="risk">{r.label}</Chip>
+              {r.lines?.length > 0 && (
+                <button type="button" className="text-xs font-semibold text-accent hover:text-accent-ink" onClick={() => onLine(r.lines[0])}>
+                  {t('Реплика {n}', { n: r.lines[0] })}
+                </button>
+              )}
+              {r.basis && (
+                <Tip content={typeof r.basis === 'string' ? r.basis : (r.basis.why ?? '')}>
+                  <span tabIndex={0} className="cursor-help text-xs text-muted underline decoration-dotted underline-offset-2">
+                    {t('Почему')}
+                  </span>
+                </Tip>
+              )}
+            </span>
+          ))}
+        </Item>
+      )}
     </div>
   );
 }
