@@ -22,6 +22,11 @@ EXEMPT = {
     # текущий сотрудник: интерфейс знает его по выбору «Вы вошли как» (X-CQA-User), отдельный запрос не нужен
     "/me",
 }
+# UI в работе: шкала оценок, «что если», песочница, нормировка, шаблоны, готовые чек-листы (PR #91)
+EXEMPT |= {
+    "/bands", "/checklist/simulate", "/checklist/trial", "/checklist/normalize", "/checklist/presets",
+    "/criteria/templates",
+}  # fmt: skip
 # UI в работе: колокольчик, страница алертов, чипы и фильтр маркеров (PR #87)
 EXEMPT |= {
     "/alerts",
@@ -41,6 +46,8 @@ EXEMPT |= {"/routing", "/routing/explain"}
 EXEMPT |= {"/appeals/reasons", "/appeals/stats"}
 # интеграционный API, не для интерфейса: CRM, Dynamics 365 и контакт-центр
 EXEMPT |= {"/evaluate", "/evaluate/batch", "/dialogs/{dialog_id}", "/results"}
+# UI в работе: темы обращений (PR #95)
+EXEMPT |= {"/products", "/products/stats", "/dialogs/{dialog_id}/product"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

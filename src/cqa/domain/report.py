@@ -1,6 +1,6 @@
 """Отчёт для руководства: ключевые числа, критерии, причины, каналы и языки, выводы. Чистые функции.
 
-Ответ пары — с учётом последнего решения (`effective_answer`), итог — `scoring.total`, доля — `frac`:
+Ответ пары — с учётом последнего решения (`effective_answers`), итог — `scoring.total`, доля — `frac`:
 те же числа, что видит интерфейс.
 """
 
@@ -10,18 +10,21 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from typing import Any
 
-from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
-from cqa.domain.review import awaits_review, effective_answer
+from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog, Product
+from cqa.domain.review import awaits_review, effective_answers
 from cqa.domain.scoring import frac, r2, total
 from cqa.domain.tables import CSS as TABLE_CSS
 from cqa.domain.tables import Doc, md_cell, page
 from cqa.domain.tables import Table as Rows
 from cqa.domain.tables import to_csv as doc_csv
+from cqa.domain.tuning import Band, band_of
 
 TOP = 10
 CHANNEL = {"chat": "Чат", "call": "Звонок"}
 NOBODY = "Не назначено"
 EMPTY = "Нет оценённых диалогов"
+NO_TOPIC = "Тема не определена"
+TOP_TOPIC = 3
 NOTE = (
     "Итог — с учётом решений по апелляциям и проверкам. Грубые нарушения в итог не входят. "
     "Доля баллов критерия считается среди применимых оценок, N/A показан отдельно."
@@ -59,10 +62,7 @@ def _scored(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[A
     for d in dialogs:
         if _status(d) == "block":  # «Недостаточно данных»: вне средних даже с прежними ответами, виден счёт
             continue
-        answers = {
-            cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
-            for cid, r in d.res.items()
-        }
+        answers = effective_answers(d, appeals)
         if (t := total(checklist, answers)) is not None:
             rows.append((d, answers, t))
     return rows
@@ -157,11 +157,15 @@ def build_report(
     lang: str | None = None,
     ch: str | None = None,
     operator: str | None = None,
+    bands: Sequence[Band] = (),
     source: str | None = None,
     source_names: Mapping[str, str] | None = None,
+    products: Sequence[Product] = (),
 ) -> dict[str, Any]:
     """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны;
-    `source_names` — названия источников для раздела «По источникам»."""
+    `source_names` — названия источников для раздела «По источникам»; `bands` — шкала оценок: сколько
+    оценённых диалогов в каждой оценке (`summary.bands`); `products` — справочник тем: раздел
+    «По продуктам» (`products`) только с ним."""
     lang = lang.upper() if lang else None
     picked = [
         d
@@ -182,10 +186,72 @@ def build_report(
         "operators": _section(checklist, picked, appeals),
         "sources": _groups([(d.source_id or "—", t) for d, _, t in rows], labels),
     }
+    in_band = [b.label for _, _, t in rows if (b := band_of(bands, t))]
+    rep["summary"]["bands"] = [
+        {"label": b.label, "tone": b.tone, "min": b.min, "n": (k := in_band.count(b.label)),
+         "share": _share(k, len(rows))}
+        for b in bands
+    ]  # fmt: skip
+    if products:
+        stats = product_stats(checklist, picked, appeals, owners, products)
+        rep["products"] = sorted((p for p in stats if p["dialogs"]), key=lambda p: -p["dialogs"])
     rep["findings"] = _findings(
         rep, any(c.type != "flag" and c.signal == "resolution" for c in checklist.criteria)
     )
     return rep
+
+
+def product_stats(
+    checklist: Checklist,
+    dialogs: Sequence[Dialog],
+    appeals: Sequence[Appeal],
+    owners: Mapping[str, str],
+    products: Sequence[Product],
+) -> list[dict[str, Any]]:
+    """`GET /api/products/stats`: по каждой теме справочника и «Тема не определена» (тема не выбрана, ошибка,
+    тема удалена из справочника) — те же числа, что в отчёте на этих диалогах."""
+    known = {p.id for p in products}
+
+    def topic(d: Dialog) -> str | None:
+        pid = d.product.id if d.product and d.product.status == "done" else None
+        return pid if pid in known else None
+
+    groups: list[tuple[str | None, str]] = [(p.id, p.name) for p in products]
+    if any(topic(d) is None for d in dialogs):
+        groups.append((None, NO_TOPIC))
+    out = []
+    for pid, name in groups:
+        subset = [d for d in dialogs if topic(d) == pid]
+        ids = {d.id for d in subset}
+        mine = [a for a in appeals if a.dlg in ids]
+        rep = _summary(checklist, subset, _scored(checklist, subset, mine), mine, owners)
+        s = rep["summary"]
+        marks: dict[str, tuple[str, set[str]]] = {}  # код маркера риска -> (подпись, диалоги)
+        for d in subset:
+            for r in d.risks or []:
+                marks.setdefault(r.k, (r.label, set()))[1].add(d.id)
+        out.append(
+            {
+                "id": pid,
+                "name": name,
+                "dialogs": s["dialogs"],
+                "scored": s["scored"],
+                "avg_total": s["avg_total"],
+                "risk_share": s["risk"]["share"],
+                "no_next_step_share": s["no_next_step"]["share"],
+                "needs_review": sum(bool(d.product and d.product.needs_review) for d in subset),
+                "reasons": [
+                    {k: r[k] for k in ("tag", "dialogs", "owner")} for r in rep["reasons"][:TOP_TOPIC]
+                ],
+                "weakest": [
+                    {k: c[k] for k in ("id", "name", "share")}
+                    for c in rep["criteria"][:TOP_TOPIC]
+                    if c["share"] < 1
+                ],
+                "risks": [{"k": k, "label": label, "dialogs": len(ds)} for k, (label, ds) in marks.items()],
+            }
+        )
+    return out
 
 
 # --- По сотрудникам ---
@@ -369,6 +435,15 @@ def _findings(rep: dict[str, Any], resolution: bool) -> list[str]:
             f"Самая частая причина потери баллов — «{r['tag']}»: {_dialogs(r['dialogs'])}, "
             f"что менять: {r['owner'].lower()}."
         )
+    scored_topics = [p for p in rep.get("products", []) if p["avg_total"] is not None and p["id"]]
+    if len(scored_topics) > 1:
+        lo = min(scored_topics, key=lambda p: p["avg_total"])
+        hi = max(scored_topics, key=lambda p: p["avg_total"])
+        if lo["avg_total"] < hi["avg_total"]:
+            out.append(
+                f"Темы: ниже всего средний итог у «{lo['name']}» — {_d(lo['avg_total'])}, "
+                f"выше всего у «{hi['name']}» — {_d(hi['avg_total'])}."
+            )
     for title, groups in (("Языки", rep["langs"]), ("Каналы", rep["channels"])):
         lo, hi = min(groups, key=lambda g: g["avg"]), max(groups, key=lambda g: g["avg"])
         if lo["avg"] < hi["avg"]:
@@ -436,8 +511,27 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
                 for r in rep["reasons"]
             ],
         ),
+        (
+            "По шкале оценок", ["Оценка", "Итог от", "Диалогов"], {1, 2},
+            [([b["label"], _d(b["min"]), str(b["n"])], b["share"] or 0) for b in rep["summary"]["bands"]],
+        ),
         ("По сотрудникам: требуют внимания", OPERATOR_HEAD, NUM, people(rep["operators"]["attention"])),
         ("По сотрудникам: сильные стороны", OPERATOR_HEAD, NUM, people(rep["operators"]["strengths"])),
+        (
+            "По продуктам",
+            ["Тема", "Диалогов", "Средний итог", "Грубые нарушения", "Без след. шага", "Главная причина"],
+            {1, 2, 3, 4},
+            [
+                (
+                    [
+                        p["name"], str(p["dialogs"]), _d(p["avg_total"]), _pct(p["risk_share"]),
+                        _pct(p["no_next_step_share"]), p["reasons"][0]["tag"] if p["reasons"] else "—",
+                    ],
+                    (p["avg_total"] or 0) / 100,
+                )
+                for p in rep.get("products", [])
+            ],
+        ),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
         ("По источникам", ["Источник", "Диалогов", "Средний итог"], {1, 2}, groups(rep.get("sources", []))),

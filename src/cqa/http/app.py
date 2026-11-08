@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 import sqlite3
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -20,8 +21,8 @@ from cqa.adapters.batches import BatchStore
 from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_routed, build_source
-from cqa.domain.models import Checklist
+from cqa.compose import build_classifier, build_routed, build_source
+from cqa.domain.models import Checklist, Product
 from cqa.domain.review import ASTANA
 from cqa.http import api, batches, docs, integration, sources
 from cqa.http.access import protect
@@ -29,12 +30,14 @@ from cqa.http.audio import router as audio_router
 from cqa.http.openapi import document
 from cqa.http.validation import validation_error
 from cqa.services.alerts import refresh
+from cqa.services.automation import Automation, wire
 from cqa.services.batches import Batches
+from cqa.services.checklists import SEED_CHECKLIST
 from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.prosody import dialog_prosody
-from cqa.services.runs import Runner
+from cqa.services.runs import Classifier, Runner
 from cqa.services.state import mode_from_settings
 from cqa.services.sync import Syncer
 from cqa.services.telemetry import TokenBucket, purge
@@ -42,8 +45,7 @@ from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
-# ponytail: seed is the test fixture; a separate product file if the two ever diverge
-SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
+SEED_PRODUCTS = ROOT / "tests" / "fixtures" / "products.json"  # справочник тем — данные, как чек-лист
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -56,12 +58,14 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация источников по их расписанию, пока работает сервер."""
-    """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
-    syncer: Syncer | None = app.state.syncer
-    tasks = [asyncio.create_task(app.state.batches.work())]
-    if syncer:
-        tasks.append(asyncio.create_task(syncer.run()))
+    """Автосинхронизация набора организаторов, очередь батчей и планировщик автоматизации."""
+    syncer: Syncer = app.state.syncer
+    automation: Automation = app.state.automation
+    tasks = [
+        asyncio.create_task(app.state.batches.work()),
+        asyncio.create_task(syncer.run(skip=automation.owns_sync)),
+        asyncio.create_task(automation.run()),
+    ]
     yield
     for task in tasks:
         task.cancel()
@@ -84,12 +88,20 @@ def seed_checklist(store: Store) -> None:
         )
 
 
+def seed_products(store: Store) -> None:
+    """Начальный справочник тем обращений на пустой базе."""
+    if store.products() is None:
+        raw = json.loads(SEED_PRODUCTS.read_text(encoding="utf-8"))
+        store.set_products([Product.model_validate(p) for p in raw])
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     source: DialogSource | None = None,
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
+    classifier: Classifier | None = None,
 ) -> FastAPI:
     # свой /docs/ без CDN вместо Swagger и ReDoc; схема OpenAPI рядом с остальным API
     app = FastAPI(
@@ -122,8 +134,10 @@ def create_app(
     store = Store(conn)
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
+    store.clear_pending_products()
     purge(store, settings.telemetry_retention_days, datetime.now(UTC))
     seed_checklist(store)
+    seed_products(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
     store.fail_stale_syncs()
@@ -149,9 +163,9 @@ def create_app(
         return created
 
     app.state.alerts = alerts
-    evaluator = (
-        evaluator if evaluator is not None else build_routed(settings, prosody, store)
-    )  # llm-evaluation
+    if evaluator is None:  # llm-evaluation; подставленный оценщик (тесты) — без своего классификатора тем
+        evaluator = build_routed(settings, prosody, store)
+        classifier = classifier if classifier is not None else build_classifier(settings)
 
     async def finished(run: dict[str, Any]) -> None:
         """Конец запуска: алерты (`alert.created`) и событие `run.finished` на вебхук, если он задан."""
@@ -163,10 +177,16 @@ def create_app(
                 secret = s.webhook_secret.get_secret_value() if s.webhook_secret else None
                 await webhook.send(hooks, s.webhook_url, secret, "run.finished", [run])
 
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=finished)
+    app.state.runner = Runner(
+        store, evaluator, parallel=settings.llm_max_parallel, on_finish=finished, classifier=classifier
+    )
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
+    # выключена по умолчанию: пока enabled false, планировщик только читает настройки
+    app.state.automation = Automation(
+        store, wire(store, app.state.syncer, app.state.runner, app.state.batches, prosody)
+    )
     app.state.telemetry_limit = TokenBucket(capacity=30, rate=0.5)  # ~1 пакет в 2 с на клиента
 
     app.include_router(api.router)

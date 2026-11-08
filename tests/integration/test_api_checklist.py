@@ -61,28 +61,28 @@ def test_put_checklist_duplicate_id_is_422(client: TestClient) -> None:
     response = client.put("/api/checklist", json=dup)
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Повторяется id критерия 04"}
+    assert response.json()["detail"] == "Повторяется id критерия 04"  # и "fields": путь поля -> текст
 
 
 def test_put_checklist_unknown_section_is_422(client: TestClient) -> None:
     response = client.put("/api/checklist", json=draft(client, {"04": {"sec": 7}}))
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Критерий 04: секции 7 нет"}
+    assert response.json()["detail"] == "Критерий 04: секции 7 нет"
 
 
 def test_put_checklist_channel_without_na_is_422(client: TestClient) -> None:
     response = client.put("/api/checklist", json=draft(client, {"05": {"channel": "chat"}}))
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Критерий 05: для канала chat нужен na: true"}
+    assert response.json()["detail"] == "Критерий 05: для канала chat нужен na: true"
 
 
 def test_put_checklist_scale_without_steps_is_422(client: TestClient) -> None:
     response = client.put("/api/checklist", json=draft(client, {"01": {"type": "scale"}}))
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Критерий 01: у шкалы нет ступеней"}
+    assert response.json()["detail"] == "Критерий 01: у шкалы нет ступеней"
 
 
 def test_put_checklist_rejects_bad_model_without_new_version(client: TestClient) -> None:
@@ -98,4 +98,4 @@ def test_put_checklist_scale_with_missing_step_text_is_422(client: TestClient) -
     response = client.put("/api/checklist", json=draft(client, {"04": {"stepText": texts}}))
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Критерий 04: нет текста ступени 5"}
+    assert response.json()["detail"] == "Критерий 04: нет текста ступени 5"

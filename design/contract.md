@@ -122,7 +122,7 @@
 | `POST /api/runs/{id}/adopt` | `{"dialogs": [..] или null, "criteria": [..] или null}` или без тела | `{adopted, skipped}`: теневые ответы запуска `compare` становятся текущими (там же) |
 | `GET /api/runs` | — | последние 50 запусков, новые первыми (раздел «История оценок и повторная проверка») |
 | `GET /api/runs/compare?a=<id>&b=<id>` | — | сравнение двух запусков (там же); неизвестный запуск — 404 |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog]}`; `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped, insufficient, dialogs: [RunDialog], products: {done, total, errors, cost}}`; `products` — темы обращений отдельным счётом (раздел «Темы обращений»); `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2»), отдельно от `skipped` |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 | `GET /api/dialogs/{id}/history` | — | история оценок диалога (раздел «История оценок и повторная проверка»); неизвестный диалог — 404 |
 | `POST /api/results/{id}/restore` | — | CriterionResult: прежняя оценка снова текущая; 404, 409 (там же) |
@@ -131,6 +131,12 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
+| `POST /api/checklist/simulate` | черновик Checklist | «что если» без сохранения (раздел «Настройка чек-листа») |
+| `POST /api/checklist/trial` | `{checklist: черновик, dialogs: [id, 1–20]}` | `{run_id, criteria, dialogs}`: песочница (раздел «Настройка чек-листа»), ход — `GET /api/runs/{id}` |
+| `POST /api/checklist/normalize` | черновик Checklist | `{checklist, changes, shares, explanation}`: веса к сумме 100, ничего не сохраняет |
+| `GET /api/checklist/presets` | — | `[{key, name, description, official, criteria, checklist}]`: готовые чек-листы для импорта в черновик |
+| `GET /api/criteria/templates?tag=<тег>` | — | `{tags, templates: [{key, tags, section, why, criterion}]}`; без `tag` — все |
+| `GET /api/bands`, `PUT /api/bands` | — или `{bands, why}` | `{bands: [{min, label, tone}], why, source: "default" \| "saved", saved_at}`; ошибка — 422 с `fields` |
 | `GET /api/report?format=html\|json\|md\|csv&lang=RU&ch=chat\|call&operator=<имя>` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang`, `ch` и `operator` необязательны (`operator=Не указан` — диалоги без сотрудника); без `format` — `html`; неизвестный формат или канал — 422 |
 | `GET /api/reports` | — | каталог отчётов `[{id, title, description, formats, href_template, items?}]` (раздел «Отчёты по замерам») |
 | `GET /api/quality` | — | прогоны `make eval`, новые первыми: `[{id, created, model, n_dialogs, agree_total, passed}]`; нет отчётов — `[]` |
@@ -306,6 +312,46 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 - `gross_errors`, `needs_review`, `appeals_open` — как `risk.dialogs`, `needs_review`, `open_appeals` отчёта по его диалогам. `weakest` — до трёх критериев с наименьшей средней долей баллов ниже 1, худший первым. `trend` — по дням `ДД.ММ` из `at` в порядке календаря: средний итог и число оценённых диалогов дня (у чата `at` — время загрузки набора).
 - Раздел отчёта «По сотрудникам» — только ранжированные, и только если их не меньше двух: `attention` («требуют внимания», до 5 с меньшим средним итогом) и `strengths` («сильные стороны», до 3 с большим); списки не пересекаются, при малом числе сотрудников в `strengths` не больше половины. В таблицах — n, средний итог и 95 % интервал. Это не рейтинг: формулировок «лучший», «худший», «место» в интерфейсе и отчётах нет.
 
+## Настройка чек-листа (eval-and-delivery, checklist-flex)
+
+Ничего из раздела не меняет формулу «Итог», векторы и отпечаток смысла: шкала — отдельная настройка, «что если» и нормировка не сохраняют версию.
+
+### Шкала оценок
+
+`{"bands": [{"min": 90, "label": "Отлично", "tone": "ok"}, {"min": 75, "label": "Хорошо", "tone": null}, {"min": 60, "label": "Требует внимания", "tone": "warn"}, {"min": 0, "label": "Критично", "tone": "risk"}], "why": "обоснование границ", "source": "default", "saved_at": null}`
+
+- Оценка диалога (`bandOf`): первая из `bands` с `total >= min`, где `total` — итог из «Итог» (уже округлён до сотых); итога нет — оценки нет. Интерфейс считает её сам по `GET /api/bands`.
+- По умолчанию — `src/cqa/catalog/bands.json` с обоснованием (`source: "default"`); `PUT` сохраняет в базе (`source: "saved"`, `saved_at` ISO). Шкала не входит в чек-лист и переживает смену версий.
+- `PUT` проверяет: `why` не пустой; оценки есть; `min` в 0–100 и строго по убыванию (без пересечений); последняя `min` — 0; `label` не пустой и не повторяется; `tone` — `ok`, `warn`, `risk` или `null`. Ошибка — 422 `{"detail": "…; …", "fields": {"bands.1.min": "Оценка 2: граница 90 должна быть меньше границы оценки 1 (75) — …", "why": "…"}}`.
+- Отчёт для руководства: `summary.bands: [{label, tone, min, n, share}]` по оценённым диалогам и таблица «По шкале оценок».
+
+### «Что если»
+
+`POST /api/checklist/simulate` с черновиком считает итоги так, как они будут сразу после сохранения: ответы берутся по отпечаткам черновика (критерий с прежним смыслом сохраняет ответ, с новым — ждёт оценки, вернувшийся к прежнему смыслу — получает прежний ответ), решения по апелляциям — как в `GET /api/state`. Ответ:
+
+`{summary: {dialogs, scored_before, scored_after, avg_before, avg_after, delta, changed, up, down, lost_total}, groups: {ch: [G], lang: [G]}, bands: [{label, tone, min, before, after}], moves: [{from, to, n, text}], weights: [{id, name, from, to, share_from, share_to}], pending: [{id, name, why, dialogs}], removed: [{id, name}], dialogs: [{id, title, ch, lang, before, after, delta, band_before, band_after, why: [строка], text}], findings: [строка], save_errors: {путь: текст}}`, `G = {key, label, n, avg_before, avg_after, delta}`.
+
+- `why` диалога — только критерии, входящие в его итог до или после: «вес «…» 15 → 30», ««…» ждёт новой оценки (изменено: текст), до неё не входит в итог», ««…» удалён: ответ «Нет» больше не входит в итог», ««…»: ответ «Да» → «Нет»», при смене правил — «изменены общие правила: все критерии ждут новой оценки». Вес N/A-критерия итог этого диалога не меняет и в `why` не попадает. `text` — «Итог: 41,00 → 35,65, потому что вес «…» 15 → 30» или «Итог не меняется: 100,00».
+- `moves[].text` — «12 диалогов перейдут из „Хорошо“ в „Требует внимания“»; `to: null` — итога не будет до новой оценки. `findings` — средний итог до и после с числом оценённых диалогов, сколько итогов изменится, переходы между оценками, что ждёт оценки, удалённое.
+- `pending[].dialogs` — у скольких диалогов не будет ответа по критерию; `why` — «новый критерий», «изменено: текст, ступени» или «изменены общие правила».
+- `insufficient` — сколько диалогов «Недостаточно данных» (`sufficiency.status: "block"`) не вошло: как в отчёте для руководства, они вне итогов.
+- `save_errors` — что не даст сохранить черновик (те же тексты, что 422 у `PUT /api/checklist`); «что если» считается и с ними.
+- Операторов и продуктов в данных нет: группы — канал и язык.
+
+### Песочница
+
+`POST /api/checklist/trial` оценивает на 1–20 выбранных диалогах только новые и изменённые по смыслу критерии черновика (`criteria` — как `pending` у `PUT /api/checklist`), версию не сохраняет. Это обычный запуск `Runner` с черновиком вместо текущей версии: 409, пока идёт другой запуск, запрет реальных звонков и ошибки моделей — как у `POST /api/runs`, ход и цена — `GET /api/runs/{id}`, `Dialog.cost` — по этой оценке. Ответы пишутся с отпечатками черновика (`version` — текущая + 1): текущее состояние они не меняют, «что если» с тем же черновиком сразу показывает их в `dialogs[].answers` и `why` («ответ «15 из 20» → «5 из 20»»), а после сохранения черновика они становятся текущими без новой оценки. 422: диалогов 0 или больше 20; черновик не пройдёт сохранение (`fields` как у `PUT /api/checklist`); нет изменённых по смыслу критериев.
+
+`dialogs[].answers` в «что если»: `[{id, name, before, after}]` — критерии с новым смыслом и критерии, у которых ответ с учётом решений изменился; `null` — ответа нет.
+
+### Нормировка весов
+
+`POST /api/checklist/normalize` → черновик с целыми весами оценочных критериев, сумма ровно 100: вес × 100 / Σ, вниз до целого, остаток по одному — наибольшим дробным частям, при равенстве — большему исходному весу, затем по порядку. Сумма 0 — поровну. Флаги не меняются. `changes: [{id, name, from, to, exact}]` (`exact` — до округления), `shares: {id: доля в итоге, % при всех применимых}`, `explanation` — как получены веса и почему итоги меняются лишь на сдвиг от округления.
+
+### Шаблоны критериев и готовые чек-листы
+
+- `src/cqa/catalog/criteria_templates.json`: `{key, tags, section, why, criterion}`; `criterion` — поля Criterion без `id` и `sec` (`w` — предлагаемый вес), проходит правила `PUT /api/checklist`; `section` — подсказка раздела по названию; `why` — какой риск бизнеса закрывает. Интерфейс «Добавить критерий» → «Из шаблона» даёт `id` и `sec`.
+- `src/cqa/catalog/checklist_presets.json` и официальный (`tests/fixtures/checklist_v3.json`) первым: `checklist` целиком импортируется в черновик как файл JSON (`version` заменяется текущей). Пресеты сохраняют общие правила и `id` критериев официального, поэтому их ответы переживают импорт; веса — сумма 100.
 ## Маркеры и алерты (eval-and-delivery, alerts)
 
 | Метод и путь | Тело | Ответ |
@@ -435,6 +481,36 @@ Alert: `{id, rule_id, severity, title, target_type: "dialog" | "operator" | "set
 - Вебхук: один отправитель с алертами (`src/cqa/adapters/webhook.py`). При `CQA_WEBHOOK_URL` по концу каждого запуска (в том числе без работы) — `POST` JSON `{"event": "run.finished", "data": {run_id, status, done, total, errors, dialog_ids}}`, `dialog_ids` — диалоги очереди запуска, без текста диалогов; алерты — `{"event": "alert.created", "data": …}`; при `CQA_WEBHOOK_SECRET` — заголовок `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела>`. Сбой доставки — строка в журнале без адреса, запуск не падает, повтора нет.
 - Доступ: при `CQA_ACCESS_TOKEN` клиент API шлёт `Authorization: Bearer <токен>` вместо cookie; предзапрос CORS проходит без токена, CORS разрешает заголовки `Authorization` и `Idempotency-Key`.
 
+## Темы обращений и маркеры риска (llm-evaluation, products)
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/products` | — | справочник тем `[{id, name, description}]`; на пустой базе засеян из `tests/fixtures/products.json` |
+| `PUT /api/products` | `[{id, name, description}]` | справочник целиком после сохранения; `id` — `[a-z0-9-]{1,32}`, `name` не пуст, повтор `id` или пустой список — 422. Версий нет: следующий `POST /api/runs` переопределит темы (ключ кэша) |
+| `GET /api/products/stats` | — | по каждой теме справочника и `{id: null, name: "Тема не определена"}` (нет темы, ошибка, тема удалена; строка есть, только если такие диалоги есть): `[{id, name, dialogs, scored, avg_total, risk_share, no_next_step_share, needs_review, reasons: [{tag, dialogs, owner}], weakest: [{id, name, share}], risks: [{k, label, dialogs}]}]`. Числа — как в отчёте на диалогах темы; `reasons` — топ-3 `tag`, `weakest` — до 3 худших критериев с долей ниже 1, `needs_review` — диалоги, тема которых ждёт проверки |
+| `PUT /api/dialogs/{id}/product` | `{"id": "<id темы>", "reason": "…" или ""}` | `Dialog.product` с `by: "вручную"`; неизвестный диалог — 404, тема не из справочника — 422. Ручную тему запуск не перезаписывает, пока она есть в справочнике |
+
+`Dialog.product` (нет поля — тема ещё не определялась):
+
+```json
+{"status": "done", "id": "funding", "name": "Пополнение и вывод средств", "confidence": 0.91, "by": "jev",
+ "needs_review": false, "error": null, "cost": 0.00006,
+ "basis": {"why": "Jev выбрал «Пополнение и вывод средств» с вероятностью 0,91", "ev": [],
+           "probs": {"funding": 0.91, "account": 0.05}, "threshold": 0.6, "threshold_why": "Порог 0,6 — …"}}
+```
+
+- `status`: `pending` — диалог в очереди активного запуска (после остановки запуска поле снова пропадает), `done`, `error` — `error` с текстом (нет записи, сбой модели, запрет реального звонка, тема не из справочника); такой диалог переспрашивается следующим запуском.
+- `by`: `"jev"`, имя основной модели или `"вручную"`. `confidence` — только у Jev (вероятность выбранной темы), у модели и вручную `null`.
+- `basis` — полное основание без эвристик: у Jev `probs` (вероятность каждой темы), `threshold` и `threshold_why`, `why` — вывод словами; у модели `why` — её короткая причина со ссылками на реплики и `ev` — номера реплик с вопросом клиента (только существующие); вручную `why` — причина человека.
+- `needs_review: true`: Jev с вероятностью ниже `threshold` (0,6 — тот же порог, что у ответов Jev по критериям; на размеченных темах не подбирался) или без вероятности; модель без существующих реплик-оснований.
+- В `GET /api/state` поля со значением `null` не передаются, как у остальных полей диалога.
+
+`Dialog.risks` — маркеры риска брокера из того же вызова (нет поля — ещё не определялись, `[]` — не найдены): `[{k, label, lines: [n], basis, p}]`. Список маркеров — данные `tests/fixtures/risks.json` (`{k, label, text}`): угроза ухода или закрытия счёта, просьба позвать руководителя, упоминание регулятора или жалобы, обещание перезвонить или вернуться, недовольство решением. У модели `lines` — реплики-основания, `basis` — её короткая причина; у Jev — вопрос noul на маркер, маркер есть при вероятности от 0,5 (граница подвопросов грубых нарушений), `p` — вероятность, `basis` — «Jev: вероятность 0,82 при пороге 0,5; номера реплик Jev не возвращает», `lines: []`. Совпадений по ключевым словам нет. Авто-маркеры и оповещения читают `Dialog.risks` как есть.
+
+Определение — часть `POST /api/runs`: одна задача на диалог выбранных (`dialogs` или все), параллельно оценке этого диалога. Один вызов на диалог: если задан ключ Jev (`CQA_JEV_API_KEY` или из интерфейса) — один запрос Jev (choice `q0` по темам и noul `r{i}` на маркер), иначе один запрос JSON к основной модели без рассуждения (`response_format: json_object`): `{"reason_ru", "turn_ids", "answer": "<id темы>", "risks": [{"k", "turn_ids", "reason_ru"}]}`. Кэш — по справочнику тем, маркерам и репликам диалога (`product_key`): готовая тема не спрашивается снова. Запрет реальных звонков (`CQA_ALLOW_REAL_DATA`), обезличивание и ошибки конфигурации — как у оценки. Запросы оценки по критериям тема не меняет: тело запроса байт в байт прежнее. Цена темы — в `product.cost` и в `products.cost` запуска, в `cost` запуска и `Dialog.cost` не входит.
+
+Отчёт для руководства (`GET /api/report`): `products` — строки `GET /api/products/stats` с диалогами, больше диалогов — выше; раздел «По продуктам» в `html` и `md` и вывод «Темы: ниже всего средний итог у …».
+
 ## Источники диалогов (dialog-ingest, sources)
 
 Диалоги приходят из нескольких сервисов; у каждого диалога есть происхождение. `Dialog` получает поля `source_id` (id источника) и `external_id` (id записи в источнике); поле записи `operator` становится `Dialog.operator`, `product` (или `product_default` источника) виден в предпросмотре — тему диалога определяет раздел «Темы обращений»; дубли — по `(source_id, external_id)`. Диалоги организаторов и файла сохраняют `id` = `conversation_id`, у `http_json` и `webhook` `id` = `<source_id>-<external_id>`, название — «Чат <external_id>» / «Звонок <external_id>». `GET /api/state` получает `sources: [{id, name, kind, service}]` (без архивных) для фильтра и плашки источника.
@@ -483,6 +559,7 @@ SourceStats: `{id, name, kind, enabled, archived, dialogs, scored, avg_total, gr
 | `run.start`, `run.recheck`, `run.cancel` | `POST /api/runs`, `/cancel` | `run`, id | `{dialogs: число \| null, criteria, force, apply, override}`; `run.recheck` — запуск с `force`, `apply: "compare"` или `override` |
 | `run.adopt`, `result.restore` | `POST /api/runs/{id}/adopt`, `POST /api/results/{id}/restore` | `run`, id; `result`, id | у adopt — тело и `{adopted, skipped}`; у restore `{model}` |
 | `checklist.save` | `PUT /api/checklist` | `checklist`, версия | `{pending: число}` |
+| `run.trial`, `bands.save` | `POST /api/checklist/trial`, `PUT /api/bands` | `run`, id; `bands`, пусто | `{dialogs: число, criteria}`; у bands — тело `{bands, why}` |
 | `appeal.file`, `appeal.decide`, `review.decide` | `POST /api/appeals`, `/decision`, `POST /api/decisions` | `appeal`, id | `{dlg, cid}`; у decide `{status}` |
 | `answer.manual` | `PUT /api/dialogs/{id}/answers/{cid}` | `dialog`, id | `{cid}` |
 | `dialog.reviewed`, `dialog.unreviewed` | `POST /api/dialogs/{id}/reviewed` | `dialog`, id | — |
@@ -494,6 +571,54 @@ SourceStats: `{id, name, kind, enabled, archived, dialogs, scored, avg_total, gr
 
 `GET /api/overview`: `employees` — `[{id, name, role, team, active, today: {"<action>": n}, week: {"<action>": n}, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed, median_decision_min}]`; `today` — с полуночи по Астане, `week` — 7 календарных дней с сегодняшним, счётчики — за всё время журнала (`decisions` — `appeal.decide` и `review.decide`), `median_decision_min` — медиана минут от `at` до `decidedAt` апелляций, решённых сотрудником, или `null`. `teams` — `[{team, employees, today, week, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed}]` по имени команды, суммы её сотрудников. `unattributed` — `{today, week}` действий без входа. `workload` — `{pending_appeals, needs_review, unreviewed}`: апелляции на рассмотрении и диалоги «нужна проверка» как в отчёте для руководства, диалоги без отметки «проверен».
 
+## Автоматизация (eval-and-delivery)
+
+Автосинхронизация источников и автооценка новых диалогов по расписанию, без ожидания человека. По умолчанию выключена: пока `enabled: false`, поведение прежнее (ручные запуски, Syncer раз в 5 минут, защита, `make results`).
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/automation` | — | настройки (ниже) |
+| `PUT /api/automation` | настройки целиком или частью: тело сливается с сохранёнными | настройки после сохранения; ошибки — 422 `{"detail": [{"loc": ["body", "sync", "every_min"], "msg": "<по-русски>"}]}`, по одной на поле, ничего не сохраняется |
+| `GET /api/automation/status` | — | `{state: "off" \| "idle" \| "syncing" \| "evaluating" \| "paused" \| "budget_reached" \| "quiet_hours", next_run_at: ISO \| null, last_cycle: Cycle \| null, today: {dialogs_evaluated, cost_usd, budget_left}, queue_length}` |
+| `POST /api/automation/run-now` | — | статус; цикл сразу, вне тихих часов и `on_new_dialogs`, но в пределах бюджета и лимита в час. Выключена, на паузе или цикл уже идёт — 409 |
+| `POST /api/automation/pause`, `/resume` | — | статус; пауза останавливает плановые циклы и синхронизацию, идущая пачка отменяется (диалоги в полёте дописываются) |
+| `GET /api/automation/cycles?limit=50&format=json\|csv` | — | циклы новыми первыми; `csv` — UTF-8 с BOM и `;` |
+
+Настройки (значения — по умолчанию):
+
+```json
+{"enabled": false,
+ "sync": {"enabled": true, "every_min": 5, "sources": "all"},
+ "evaluate": {"enabled": true, "on_new_dialogs": true, "sources": "all", "ch": "all", "lang": "all",
+              "batch_size": 20, "priority": "normal", "max_per_hour": 60, "daily_budget_usd": 1.0,
+              "quiet_hours": null, "only_unscored": true},
+ "after": {"classify_products": false, "evaluate_alerts": true, "prosody_for_calls": false}}
+```
+
+| Поле | Допустимо | Зачем (`why`) |
+| --- | --- | --- |
+| `enabled` | bool | Главный выключатель: без него планировщик только читает настройки |
+| `sync.enabled` | bool | Забирать новые диалоги самим; при `true` прежний 5-минутный цикл Syncer уступает расписанию автоматизации |
+| `sync.every_min` | целое ≥ 1 | Период цикла (синхронизация и оценка): чаще — меньше ждать, реже — меньше запросов к источнику |
+| `sync.sources` | `"all"` или список кодов | Какие источники синхронизировать: включённые источники реестра `/api/sources`, которые сервер забирает сам (`org_api`, `http_json`) |
+| `evaluate.enabled` | bool | Отдавать новые диалоги модели без кнопки |
+| `evaluate.on_new_dialogs` | bool | `false` — плановые циклы только синхронизируют, оценка — по «Запустить сейчас» |
+| `evaluate.sources`, `ch`, `lang` | `"all"` или список (`ch`: `chat`, `call`) | Оценивать только нужное: например, только звонки на казахском |
+| `evaluate.batch_size` | 1–500 | Диалогов за цикл: ограничивает перерасход бюджета одной пачкой |
+| `evaluate.priority` | `low`, `normal`, `high` | Место пачки в очереди батч-задач: пачка автоматизации — задание `/api/batches` с этим приоритетом |
+| `evaluate.max_per_hour` | целое ≥ 1 | Скользящий лимит диалогов за 60 минут: нагрузка на модель и провайдера |
+| `evaluate.daily_budget_usd` | > 0 | Потолок трат за сутки по Алматы; на нём пачка отменяется, новые не начинаются, создаётся алерт |
+| `evaluate.quiet_hours` | `null` или `{"from": "ЧЧ:ММ", "to": "ЧЧ:ММ"}` | Время Алматы без обращений к модели (через полночь можно); синхронизация идёт |
+| `evaluate.only_unscored` | bool | `true` — только диалоги без оценок; `false` — и частично оценённые (после правки чек-листа) |
+| `after.classify_products` | bool | Классификация продуктов после оценки (когда классификация в main; до этого — «недоступно») |
+| `after.evaluate_alerts` | bool | Проверить правила алертов после цикла (когда алерты в main) |
+| `after.prosody_for_calls` | bool | Заранее посчитать интонацию звонков с записью: карточка открывается без ожидания |
+
+Цикл: синхронизировать источники, которым пора → посчитать новые диалоги → очередь: пары без ответа, без `block` по достаточности, под фильтры, новые первыми → пачка `min(batch_size, остаток лимита в час)` модели (бюджет, тихие часы) → шаги `after`. Два цикла одновременно не идут; сбой цикла пишется в журнал сервера и цикл, создаёт алерт и сервер не останавливает. Запрет реальных данных (`CQA_ALLOW_REAL_DATA`) и обезличивание действуют, как у ручного запуска: оценку ведёт тот же оценщик.
+
+Cycle: `{id, trigger: "schedule" | "manual", started, finished, synced (источников), sources: [{id, added, skipped, error}], new_dialogs, queued, evaluated, errors: [строка], cost, skipped: null | "budget_reached" | "quiet_hours" | "hour_limit" | "busy", after: {"<шаг>": "ok" | "недоступно" | "ошибка: …"}, alerts: [hit]}`. Время — ISO с поясом Алматы.
+
+Алерты (`hit` в форме правил алертов: `{rule_id, severity: "warning", title, target_type, target_id, basis}`): `automation.budget` (раз в сутки, `basis: {day, budget_usd, spent_usd}`), `automation.cycle_failed` (`{started, error}`), `automation.source_down` (раз в сутки на источник, `{source, error, at}`). Каждое автоматическое действие (`automation.sync`, `automation.evaluate`, `automation.after`, `automation.alert`) пишется в журнал действий от имени «Автоматизация»; изменения настроек, пауза и запуск вручную — от имени пользователя.
 ## Пакетная обработка (eval-and-delivery)
 
 Большие объёмы оцениваются заданиями: задание делится на батчи, одна очередь в процессе отдаёт батчи `Runner` по одному. Каждый батч — обычный запуск (`POST /api/runs` с его диалогами), поэтому правило одного активного запуска сохраняется: пока идёт запуск вне очереди, очередь ждёт его конца. Следующий батч берётся у задания с высшим приоритетом (`high` → `normal` → `low`), внутри приоритета — по порядку создания; новое задание `high` обгоняет начатое `normal` на границе батча.

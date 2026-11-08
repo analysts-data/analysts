@@ -4,21 +4,34 @@
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from cqa.adapters.store import DialogStatus, RunRow, Store
 from cqa.domain.agreement import compare_answers
-from cqa.domain.models import Checklist, Cost, Criterion, Dialog
+from cqa.domain.models import Checklist, Cost, Criterion, Dialog, Product, ProductTag, RiskKind, RiskMark
 from cqa.domain.review import fingerprints
 from cqa.services.answers import MANUAL
 from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
+from cqa.services.products import classify_plan
 from cqa.services.state import current_results
 from cqa.services.sufficiency import assess_dialogs
 
 log = logging.getLogger(__name__)
+
+
+class Classifier(Protocol):  # services.products.Classifier
+    risks: Sequence[RiskKind]
+
+    async def classify(
+        self, dialog: Dialog, products: Sequence[Product]
+    ) -> tuple[ProductTag, list[RiskMark]]: ...
+
+
+def _no_products() -> dict[str, Any]:
+    return {"done": 0, "total": 0, "errors": 0, "cost": 0.0}
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -149,10 +162,14 @@ class Runner:
         clock: Callable[[], float] = time.time,
         # конец запуска: алерты и вебхук run.finished; получает событие без текста диалогов
         on_finish: Callable[[dict[str, Any]], Awaitable[object]] | None = None,
+        classifier: Classifier | None = None,
     ) -> None:
         self._on_finish = on_finish
         self._store = store
         self._evaluator = evaluator
+        self._classifier = classifier  # None — темы не определяются
+        # ponytail: прогресс тем в памяти процесса; после перезапуска у старых запусков нули
+        self._products: dict[int, dict[str, Any]] = {}
         self._parallel = parallel
         self._clock = clock
         self._cancel = asyncio.Event()
@@ -162,11 +179,13 @@ class Runner:
         self._insufficient: dict[int, int] = {}  # запуск → пропущено диалогов «Недостаточно данных»
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
-    def use(self, evaluator: Evaluator) -> None:
-        """Новый оценщик для следующих запусков (смена режима из интерфейса); во время запуска — Conflict."""
+    def use(self, evaluator: Evaluator, classifier: Classifier | None = None) -> None:
+        """Новый оценщик (и классификатор тем) для следующих запусков; во время запуска — Conflict."""
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
         self._evaluator = evaluator
+        if classifier is not None:
+            self._classifier = classifier
 
     def ensure_idle(self) -> None:
         """Conflict с номером, ходом и ETA активного запуска: клиент API видит, сколько ждать."""
@@ -186,6 +205,7 @@ class Runner:
         apply: ApplyMode = "replace",
         override: Mapping[str, Any] | None = None,
         evaluator: Evaluator | None = None,
+        checklist: Checklist | None = None,
     ) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
 
@@ -193,6 +213,8 @@ class Runner:
         нужен `confirm`. `model` — подпись модели в списке запусков. Перепроверка другой моделью:
         `evaluator` только на этот запуск, `override` — его настройки для истории; `apply: "compare"` —
         ответы теневые, текущими их делает `adopt` или `restore`. `override` и `compare` — всегда `force`.
+        `checklist` — несохранённый черновик для песочницы: ответы пишутся с его отпечатками и становятся
+        текущими только после сохранения черновика; по умолчанию — текущая версия.
         """
         force = force or apply == "compare" or override is not None
         self.ensure_idle()
@@ -200,7 +222,7 @@ class Runner:
             unknown = [i for i in dict.fromkeys(dialogs) if self._store.get_dialog(i) is None]
             if unknown:
                 raise NotFound(f"Диалоги не найдены: {', '.join(unknown)}")
-        checklist = self._store.current_checklist()
+        checklist = self._store.current_checklist() if checklist is None else checklist
         assert checklist is not None, "create_app сеет чек-лист на пустой базе"
         if criteria is not None:
             known = {c.id for c in checklist.criteria}
@@ -214,6 +236,17 @@ class Runner:
         )
         if force and dialogs is None and not confirm and len(plan) > CONFIRM_OVER:
             raise Invalid(f"Подтвердите перезапуск {len(plan)} диалогов")
+        products = self._store.products() or []
+        todo = (
+            classify_plan(
+                self._store,
+                products,
+                _select(self._store, checklist, dialogs, None)[0],
+                self._classifier.risks,
+            )
+            if self._classifier and products
+            else []
+        )
         run_id = self._store.add_run(
             sum(len(cs) for _, cs in plan),
             self._clock(),
@@ -231,18 +264,29 @@ class Runner:
         rows += [(i, "skipped", 0, n) for i, n in held.items() if i not in planned]
         self._store.queue_dialogs(run_id, rows)
         self._insufficient[run_id] = len(insufficient(self._store, dialogs))
-        if not plan:
+        self._products[run_id] = {**_no_products(), "total": len(todo)}
+        if not plan and not todo:
             self._store.finish_run(run_id, self._clock(), "done")
             if self._on_finish is not None:
                 task = asyncio.create_task(self._finished(run_id))
                 self._tasks.add(task)
                 task.add_done_callback(self._tasks.discard)
             return run_id
+        for d, _ in todo:
+            self._store.set_product(d.id, ProductTag(status="pending"), "")
         self._active = run_id
         self._failed = 0
         self._cancel = asyncio.Event()
         task = asyncio.create_task(
-            self.execute(run_id, checklist, plan, evaluator=evaluator, shadow=apply == "compare")
+            self.execute(
+                run_id,
+                checklist,
+                plan,
+                evaluator=evaluator,
+                shadow=apply == "compare",
+                todo=todo,
+                products=products,
+            )
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -267,6 +311,7 @@ class Runner:
             "skipped": row.skipped,
             "insufficient": self._insufficient.get(run_id, 0),
             "dialogs": self._store.run_dialogs(run_id),
+            "products": dict(self._products.get(run_id) or _no_products()),
         }
 
     def cancel(self, run_id: int) -> dict[str, str]:
@@ -294,22 +339,37 @@ class Runner:
         *,
         evaluator: Evaluator | None = None,
         shadow: bool = False,
+        todo: Sequence[tuple[Dialog, str]] = (),
+        products: Sequence[Product] = (),
     ) -> None:
+        """`plan` — пары для оценки, `todo` — диалоги для темы с ключом кэша: одна задача на диалог."""
         fps = fingerprints(checklist)
         use = evaluator or self._evaluator
-        queue = iter(plan)  # общая очередь: next() не уступает цикл событий, порядок плана сохраняется
+        keys = {d.id: k for d, k in todo}
+        jobs = {d.id: (d, cs) for d, cs in plan}  # сначала порядок плана, затем диалоги только для темы
+        for d, _ in todo:
+            jobs.setdefault(d.id, (d, []))
+        queue = iter(jobs.values())  # общая очередь: next() не уступает цикл событий, порядок сохраняется
 
         async def worker() -> None:
             for dialog, criteria in queue:
                 if self._cancel.is_set():
                     return
-                await self._evaluate(run_id, checklist, fps, dialog, criteria, use, shadow)
+                steps = (
+                    [self._evaluate(run_id, checklist, fps, dialog, criteria, use, shadow)]
+                    if criteria
+                    else []
+                )
+                if dialog.id in keys:
+                    steps.append(self._classify(run_id, dialog, keys[dialog.id], products))
+                await asyncio.gather(*steps)
 
         cancelled = True  # прерванная задача (Ctrl-C, остановка сервера) — не «done»
         try:
             await asyncio.gather(*(worker() for _ in range(self._parallel)))
             cancelled = self._cancel.is_set()
         finally:
+            self._store.clear_pending_products()
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
         await self._finished(run_id)
@@ -324,6 +384,20 @@ class Runner:
             await self._on_finish({"run_id": run_id, **counts, "dialog_ids": [d["id"] for d in p["dialogs"]]})
         except Exception:  # алерты и вебхук вторичны: запуск уже сохранён
             log.exception("действия после запуска %s", run_id)
+
+    async def _classify(self, run_id: int, dialog: Dialog, key: str, products: Sequence[Product]) -> None:
+        """Тема и маркеры диалога; сбой — статус error с текстом, оценку и `errors` запуска не трогает."""
+        assert self._classifier is not None, "todo строится только с классификатором"
+        risks: list[RiskMark] | None
+        try:
+            tag, risks = await self._classifier.classify(dialog, products)
+        except Exception as exc:
+            tag, risks = ProductTag(status="error", error=str(exc) or type(exc).__name__), None
+        self._store.set_product(dialog.id, tag, key if tag.status == "done" else "", risks)
+        counts = self._products.setdefault(run_id, _no_products())
+        counts["done"] += 1
+        counts["errors"] += tag.status == "error"
+        counts["cost"] += tag.cost
 
     async def _evaluate(
         self,

@@ -60,6 +60,7 @@ def test_whole_set_is_evaluated_with_progress(api: TestClient) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
         "skipped": 0,
         "insufficient": 0,
         "dialogs": [

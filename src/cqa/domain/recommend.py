@@ -13,6 +13,7 @@ from statistics import mean, pstdev
 from typing import Any
 
 from cqa.domain.models import MANUAL, Answer, Appeal, Checklist, Criterion, Dialog, Line
+from cqa.domain.products import topic_name
 from cqa.domain.report import CHANNEL, NOBODY, _d, _dialogs, _pct
 from cqa.domain.review import effective_answer
 from cqa.domain.scoring import frac, r2, total
@@ -104,7 +105,7 @@ def _op(d: Dialog) -> str | None:
 
 
 def _product(d: Dialog) -> str | None:
-    return getattr(d, "product", None)  # Dialog.product добавляет другая ветка; до неё разреза нет
+    return topic_name(d)
 
 
 def _scored(checklist: Checklist) -> list[Criterion]:

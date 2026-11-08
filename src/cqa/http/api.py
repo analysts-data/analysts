@@ -22,11 +22,12 @@ from pydantic import (
     field_validator,
 )
 
-from cqa.compose import build_evaluator, build_routed, check_provider
+from cqa.compose import build_classifier, build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
-from cqa.domain.models import Answer, Appeal, Checklist, ReasonCode
+from cqa.domain.models import Answer, Appeal, Checklist, Product, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
+from cqa.domain.tuning import Bands
 from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
 from cqa.services import alerts, reports
@@ -34,13 +35,20 @@ from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
+from cqa.services.automation import Automation, cycles_csv
+from cqa.services.bands import bands_view, save_bands
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
+    checklist_presets,
+    criteria_templates,
     diff_draft,
     diff_versions,
     export_checklist,
+    normalize_draft,
     save_checklist,
+    simulate_draft,
+    trial_draft,
 )
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
@@ -57,6 +65,7 @@ from cqa.services.llm_config import (
     view,
 )
 from cqa.services.ports import DialogSource
+from cqa.services.products import save_products, set_manual, taxonomy
 from cqa.services.routing import explain, put_routing
 from cqa.services.routing import view as routing_view
 from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
@@ -67,6 +76,7 @@ from cqa.services.state import (
     mode_from_settings,
     operator_page,
     operator_rows,
+    product_stats_of,
     recommendations,
     report,
     scores_csv,
@@ -130,6 +140,11 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ProductIn(BaseModel):
+    id: str
+    reason: str = ""
 
 
 class ExplainIn(BaseModel):
@@ -381,6 +396,60 @@ async def post_checklist_diff(
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
 
 
+@router.post("/checklist/simulate", summary="«Что если»: итоги по черновику без сохранения")
+async def post_checklist_simulate(draft: Checklist, request: Request) -> dict[str, Any]:
+    """«Что если»: итоги по черновику без сохранения, с объяснением каждого изменения."""
+    return simulate_draft(request.app.state.store, draft)
+
+
+class TrialIn(BaseModel):
+    checklist: Checklist
+    dialogs: list[str]
+
+
+@router.post(
+    "/checklist/trial", summary="Песочница: оценить изменённые критерии черновика на выбранных диалогах"
+)
+async def post_checklist_trial(body: TrialIn, request: Request) -> dict[str, Any]:
+    """Песочница: изменённые критерии черновика на выбранных диалогах; ход — GET /api/runs/{id}."""
+    out = trial_draft(request.app.state.store, _runner(request), body.checklist, body.dialogs)
+    _log(
+        request,
+        "run.trial",
+        "run",
+        out["run_id"],
+        {"dialogs": len(out["dialogs"]), "criteria": out["criteria"]},
+    )
+    return out
+
+
+@router.post("/checklist/normalize", summary="Нормировать веса черновика к сумме 100")
+async def post_checklist_normalize(draft: Checklist) -> dict[str, Any]:
+    return normalize_draft(draft)
+
+
+@router.get("/checklist/presets", summary="Готовые чек-листы для импорта в черновик")
+async def get_checklist_presets() -> list[dict[str, Any]]:
+    return checklist_presets()
+
+
+@router.get("/criteria/templates", summary="Шаблоны критериев")
+async def get_criteria_templates(tag: str | None = None) -> dict[str, Any]:
+    return criteria_templates(tag)
+
+
+@router.get("/bands", summary="Шкала оценок")
+async def get_bands(request: Request) -> dict[str, Any]:
+    return bands_view(request.app.state.store)
+
+
+@router.put("/bands", summary="Сохранить шкалу оценок")
+async def put_bands(body: Bands, request: Request) -> dict[str, Any]:
+    saved = save_bands(request.app.state.store, body)
+    _log(request, "bands.save", "bands", "", body.model_dump(mode="json"))
+    return saved
+
+
 @router.get("/sufficiency")
 async def get_sufficiency(request: Request) -> dict[str, Any]:
     """Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий."""
@@ -619,7 +688,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_routed(settings, state.prosody, state.store))
+        _runner(request).use(build_routed(settings, state.prosody, state.store), build_classifier(settings))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -849,6 +918,30 @@ async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
     return out
 
 
+@router.get("/products")
+async def get_products(request: Request) -> list[dict[str, Any]]:
+    return [p.model_dump() for p in taxonomy(request.app.state.store)]
+
+
+@router.put("/products")
+async def put_products(body: list[Product], request: Request) -> list[dict[str, Any]]:
+    saved = save_products(request.app.state.store, body)
+    _log(request, "products.save", "products", "", {"ids": [p.id for p in saved]})
+    return [p.model_dump() for p in saved]
+
+
+@router.get("/products/stats")
+async def get_product_stats(request: Request) -> list[dict[str, Any]]:
+    return product_stats_of(request.app.state.store)
+
+
+@router.put("/dialogs/{dialog_id}/product")
+async def put_dialog_product(dialog_id: str, body: ProductIn, request: Request) -> dict[str, Any]:
+    tag = set_manual(request.app.state.store, dialog_id, body.id, body.reason)
+    _log(request, "dialog.product", "dialog", dialog_id, {"id": body.id})
+    return tag.model_dump(mode="json")
+
+
 class EmployeeIn(BaseModel):
     name: str
     role: Role
@@ -905,3 +998,63 @@ async def get_audit(
 @router.get("/overview")
 async def get_overview(request: Request) -> dict[str, Any]:
     return overview(request.app.state.store, datetime.now(ASTANA))
+
+
+def _automation(request: Request) -> Automation:
+    automation: Automation = request.app.state.automation
+    return automation
+
+
+@router.get("/automation")
+async def get_automation(request: Request) -> dict[str, Any]:
+    return _automation(request).settings().model_dump(mode="json", by_alias=True)
+
+
+@router.put("/automation")
+async def put_automation(raw: Annotated[Any, Body()], request: Request) -> Response:
+    """Тело сливается с сохранёнными настройками; ошибки по полям — 422 {detail: [{loc, msg}]}."""
+    saved, errors = _automation(request).put(raw)
+    if saved is None:
+        return JSONResponse({"detail": errors}, status_code=422)
+    out = saved.model_dump(mode="json", by_alias=True)
+    _log(request, "automation.settings", "automation", "settings", out)
+    return JSONResponse(out)
+
+
+@router.get("/automation/status")
+async def get_automation_status(request: Request) -> dict[str, Any]:
+    return _automation(request).status()
+
+
+@router.post("/automation/run-now")
+async def post_automation_run_now(request: Request) -> dict[str, Any]:
+    out = _automation(request).run_now()
+    _log(request, "automation.run-now", "automation", "")
+    return out
+
+
+@router.post("/automation/pause")
+async def post_automation_pause(request: Request) -> dict[str, Any]:
+    out = _automation(request).pause()
+    _log(request, "automation.pause", "automation", "")
+    return out
+
+
+@router.post("/automation/resume")
+async def post_automation_resume(request: Request) -> dict[str, Any]:
+    out = _automation(request).resume()
+    _log(request, "automation.resume", "automation", "")
+    return out
+
+
+@router.get("/automation/cycles")
+async def get_automation_cycles(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    fmt: Annotated[Literal["json", "csv"], Query(alias="format")] = "json",
+) -> Response:
+    rows = _automation(request).cycles(limit)
+    if fmt == "json":
+        return JSONResponse(rows)
+    disposition = 'attachment; filename="cqa-automation-cycles.csv"'
+    return Response(cycles_csv(rows), media_type=MEDIA["csv"], headers={"Content-Disposition": disposition})
