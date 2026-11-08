@@ -42,7 +42,7 @@ function Progress({ j }: { j: any }) {
   const pct = (n: number) => (total ? Math.min(100, (n / total) * 100) : 0);
   return (
     <div className="flex min-w-[140px] flex-col gap-1">
-      <div className="flex h-2 overflow-hidden rounded-full bg-sunken" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={j.done} aria-label={t('Прогресс пакета')}>
+      <div className="flex h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={j.done} aria-label={t('Прогресс пакета')}>
         <div className="bg-accent transition-[width] duration-200 ease-out" style={{ width: `${pct(j.done - (j.errors || 0))}%` }} />
         <div className="bg-risk transition-[width] duration-200 ease-out" style={{ width: `${pct(j.errors || 0)}%` }} />
       </div>
