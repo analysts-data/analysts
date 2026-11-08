@@ -33,9 +33,10 @@ export function view(S) {
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
     <div class="row">${dirty ? '<span class="chip c-ev only-qa">Есть несохранённые изменения</span>' : ''}
-      <button type="button" class="btn" data-act="cexport">Скачать v${cl.version} (JSON)</button>
+      ${exportMenu(S)}
       <label class="btn only-qa">Загрузить из файла<input type="file" accept=".json,application/json" data-act="cimport" class="sr" ${dirty ? 'disabled' : ''}></label>
       <button type="button" class="btn only-qa" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn only-qa" data-act="cwhat" ${dirty ? '' : 'disabled'}>Что изменится</button>
       <button type="button" class="btn pri only-qa" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
   ${S.role === 'qa' ? `<section class="card pad row" aria-label="Формат Jev">
     <label class="btn">Импорт из формата Jev<input type="file" accept=".json,application/json" data-act="cjevimport" class="sr" ${S.busy ? 'disabled' : ''}></label>
@@ -54,12 +55,39 @@ export function view(S) {
       <div class="row" style="padding:12px 10px 4px;border-top:1px solid var(--line2);margin-top:8px">
         <span class="chip ${sum === 100 ? 'c-ok' : 'c-ev'}">Сумма весов ${sum}</span>${sum !== 100 ? '<span class="muted xs">Итог всё равно приводится к 100</span>' : ''}
         <button type="button" class="btn sm only-qa" data-act="cadd" style="margin-left:auto">Добавить критерий</button></div>
-      <div class="stack small" style="padding:12px 10px 4px;gap:4px"><span class="label">Версии</span>${S.versions.slice().reverse().map(v => `<span>v${esc(v.v)}: ${esc(v.note)}${v.v === cl.version ? ' <span class="chip c-ok">применяется</span>' : ''}</span>`).join('')}</div>
+      <div class="stack small" style="padding:12px 10px 4px;gap:4px"><span class="label">Версии</span>${S.versions.slice().reverse().map(v => `<span>v${esc(v.v)}: ${esc(v.note)}${v.v === cl.version ? ' <span class="chip c-ok">применяется</span>' : ` <button type="button" class="btn sm" data-act="cdiff" data-v="${esc(v.v)}">Сравнить с текущей</button>`}</span>`).join('')}</div>
     </section>
     ${c ? editor(S, c) : '<section class="card empty">Критериев нет. Добавьте первый.</section>'}
   </div>
   ${rulesEditor(S)}`;
 }
+
+// Файлы строит сервер (GET /api/checklist/export): пункты — обычные ссылки, по умолчанию применяемая версия.
+// Смена версии в списке переписывает ссылки на месте (actions.cexpv): перерисовка закрыла бы меню.
+function exportMenu(S) {
+  const v = S.checklist.version;
+  const link = (fmt, label, attrs) => `<a class="btn sm" href="${esc(api.exportUrl(v, fmt))}" data-fmt="${fmt}" ${attrs}>${label}</a>`;
+  return `<details class="menu"><summary class="btn">Экспорт ▾</summary><div class="menu-pop card stack">
+    <label class="field"><span>Версия</span><select class="fld" data-act="cexpv">${opts(S.versions.slice().reverse().map(x => [x.v, `v${x.v}${x.v === v ? ' — применяется' : ''}`]), v)}</select></label>
+    ${link('json', 'JSON', 'data-act="cexport" download')}
+    ${link('csv', 'Excel (CSV)', 'data-act="cmenu" download')}
+    ${link('md', 'Markdown', 'data-act="cmenu" download')}
+    ${link('html', 'Памятка для печати', 'data-act="cmenu" target="_blank" rel="noopener"')}
+  </div></details>`;
+}
+
+// Разницу считает сервер (Markdown), окно показывает её как текст
+async function showDiff(title, load) {
+  let md;
+  try { md = await load(); } catch (e) { return toast(`Сравнение не получено: ${e.message}`); }
+  const form = S.app.querySelector('#dlgForm');
+  form.innerHTML = `<header><h2 class="h2" id="dlgTitle">${esc(title)}</h2></header>
+    <pre class="diff">${esc(md.trimEnd())}</pre>
+    <footer><button class="btn pri" value="cancel">Закрыть</button></footer>`;
+  form.closest('dialog').showModal();
+}
+
+const closeMenu = t => { t.closest('details').open = false; }; // ссылка всё равно срабатывает
 
 // Общие правила — часть черновика, сохраняются тем же PUT /api/checklist (см. actions.crules)
 function rulesEditor(S) {
@@ -143,6 +171,7 @@ function syncSave() {
   const dirty = JSON.stringify(S.draft) !== JSON.stringify(S.checklist);
   S.app.querySelector('[data-act="creset"]').disabled = !dirty;
   S.app.querySelector('[data-act="csave"]').disabled = !dirty || S.busy;
+  S.app.querySelector('[data-act="cwhat"]').disabled = !dirty;
   S.app.querySelector('[data-act="cimport"]').disabled = dirty; // импорт не стирает несохранённые правки
 }
 
@@ -204,14 +233,13 @@ export const actions = {
   }),
   crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
   crules: t => { S.draft.rules = t.value; syncSave(); },
-  // в файл — применяемая версия, по которой оценены диалоги, а не черновик
-  cexport: () => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(S.checklist, null, 2)], { type: 'application/json' }));
-    a.download = `checklist-v${S.checklist.version}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 0);
-  },
+  // в файл — сохранённая версия (по умолчанию применяемая), а не черновик
+  cexport: closeMenu,
+  cmenu: closeMenu,
+  cexpv: t => t.closest('details').querySelectorAll('a[data-fmt]').forEach(a => { a.href = api.exportUrl(t.value, a.dataset.fmt); }),
+  cdiff: t => showDiff(`Сравнение v${t.dataset.v} с текущей v${S.checklist.version}`, () => api.diffVersions(t.dataset.v, S.checklist.version)),
+  // черновик уходит на сервер как есть (POST /api/checklist/diff): та же разница, что у версий, ничего не сохраняется
+  cwhat: () => showDiff(`Что изменится при сохранении v${S.checklist.version + 1}`, () => api.diffDraft(S.draft)),
   // файл — в черновик с текущей версией (иначе view() сбросит черновик, а сервер ответит 409); остальное проверит сервер при сохранении
   cimport: async t => {
     const f = t.files[0];

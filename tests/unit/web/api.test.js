@@ -60,6 +60,18 @@ test('every client method goes to its contract path', async () => {
   assert.equal(api.playerUrl('call-024'), '/api/dialogs/call-024/player');
 });
 
+test('checklist diff comes back as Markdown text and export is a plain link', async () => {
+  const { calls, fetchFn } = recorder(200, '# Что изменится');
+  const api = createApi('/api', fetchFn);
+  assert.equal(await api.diffVersions(2, 3), '# Что изменится');
+  assert.equal(await api.diffDraft({ version: 3 }), '# Что изменится');
+  assert.deepEqual(calls.map(c => `${c.method} ${c.url}`), [
+    'GET /api/checklist/diff?from=2&to=3&format=md', 'POST /api/checklist/diff?format=md',
+  ]);
+  assert.deepEqual(JSON.parse(calls[1].body), { version: 3 });
+  assert.equal(api.exportUrl(3, 'csv'), '/api/checklist/export?v=3&format=csv');
+});
+
 test('a non-2xx answer throws with the server text', async () => {
   const { fetchFn } = recorder(422, '{"detail": "reason is required"}');
   await assert.rejects(createApi('/api', fetchFn).postDecision('a1', {}), /reason is required/);

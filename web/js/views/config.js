@@ -5,6 +5,7 @@ import { configBody, providerBody, risks, whereOf } from '../config.js';
 import { esc } from '../format.js';
 
 const WHERE = { kz: 'в Казахстане', local: 'локально', external: 'за рубежом' };
+const EVALUATORS = [['llm', 'Языковая модель'], ['jev', 'Только Jev (быстро, без обоснований)']];
 const keyHint = has => (has ? 'сохранён; оставьте пустым, чтобы не менять' : 'не задан');
 const ENV = 'env'; // модель из .env: меняется только там
 const options = (pairs, current) =>
@@ -27,6 +28,8 @@ export async function openConfig() {
     </div>`;
   const second = [['', 'нет'], ['jev', 'Jev'], ...cfg.providers.map(p => [p.id, p.label])];
   form.innerHTML = `<header><h2 class="h2" id="dlgTitle">Режим оценки</h2><p class="muted small">Применяется сразу, без перезапуска сервера. Ключи хранятся на сервере и в браузер не возвращаются.</p></header>
+    <fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Оценщик</legend>
+      ${EVALUATORS.map(([v, t]) => `<label class="row small"><input type="radio" name="evaluator" value="${v}"${v === (cfg.evaluator || 'llm') ? ' checked' : ''}> ${t}</label>`).join('')}</fieldset>
     <fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Модели OpenAI-формата · отметьте основную модель</legend>
       ${cfg.providers.map(row).join('')}
       <div><button type="button" class="btn sm" data-act="prov-add">Добавить модель</button></div></fieldset>

@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { configBody, modeText, providerBody, risks, whereOf } from '../../../web/js/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
-const FORM = { llm_provider: 'ds', verifier: '', anonymize: true, jev_api_key: ' j ', allow_real_data: false };
+const FORM = { llm_provider: 'ds', verifier: '', evaluator: 'llm', anonymize: true, jev_api_key: ' j ', allow_real_data: false };
 
 test('configBody maps the mode form to the PUT /api/config body', () => {
   assert.deepEqual(configBody(FORM), {
-    llm_provider: 'ds', verifier: null, anonymize: true, jev_api_key: 'j', allow_real_data: false,
+    llm_provider: 'ds', verifier: null, evaluator: 'llm', anonymize: true, jev_api_key: 'j', allow_real_data: false,
   });
   assert.equal(configBody({ ...FORM, verifier: 'jev' }).verifier, 'jev');
+  assert.equal(configBody({ ...FORM, evaluator: 'jev' }).evaluator, 'jev');
   assert.equal(configBody({ ...FORM, verifier: 'env', anonymize: false }).anonymize, false);
 });
 

@@ -114,3 +114,17 @@ def test_check_sends_one_synthetic_request_and_reports_the_result(
     assert (ok["ok"], ok["error"], bad["ok"]) == (True, None, False)
     assert "401" in bad["error"] and isinstance(ok["ms"], int)
     assert client.post("/api/providers/nope/check").status_code == 404
+
+
+def test_config_switches_to_jev_only_and_the_mode_shows_jev(
+    settings: Settings, store: Store, conn: sqlite3.Connection
+) -> None:
+    client = _client(settings, conn)
+    response = client.put("/api/config", json={**CONFIG, "llm_provider": "env", "evaluator": "jev"})
+    assert response.status_code == 200 and response.json()["evaluator"] == "jev"
+    mode = client.get("/api/state").json()["mode"]
+    assert (mode["model"], mode["verifier"]) == ("jev-latest", None)
+    assert (
+        client.put("/api/config", json={**CONFIG, "llm_provider": "env", "evaluator": "gpt"}).status_code
+        == 422
+    )

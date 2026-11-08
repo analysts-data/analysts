@@ -10,6 +10,7 @@ export const modeText = (m, llmMode) => [`Обработка: ${WHERE[m.where] |
 export const configBody = f => ({
   llm_provider: f.llm_provider,
   verifier: f.verifier || null,
+  evaluator: f.evaluator === 'jev' ? 'jev' : 'llm',
   anonymize: Boolean(f.anonymize),
   jev_api_key: f.jev_api_key.trim(),
   allow_real_data: Boolean(f.allow_real_data),

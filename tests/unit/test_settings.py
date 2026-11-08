@@ -22,6 +22,7 @@ DEFAULTS = {
     "llm_provider": "env",
     "providers": {},
     "verifier": None,
+    "evaluator": "llm",
     "jev_api_key": None,
     "anonymize": True,
     "data_where": "kz",

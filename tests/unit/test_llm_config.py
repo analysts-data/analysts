@@ -116,6 +116,7 @@ def test_verifier_can_be_a_provider(store: Store) -> None:
         ({"llm_provider": "nope"}, "nope"),
         ({"verifier": "nope"}, "nope"),
         ({"verifier": "jev"}, "CQA_JEV_API_KEY"),
+        ({"evaluator": "jev"}, "CQA_JEV_API_KEY"),
     ],
 )
 def test_bad_choice_is_invalid_and_nothing_is_saved(store: Store, change: dict, message: str) -> None:
@@ -198,3 +199,18 @@ def test_providers_from_env_file_are_listed_and_the_saved_list_replaces_them(sto
         "local",
     ]
     assert list(delete_provider(store, result, "ds", lambda s: None).providers) == ["env", "local"]
+
+
+def test_jev_only_mode_needs_the_jev_key_but_not_the_llm_key(store: Store) -> None:
+    settings = effective(Settings(_env_file=None, llm_mode="live"), {})
+    result = configure(store, settings, {**BODY, "evaluator": "jev", "jev_api_key": "j"}, lambda s: None)
+    assert result.evaluator == "jev"
+    assert view(result)["evaluator"] == "jev"
+
+
+def test_mode_names_jev_as_the_model_and_no_second_opinion_in_jev_only_mode() -> None:
+    from cqa.services.state import mode_from_settings
+
+    mode = mode_from_settings(effective(_live(), {"evaluator": "jev", "verifier": "jev"}))
+    assert (mode.model, mode.verifier) == ("jev-latest", None)
+    assert view(_live())["evaluator"] == "llm"

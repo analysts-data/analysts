@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     llm_provider: str = "env"  # main model: id in providers
     providers: dict[str, Provider] = {}  # JSON {id: Provider}; llm_config.effective adds "env"
     verifier: str | None = None  # "jev" or id in providers
+    evaluator: Literal["llm", "jev"] = "llm"  # jev: all criteria by Jev alone, no rationale
     jev_api_key: SecretStr | None = None
     anonymize: bool = True
     data_where: Where = "kz"

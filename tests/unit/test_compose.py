@@ -157,3 +157,23 @@ async def test_second_opinion_from_a_provider_asks_its_own_model_with_its_own_ke
     assert (e.result.a, e.result.alt, out.verifier_calls) == ("yes", "no", 1)
     assert json.loads(ds.calls.last.request.content)["model"] == "ds-pro"
     assert ds.calls.last.request.headers["authorization"] == "Bearer sk-ds"
+
+
+def test_jev_only_evaluator_is_built_without_llm_key_and_needs_jev_key_in_live() -> None:
+    from cqa.services.evaluation import JevEvaluator
+
+    evaluator = build_evaluator(settings(evaluator="jev", llm_mode="live", jev_api_key=SecretStr("j")))
+    assert isinstance(evaluator, JevEvaluator)
+    assert (evaluator.config_error, evaluator.model_name, evaluator.sends_real_data) == (
+        None,
+        "jev-latest",
+        True,
+    )
+    assert build_evaluator(settings(evaluator="jev")).config_error is None  # replay: ключ не нужен
+
+
+async def test_jev_only_without_key_in_live_fails_at_evaluate() -> None:
+    evaluator = build_evaluator(settings(evaluator="jev", llm_mode="live"))
+    with respx.mock(assert_all_called=False) as net, pytest.raises(ConfigError, match="CQA_JEV_API_KEY"):
+        await evaluator.evaluate(CHAT, CHECKLIST, [FIRST])
+    assert net.calls.call_count == 0
