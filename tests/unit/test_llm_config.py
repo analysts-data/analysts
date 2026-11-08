@@ -7,7 +7,7 @@ from pydantic import SecretStr
 
 from cqa.adapters.store import Store, connect
 from cqa.services.errors import Conflict, Invalid, NotFound
-from cqa.services.llm_config import configure, delete_provider, effective, put_provider, view
+from cqa.services.llm_config import OPENROUTER, configure, delete_provider, effective, put_provider, view
 from cqa.settings import Settings
 
 BODY: dict[str, Any] = {
@@ -54,7 +54,7 @@ def test_env_provider_is_seeded_from_settings_and_is_the_main_model() -> None:
     settings = _live()
     shown = view(settings)
     assert shown["llm_provider"] == "env"
-    assert shown["providers"] == [
+    assert shown["providers"][0] == (
         {
             "id": "env",
             "label": "Из .env",
@@ -64,7 +64,7 @@ def test_env_provider_is_seeded_from_settings_and_is_the_main_model() -> None:
             "where": "kz",
             "has_key": True,
         }
-    ]
+    )
     assert (settings.llm_base_url, settings.data_where) == ("https://kz.test/v1", "kz")
 
 
@@ -74,7 +74,7 @@ def test_new_provider_is_saved_and_survives_a_restart(store: Store) -> None:
     assert applied == [result]
     assert result.llm_provider == "env" and result.llm_base_url == "https://kz.test/v1"
     again = effective(Settings(_env_file=None, llm_base_url="https://kz.test/v1"), store.overrides())
-    assert [p["id"] for p in view(again)["providers"]] == ["env", "ds"]
+    assert [p["id"] for p in view(again)["providers"]] == ["env", OPENROUTER, "ds"]
     key = again.providers["ds"].key
     assert key is not None and key.get_secret_value() == "sk-ds"
 
@@ -161,8 +161,8 @@ def test_conflict_while_applying_saves_nothing(store: Store) -> None:
 
 def test_unused_provider_is_deleted(store: Store) -> None:
     result = delete_provider(store, _with_ds(store), "ds", lambda s: None)
-    assert list(result.providers) == ["env"]
-    assert list(effective(_live(), store.overrides()).providers) == ["env"]
+    assert list(result.providers) == ["env", OPENROUTER]
+    assert list(effective(_live(), store.overrides()).providers) == ["env", OPENROUTER]
 
 
 def test_provider_in_use_or_from_env_is_not_deleted(store: Store) -> None:
@@ -191,14 +191,19 @@ def test_env_provider_is_read_only(store: Store) -> None:
 def test_providers_from_env_file_are_listed_and_the_saved_list_replaces_them(store: Store) -> None:
     raw = {"ds": {**DS, "key": "sk-ds"}}
     settings = effective(Settings(_env_file=None, providers=raw), {})
-    assert list(settings.providers) == ["env", "ds"]
+    assert list(settings.providers) == ["env", OPENROUTER, "ds"]
     result = put_provider(store, settings, "local", {**DS, "where": "local"}, lambda s: None)
     assert list(effective(Settings(_env_file=None, providers=raw), store.overrides()).providers) == [
         "env",
+        OPENROUTER,
         "ds",
         "local",
     ]
-    assert list(delete_provider(store, result, "ds", lambda s: None).providers) == ["env", "local"]
+    assert list(delete_provider(store, result, "ds", lambda s: None).providers) == [
+        "env",
+        OPENROUTER,
+        "local",
+    ]
 
 
 def test_jev_only_mode_needs_the_jev_key_but_not_the_llm_key(store: Store) -> None:
@@ -214,3 +219,51 @@ def test_mode_names_jev_as_the_model_and_no_second_opinion_in_jev_only_mode() ->
     mode = mode_from_settings(effective(_live(), {"evaluator": "jev", "verifier": "jev"}))
     assert (mode.model, mode.verifier) == ("jev-latest", None)
     assert view(_live())["evaluator"] == "llm"
+
+
+JEV_ROUTER = {
+    "id": OPENROUTER,
+    "label": "OpenRouter — Jev Router",
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "typesafe/jev-router",
+    "profile": "plain",
+    "where": "external",
+}
+
+
+def test_openrouter_jev_is_always_listed_as_an_external_provider_without_a_key() -> None:
+    assert view(_live())["providers"][1] == {**JEV_ROUTER, "has_key": False}
+
+
+def test_openrouter_key_from_env_seeds_the_preset_and_stays_out_of_the_db(store: Store) -> None:
+    settings = _live(openrouter_api_key=SecretStr("sk-or-env"))
+    assert view(settings)["providers"][1]["has_key"] is True
+    put_provider(store, settings, "ds", DS, lambda s: None)
+    assert OPENROUTER not in store.overrides()["providers"]
+
+
+def test_openrouter_jev_takes_only_model_and_key_and_delete_resets_it(store: Store) -> None:
+    body = {
+        **DS,
+        "label": "x",
+        "base_url": "https://evil.test",
+        "where": "kz",
+        "model": "typesafe/next",
+        "key": "sk-or",
+    }
+    put_provider(store, _live(), OPENROUTER, body, lambda s: None)
+    edited = effective(_live(), store.overrides())
+    shown = view(edited)["providers"][1]
+    assert shown == {**JEV_ROUTER, "model": "typesafe/next", "has_key": True}
+    reset = delete_provider(store, edited, OPENROUTER, lambda s: None)
+    assert view(reset)["providers"][1] == {**JEV_ROUTER, "has_key": False}
+    assert view(effective(_live(), store.overrides()))["providers"][1] == {**JEV_ROUTER, "has_key": False}
+
+
+def test_openrouter_jev_as_main_model_shows_external_data_in_the_mode(store: Store) -> None:
+    from cqa.services.state import mode_from_settings
+
+    settings = put_provider(store, _live(), OPENROUTER, {**JEV_ROUTER, "key": "sk-or"}, lambda s: None)
+    result = configure(store, settings, {**BODY, "llm_provider": OPENROUTER}, lambda s: None)
+    mode = mode_from_settings(result)
+    assert (mode.where, mode.model, result.llm_profile) == ("external", "typesafe/jev-router", "plain")

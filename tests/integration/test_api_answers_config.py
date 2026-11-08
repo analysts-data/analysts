@@ -52,10 +52,10 @@ def test_config_switches_the_mode_without_restart_and_survives_one(
     client = _client(settings, conn)
     before = client.get("/api/config").json()
     assert before["llm_model"] == settings.llm_model and before["has_llm_key"] is False
-    assert [p["id"] for p in before["providers"]] == ["env"]
+    assert [p["id"] for p in before["providers"]] == ["env", "openrouter-jev"]
     added = client.put("/api/providers/local", json=LOCAL)
     assert added.status_code == 200 and "sk-local" not in added.text
-    assert added.json()["providers"][1] == {
+    assert added.json()["providers"][2] == {
         "id": "local",
         **{k: v for k, v in LOCAL.items() if k != "key"},
         "has_key": True,
@@ -81,7 +81,8 @@ def test_second_opinion_from_a_provider_shows_in_the_mode(
     assert client.delete("/api/providers/local").status_code == 409
     client.put("/api/config", json={**CONFIG, "llm_provider": "env"})
     deleted = client.delete("/api/providers/local")
-    assert deleted.status_code == 200 and [p["id"] for p in deleted.json()["providers"]] == ["env"]
+    assert deleted.status_code == 200
+    assert [p["id"] for p in deleted.json()["providers"]] == ["env", "openrouter-jev"]
     assert client.delete("/api/providers/local").status_code == 404
 
 
@@ -114,6 +115,22 @@ def test_check_sends_one_synthetic_request_and_reports_the_result(
     assert (ok["ok"], ok["error"], bad["ok"]) == (True, None, False)
     assert "401" in bad["error"] and isinstance(ok["ms"], int)
     assert client.post("/api/providers/nope/check").status_code == 404
+
+
+def test_check_of_jev_through_openrouter_with_a_bad_key_is_a_clean_failure(
+    settings: Settings, store: Store, conn: sqlite3.Connection
+) -> None:
+    client = _client(settings, conn)
+    body = {"label": "", "base_url": "https://x.test", "model": "typesafe/jev-router", "where": "external"}
+    assert client.put("/api/providers/openrouter-jev", json={**body, "key": "sk-or-fake"}).status_code == 200
+    with respx.mock(assert_all_called=True) as net:
+        route = net.post("https://openrouter.ai/api/v1/chat/completions")
+        route.respond(401, json={"error": {"message": "No auth credentials found", "code": 401}})
+        bad = client.post("/api/providers/openrouter-jev/check")
+    assert bad.status_code == 200 and bad.json()["ok"] is False and "401" in bad.json()["error"]
+    sent = route.calls.last.request
+    assert (sent.headers["authorization"], sent.headers["x-title"]) == ("Bearer sk-or-fake", "CQA")
+    assert "sk-or-fake" not in bad.text
 
 
 def test_config_switches_to_jev_only_and_the_mode_shows_jev(
