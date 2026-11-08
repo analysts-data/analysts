@@ -1,6 +1,7 @@
 """Ссылка API организаторов из интерфейса и автосинхронизация набора: ссылка в базе, в статус не попадает."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -83,10 +84,41 @@ async def test_status_never_contains_the_link(store: Store) -> None:
     assert "org.test" not in repr(syncer.status())
 
 
-async def test_run_syncs_at_once_and_then_every_interval(store: Store) -> None:
+async def test_sync_waits_for_the_source_schedule(store: Store) -> None:
+    store.set_org_source(URL, "DEV")  # schedule_min источника org — 5
+    source = _source()
+    now = [datetime.now(UTC)]
+    syncer = Syncer(store, source, clock=lambda: now[0])
+    await syncer.sync()
+    await syncer.sync()
+    assert len(source.fetched) == 1  # 5 минут ещё не прошли
+    now[0] += timedelta(minutes=6)
+    await syncer.sync()
+    assert len(source.fetched) == 2
+
+
+async def test_run_syncs_at_once(store: Store) -> None:
     store.set_org_source(URL, "DEV")
     source = _source()
     task = asyncio.create_task(Syncer(store, source).run(interval_s=0.01))
     await asyncio.sleep(0.05)
     task.cancel()
-    assert len(source.fetched) >= 2
+    assert len(source.fetched) == 1
+
+
+async def test_disabled_source_is_not_synced_by_the_loop(store: Store) -> None:
+    store.set_org_source(URL, "DEV")
+    org = store.source("org")
+    assert org is not None
+    store.put_source({**org, "enabled": False})
+    source = _source()
+    await Syncer(store, source).sync()
+    assert source.fetched == []
+
+
+async def test_every_sync_is_logged_with_counts(store: Store) -> None:
+    store.set_org_source(URL, "DEV")
+    await Syncer(store, _source()).sync()
+    (row,) = store.syncs("org")
+    assert (row["status"], row["added"], row["skipped"]) == ("ok", 2, 0)
+    assert {d.source_id for d in store.list_dialogs()} == {"org"}
