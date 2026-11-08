@@ -137,6 +137,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
 
@@ -184,6 +185,7 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | --- | --- | --- |
 | `make check` | ruff, mypy, pytest без сети, `node --test`, секреты, защищённые пути, стоп-код; локально `openspec validate --all --strict` | — |
 | `make run` | `uvicorn` на `127.0.0.1:8000` | `.env` |
+| `make share` | `uvicorn` на `0.0.0.0:$(PORT)` с `CQA_ACCESS_TOKEN` (пустой — новый `secrets.token_urlsafe(16)`), печатает `http://<IP>:$(PORT)/login?token=…` | `PORT=8000` |
 | `make record` | `CQA_LLM_MODE=record uv run pytest -m "cassette or e2e"`: перезаписывает ровно те вызовы, что потом проигрываются, только на синтетике прототипа (`call-024` тоже синтетика) | без параметров: набор и чек-лист — фикстуры тестов. Запускает агент с ключом в `.env` от человека; `CQA_ALLOW_REAL_DATA` не нужен (в `record` звонки не блокируются) |
 | `make e2e` | `uv run pytest -m e2e`, сервер в подпроцессе с `CQA_LLM_MODE` из окружения (по умолчанию `replay`) | `ARGS=--runxfail` |
 | `make eval` | `CQA_LLM_MODE=live uv run python -m cqa.services.quality_eval $(ARGS)` | `ARGS="--checklist PATH"`, `ARGS=--accept` |
