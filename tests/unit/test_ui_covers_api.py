@@ -14,7 +14,18 @@ FRONT = ROOT / "frontend" / "src"
 EXEMPT = {
     "/health",
     "/login",
-    # UI в работе: колокольчик, страница алертов, чипы и фильтр маркеров (eval-and-delivery, alerts)
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
+}
+# UI в работе: оценки по сотрудникам (PR #80)
+EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# UI в работе: колокольчик, страница алертов, чипы и фильтр маркеров (PR #87)
+EXEMPT |= {
     "/alerts",
     "/alerts/evaluate",
     "/alerts/rules",
@@ -23,13 +34,6 @@ EXEMPT = {
     "/alerts/{alert_id}/resolve",
     "/dialogs/{dialog_id}/markers",
     "/markers/catalog",
-    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
-    "/audit",
-    "/employees",
-    "/employees/import",
-    "/employees/{employee_id}",
-    "/me",
-    "/overview",
 }
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')

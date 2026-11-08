@@ -71,11 +71,10 @@ def test_catalog_has_defaults_and_is_editable_with_russian_validation(client: Te
     assert {tuple(e["loc"]) for e in bad.json()["detail"]} == {("body", 1), ("body", 2)}
 
 
-def test_manual_markers_are_added_and_removed_with_actor_from_header(client: TestClient) -> None:
+def test_manual_markers_are_added_and_removed_with_signed_actor(client: TestClient) -> None:
     response = client.put(
         "/api/dialogs/call-024/markers",
-        json={"add": ["Жалоба", "VIP-клиент"], "remove": []},
-        headers={"X-CQA-User": "%D0%90%D0%BD%D0%BD%D0%B0"},  # «Анна» в percent-encoding
+        json={"add": ["Жалоба", "VIP-клиент"], "remove": [], "by": "Анна"},  # без входа — подпись из тела
     )
 
     assert response.status_code == 200, response.text

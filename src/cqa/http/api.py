@@ -5,7 +5,6 @@ import logging
 from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any, Literal
-from urllib.parse import unquote
 
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -29,13 +28,21 @@ from cqa.services.checklists import (
     save_checklist,
 )
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import paste_text, save_owners, set_reviewed
+from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
+from cqa.services.state import (
+    ReportFormat,
+    build_state,
+    mode_from_settings,
+    operator_page,
+    operator_rows,
+    report,
+    scores_csv,
+)
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -49,6 +56,10 @@ AppealValue = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class OperatorIn(BaseModel):
+    operator: str | None = Field(max_length=200)  # обязательное: null снимает назначение
 
 
 class PasteIn(BaseModel):
@@ -141,10 +152,12 @@ async def get_report(
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
+    store = request.app.state.store
+    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
@@ -175,6 +188,27 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     _log(request, "dialog.reviewed" if body.reviewed else "dialog.unreviewed", "dialog", dialog_id)
     return {"ok": True}
+
+
+@router.put("/dialogs/{dialog_id}/operator")
+async def put_operator(dialog_id: str, body: OperatorIn, request: Request) -> dict[str, str | None]:
+    return {"operator": set_operator(request.app.state.store, dialog_id, body.operator)}
+
+
+@router.post("/operators/import")
+async def post_operators_import(request: Request) -> dict[str, object]:
+    """Сырое тело CSV, как у `/datasets/upload`: файл или вставленный текст."""
+    return import_operators(request.app.state.store, await request.body())
+
+
+@router.get("/operators")
+async def get_operators(request: Request) -> dict[str, Any]:
+    return operator_rows(request.app.state.store)
+
+
+@router.get("/operators/{name:path}")
+async def get_operator(name: str, request: Request) -> dict[str, Any]:
+    return operator_page(request.app.state.store, name)
 
 
 @router.put("/checklist")
@@ -265,47 +299,37 @@ async def _after_change(request: Request) -> None:
 
 @router.post("/appeals")
 async def post_appeal(body: AppealIn, request: Request) -> dict[str, Any]:
-    appeal = file_appeal(request.app.state.store, **body.model_dump(), now=datetime.now(ASTANA))
-    await _after_change(request)
     actor = actor_from(request, body.by)
     fields = {**body.model_dump(), "by": signed(actor, body.by)}
     appeal = file_appeal(request.app.state.store, **fields, now=datetime.now(ASTANA))
     _log(request, "appeal.file", "appeal", appeal.id, {"dlg": appeal.dlg, "cid": appeal.cid}, actor)
+    await _after_change(request)
     return _appeal_out(appeal)
 
 
 @router.post("/appeals/{appeal_id}/decision")
 async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> dict[str, Any]:
-    appeal = decide(request.app.state.store, appeal_id, **body.model_dump(), now=datetime.now(ASTANA))
-    await _after_change(request)
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(), "reviewer": signed(actor, body.reviewer)}
     appeal = decide(request.app.state.store, appeal_id, **fields, now=datetime.now(ASTANA))
     _log(request, "appeal.decide", "appeal", appeal.id, {"status": appeal.status}, actor)
+    await _after_change(request)
     return _appeal_out(appeal)
 
 
 @router.post("/decisions")
 async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
-    fields = body.model_dump(exclude={"from_"})
-    record = record_review(request.app.state.store, frm=body.from_, **fields, now=datetime.now(ASTANA))
-    await _after_change(request)
-    return _appeal_out(record)
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(exclude={"from_"}), "reviewer": signed(actor, body.reviewer)}
     review = record_review(request.app.state.store, frm=body.from_, **fields, now=datetime.now(ASTANA))
     _log(request, "review.decide", "appeal", review.id, {"dlg": body.dlg, "cid": body.cid}, actor)
+    await _after_change(request)
     return _appeal_out(review)
 
 
 # --- маркеры и алерты ---
 
 ROLE = "Специалист КК"
-
-
-def _actor(request: Request, fallback: str) -> str:
-    """Сотрудник из заголовка `X-CQA-User` (кириллица — percent-encoding), иначе подпись роли из тела."""
-    return unquote(request.headers.get("X-CQA-User", "")).strip() or fallback
 
 
 class MarkersIn(BaseModel):
@@ -340,13 +364,18 @@ async def get_catalog(request: Request) -> list[str]:
 @router.put("/markers/catalog")
 async def put_catalog(raw: Annotated[Any, Body()], request: Request) -> Response:
     errors = alerts.check_catalog(raw)
-    return _fields(([], errors) if errors else (alerts.put_catalog(request.app.state.store, raw), []))
+    if errors:
+        return _fields(([], errors))
+    _log(request, "markers.catalog", "markers", "", {"labels": raw})
+    return _fields((alerts.put_catalog(request.app.state.store, raw), []))
 
 
 @router.put("/dialogs/{dialog_id}/markers")
 async def put_markers(dialog_id: str, body: MarkersIn, request: Request) -> dict[str, Any]:
-    store, by = request.app.state.store, _actor(request, body.by)
-    alerts.change_markers(store, dialog_id, add=body.add, remove=body.remove, by=by, now=datetime.now(ASTANA))
+    store, actor = request.app.state.store, actor_from(request, body.by)
+    by, now = signed(actor, body.by), datetime.now(ASTANA)
+    alerts.change_markers(store, dialog_id, add=body.add, remove=body.remove, by=by, now=now)
+    _log(request, "markers.change", "dialog", dialog_id, {"add": body.add, "remove": body.remove}, actor)
     await _after_change(request)
     return {"markers": alerts.markers_of(store, dialog_id)}
 
@@ -358,7 +387,10 @@ async def get_rules(request: Request) -> list[dict[str, Any]]:
 
 @router.put("/alerts/rules")
 async def put_rules(raw: Annotated[Any, Body()], request: Request) -> Response:
-    return _fields(alerts.put_rules(request.app.state.store, raw))
+    saved, errors = alerts.put_rules(request.app.state.store, raw)
+    if not errors:
+        _log(request, "alerts.rules", "alert_rules", "", {"rules": [r["id"] for r in saved]})
+    return _fields((saved, errors))
 
 
 @router.post("/alerts/evaluate")
@@ -377,19 +409,27 @@ async def get_alerts(
 
 @router.post("/alerts/{alert_id}/ack")
 async def post_ack(alert_id: int, body: ByIn, request: Request) -> dict[str, Any]:
-    by = _actor(request, body.by)
-    return alerts.move(request.app.state.store, alert_id, "ack", by=by, now=datetime.now(ASTANA))
+    actor = actor_from(request, body.by)
+    store, by = request.app.state.store, signed(actor, body.by)
+    alert = alerts.move(store, alert_id, "ack", by=by, now=datetime.now(ASTANA))
+    _log(request, "alert.ack", "alert", alert_id, None, actor)
+    return alert
 
 
 @router.post("/alerts/{alert_id}/resolve")
 async def post_resolve(alert_id: int, body: ResolveIn, request: Request) -> dict[str, Any]:
-    store, by, now = request.app.state.store, _actor(request, body.by), datetime.now(ASTANA)
-    return alerts.move(store, alert_id, "resolved", by=by, note=body.note, now=now)
+    actor = actor_from(request, body.by)
+    store, by, now = request.app.state.store, signed(actor, body.by), datetime.now(ASTANA)
+    alert = alerts.move(store, alert_id, "resolved", by=by, note=body.note, now=now)
+    _log(request, "alert.resolve", "alert", alert_id, None, actor)
+    return alert
 
 
 @router.put("/alerts/{alert_id}/assignee")
 async def put_assignee(alert_id: int, body: AssigneeIn, request: Request) -> dict[str, Any]:
-    return alerts.assign(request.app.state.store, alert_id, body.assignee)
+    alert = alerts.assign(request.app.state.store, alert_id, body.assignee)
+    _log(request, "alert.assign", "alert", alert_id, {"assignee": alert["assignee"]})
+    return alert
 
 
 @router.put("/dialogs/{dialog_id}/answers/{cid}")
