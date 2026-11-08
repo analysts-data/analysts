@@ -205,11 +205,12 @@ async def get_report(
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
     operator: str | None = None,
+    source: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     store = request.app.state.store
-    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
+    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator, source=source)
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator, "source": source})
     return _file(body, fmt, "report")
 
 

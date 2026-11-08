@@ -1,0 +1,2900 @@
+{
+  "error": null,
+  "isSuccess": true,
+  "data": {
+    "dataset_group_id": "SHOWCASE",
+    "total_records": 40,
+    "records": [
+      {
+        "conversation_id": "sc-01",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-02T09:12:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: открытие счёта, пополнение и вывод, торговля, документы."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Открытие счёта"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:29",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], помогу с открытием счёта. Подскажите, пожалуйста, вы гражданин Казахстана или открываете счёт как нерезидент?"
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "client",
+            "text": "Гражданин Казахстана. Хочу брокерский счёт, чтобы покупать акции. Что для этого нужно?"
+          },
+          {
+            "timestamp": "01:48",
+            "speaker": "operator",
+            "text": "Понятно, спасибо. Понадобится только удостоверение личности. Скачайте приложение, нажмите «Открыть счёт», сфотографируйте удостоверение с двух сторон и пройдите видеоселфи."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "А сколько ждать, пока откроют? И можно ли сразу пополнить?"
+          },
+          {
+            "timestamp": "02:58",
+            "speaker": "operator",
+            "text": "Заявку проверяют в течение 1 рабочего дня, о результате придёт уведомление в приложении. Пополнить счёт можно сразу после открытия, в разделе «Пополнение и вывод»."
+          },
+          {
+            "timestamp": "03:25",
+            "speaker": "client",
+            "text": "Отлично, понятно."
+          },
+          {
+            "timestamp": "03:52",
+            "speaker": "operator",
+            "text": "Подведу итог: открываете счёт в приложении по удостоверению личности, проверка до 1 рабочего дня, после уведомления можно пополнять. Могу ещё чем-то помочь?"
+          },
+          {
+            "timestamp": "04:15",
+            "speaker": "client",
+            "text": "Нет, спасибо!"
+          },
+          {
+            "timestamp": "04:30",
+            "speaker": "operator",
+            "text": "Рада была помочь! Хорошего дня, до свидания."
+          },
+          {
+            "timestamp": "04:32",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-02",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-02T09:47:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Комиссии"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:41",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Слушаю вас."
+          },
+          {
+            "timestamp": "01:12",
+            "speaker": "client",
+            "text": "Какая комиссия за покупку акций американских компаний? Хочу купить на 1 000 долларов, сколько примерно выйдет?"
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "operator",
+            "text": "Комиссии зависят от тарифа. Тарифы смотрите на сайте."
+          },
+          {
+            "timestamp": "02:51",
+            "speaker": "client",
+            "text": "Я смотрел, там несколько тарифов, не понимаю, какой у меня и сколько будет за сделку."
+          },
+          {
+            "timestamp": "03:47",
+            "speaker": "operator",
+            "text": "Там всё расписано, посмотрите внимательнее."
+          },
+          {
+            "timestamp": "04:15",
+            "speaker": "client",
+            "text": "Ну ладно..."
+          },
+          {
+            "timestamp": "04:40",
+            "speaker": "operator",
+            "text": "Всего доброго."
+          },
+          {
+            "timestamp": "04:41",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-03",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-02T10:30:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: открытие счёта, пополнение и вывод, торговля, документы."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Пополнение и вывод"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:22",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "00:50",
+            "speaker": "client",
+            "text": "Хочу пополнить брокерский счёт банковской картой. Как это сделать и есть ли комиссия?"
+          },
+          {
+            "timestamp": "01:31",
+            "speaker": "operator",
+            "text": "В приложении откройте «Пополнение и вывод» → «Пополнить» → «Банковская карта», введите сумму и данные карты, подтвердите кодом из SMS банка. Карта должна быть оформлена на вас. Комиссии с нашей стороны нет, деньги зачисляются в течение 15 минут. Минимальная сумма — 1 000 тенге."
+          },
+          {
+            "timestamp": "01:58",
+            "speaker": "client",
+            "text": "А если банк возьмёт свою комиссию?"
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "operator",
+            "text": "Это зависит от вашего банка, уточните у него условия по переводам с карты."
+          },
+          {
+            "timestamp": "02:22",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-04",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-02T11:05:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Оператора"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:24",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Что случилось?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "Почему у меня ограничен счёт? Не могу ничего купить. Номер договора [Персональные данные скрыты]."
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Сейчас гляну. Да, на счёте ограничение с 30.10: истёк срок удостоверения личности. Остаток 245 300 тенге и 12 акций, они никуда не делись, просто сделки заблокированы."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "client",
+            "text": "А что делать?"
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "Загрузите новое удостоверение в «Профиль» → «Документы». Проверка до 2 рабочих дней, потом ограничение снимут."
+          },
+          {
+            "timestamp": "03:02",
+            "speaker": "client",
+            "text": "Хорошо, спасибо."
+          },
+          {
+            "timestamp": "03:15",
+            "speaker": "operator",
+            "text": "Пожалуйста, до свидания."
+          },
+          {
+            "timestamp": "03:16",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-05",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Елена В.",
+        "started_at": "2026-11-02T11:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-02T11:40:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-02T11:40:03.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-02T11:40:10.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Я четыре дня назад вывела деньги на карту, двести тысяч тенге, до сих пор не пришли."
+          },
+          {
+            "timestamp": "2026-11-02T11:40:21.0000000+05:00",
+            "speaker": "operator",
+            "text": "Для проверки назовите, пожалуйста, ФИО и дату рождения."
+          },
+          {
+            "timestamp": "2026-11-02T11:40:33.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-02T11:40:45.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, личность подтверждена. Так..."
+          },
+          {
+            "timestamp": "2026-11-02T11:40:48.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-02T11:44:50.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-02T11:44:54.0000000+05:00",
+            "speaker": "client",
+            "text": "Алло? Вы здесь?"
+          },
+          {
+            "timestamp": "2026-11-02T11:44:59.0000000+05:00",
+            "speaker": "operator",
+            "text": "Да-да. Значит, заявка есть, она как бы ушла, но там сверка, банк-корреспондент, ну и у банка тоже свой срок, это не совсем от нас, в общем, она в обработке, но не на нашей стороне, хотя статус у нас пока «в обработке»."
+          },
+          {
+            "timestamp": "2026-11-02T11:45:30.0000000+05:00",
+            "speaker": "client",
+            "text": "Я ничего не поняла. Деньги где сейчас?"
+          },
+          {
+            "timestamp": "2026-11-02T11:45:45.0000000+05:00",
+            "speaker": "operator",
+            "text": "Деньги отправлены, но ещё проходят проверку у банка. Должны прийти до 6 ноября включительно."
+          },
+          {
+            "timestamp": "2026-11-02T11:46:00.0000000+05:00",
+            "speaker": "client",
+            "text": "Хорошо, подожду."
+          },
+          {
+            "timestamp": "2026-11-02T11:46:06.0000000+05:00",
+            "speaker": "operator",
+            "text": "Ага. До свидания."
+          },
+          {
+            "timestamp": "2026-11-02T11:46:10.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-06",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-02T14:10:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Мен виртуалды көмекшімін. Тақырыпты таңдаңыз: шот ашу, толықтыру және шығару, сауда, қосымша."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Қосымша"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:27",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Қосымшаға қатысты қандай мәселе туындады?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "Қосымшаға кіре алмаймын, құпиясөз қате деп шығады."
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Түсіндім. Нақтылап алайын: қандай телефон қолданасыз — iPhone ме, Android па? Және қосымшаның соңғы нұсқасы орнатылған ба?"
+          },
+          {
+            "timestamp": "02:02",
+            "speaker": "client",
+            "text": "Android. Нұсқасын білмеймін."
+          },
+          {
+            "timestamp": "02:48",
+            "speaker": "operator",
+            "text": "Онда былай жасаңыз: 1) Play Market-те қосымшаны соңғы нұсқаға жаңартыңыз; 2) кіру бетінде «Құпиясөзді ұмыттым» батырмасын басыңыз; 3) SMS-пен келген кодты енгізіп, жаңа құпиясөз ойлап табыңыз."
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "client",
+            "text": "Жасадым, кірдім! Рахмет."
+          },
+          {
+            "timestamp": "04:02",
+            "speaker": "operator",
+            "text": "Керемет! Егер SMS-код 5 минут ішінде келмесе, осы чатқа жазыңыз — өтінім ашамыз, ол 1 жұмыс күні ішінде шешіледі. Қорытындылай кетсем: қосымша жаңартылды, құпиясөз қалпына келтірілді. Тағы сұрағыңыз бар ма?"
+          },
+          {
+            "timestamp": "04:25",
+            "speaker": "client",
+            "text": "Жоқ, бәрі түсінікті."
+          },
+          {
+            "timestamp": "04:38",
+            "speaker": "operator",
+            "text": "Сізге көмектескеніме қуаныштымын! Сау болыңыз, күніңіз сәтті өтсін."
+          },
+          {
+            "timestamp": "04:40",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-07",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-02T15:25:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. Choose a topic: account, deposits and withdrawals, trading, documents."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Trading"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:25",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто]. How can I help you?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "I placed a limit order yesterday and it never executed, even though the stock traded near my price. Why?"
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "A limit order only executes at your limit price or better. For a buy order, the market price has to drop to your limit or below, and there must be enough sellers at that price. If the price only came close, the order stays open."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "client",
+            "text": "So it's still active?"
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "A day order expires at the end of the trading session, a GTC order stays until you cancel it. You can check this in «Orders» in the app."
+          },
+          {
+            "timestamp": "02:42",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-08",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-02T16:50:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Документы"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:38",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Какой у вас вопрос?"
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "client",
+            "text": "Мне нужна справка о доходах по брокерскому счёту за прошлый год, чтобы подать декларацию. Где её взять?"
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "operator",
+            "text": "Мы такие справки не выдаём. Обратитесь в налоговую, там всё подскажут."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Как не выдаёте? В налоговой сказали, что справку даёт брокер."
+          },
+          {
+            "timestamp": "03:25",
+            "speaker": "operator",
+            "text": "Нет, у нас такой услуги нет. Попробуйте ещё раз в налоговой."
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "client",
+            "text": "Странно. Ладно."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "operator",
+            "text": "Всего доброго."
+          },
+          {
+            "timestamp": "04:06",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-09",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-03T09:05:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: открытие счёта, пополнение и вывод, торговля, тарифы."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Тарифы"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:20",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]."
+          },
+          {
+            "timestamp": "00:45",
+            "speaker": "client",
+            "text": "Сколько стоит вывод денег на карту другого банка?"
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "operator",
+            "text": "Вывод в тенге на карту любого банка Казахстана — 0,1 %, минимум 300 тенге. Вывод в долларах — 0,15 %, минимум 5 долларов."
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "client",
+            "text": "А сроки?"
+          },
+          {
+            "timestamp": "01:55",
+            "speaker": "operator",
+            "text": "Тенге — до 1 рабочего дня, доллары — до 3 рабочих дней."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "Понял."
+          },
+          {
+            "timestamp": "02:22",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-10",
+        "channel": "voice call",
+        "language": "KZ",
+        "operator": "Елена В.",
+        "started_at": "2026-11-03T09:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-03T09:40:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Жазу және транскрипция басталды"
+          },
+          {
+            "timestamp": "2026-11-03T09:40:04.0000000+05:00",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто], тыңдап тұрмын."
+          },
+          {
+            "timestamp": "2026-11-03T09:40:12.0000000+05:00",
+            "speaker": "client",
+            "text": "Сәлеметсіз бе. Жеке куәлігімді ауыстырдым, жаңасын қалай жүктеймін?"
+          },
+          {
+            "timestamp": "2026-11-03T09:40:22.0000000+05:00",
+            "speaker": "operator",
+            "text": "Тексеру үшін аты-жөніңізді және туған күніңізді айтыңызшы."
+          },
+          {
+            "timestamp": "2026-11-03T09:40:35.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-03T09:40:46.0000000+05:00",
+            "speaker": "operator",
+            "text": "Рахмет, жеке басыңыз расталды."
+          },
+          {
+            "timestamp": "2026-11-03T09:40:49.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-03T09:43:52.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-03T09:43:56.0000000+05:00",
+            "speaker": "client",
+            "text": "Алло, естіп тұрсыз ба?"
+          },
+          {
+            "timestamp": "2026-11-03T09:44:01.0000000+05:00",
+            "speaker": "operator",
+            "text": "Иә. Енді, жеке куәлік... яғни, алдымен «Профиль», жоқ, кешіріңіз, алдымен қосымшаны ашасыз, сосын «Профиль», онда «Құжаттар» бар, бірақ ескі куәлікті өшірмейсіз, ол өзі ауысады, сосын жаңасын екі жағынан суретке түсіресіз."
+          },
+          {
+            "timestamp": "2026-11-03T09:44:40.0000000+05:00",
+            "speaker": "client",
+            "text": "Яғни «Профиль», «Құжаттар», сосын екі жағынан суретке түсіремін, солай ма?"
+          },
+          {
+            "timestamp": "2026-11-03T09:44:50.0000000+05:00",
+            "speaker": "operator",
+            "text": "Иә, солай. Тексеру 2 жұмыс күніне дейін созылады, нәтижесі қосымшаға хабарлама болып келеді."
+          },
+          {
+            "timestamp": "2026-11-03T09:45:05.0000000+05:00",
+            "speaker": "client",
+            "text": "Жақсы, рахмет."
+          },
+          {
+            "timestamp": "2026-11-03T09:45:10.0000000+05:00",
+            "speaker": "operator",
+            "text": "Сау болыңыз."
+          },
+          {
+            "timestamp": "2026-11-03T09:45:13.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-11",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-03T10:15:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hello! I'm the virtual assistant. Please choose a topic: account, deposits and withdrawals, IPO."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "IPO"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:28",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто], I'll be glad to help. What would you like to know about the IPO?"
+          },
+          {
+            "timestamp": "01:02",
+            "speaker": "client",
+            "text": "I saw a new IPO in the app. How do I take part and how much money do I need?"
+          },
+          {
+            "timestamp": "01:35",
+            "speaker": "operator",
+            "text": "Happy to explain. Just to be sure I give you the right details: do you mean the offering in Investments → IPO that closes this week, and will you apply from your USD brokerage account?"
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "client",
+            "text": "Yes, that one. And yes, from the USD account."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "operator",
+            "text": "Thank you. Open Investments → IPO, choose the offering and tap «Apply». The minimum application is 2,000 USD. The money must be on your account when you apply, and it stays reserved until allocation. Applications are accepted until 6 November, 18:00 Astana time."
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "operator",
+            "text": "Allocation is not guaranteed: if demand is high, applications are filled partially and the unused part of the reserve goes back to your account. Results will appear in the app on 10 November, and the shares will be in your portfolio by 12 November."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "client",
+            "text": "Got it. Can I cancel the application if I change my mind?"
+          },
+          {
+            "timestamp": "04:35",
+            "speaker": "operator",
+            "text": "Yes, you can cancel it in the same section until 6 November, 18:00. After that the application is final."
+          },
+          {
+            "timestamp": "05:00",
+            "speaker": "client",
+            "text": "Perfect, thanks."
+          },
+          {
+            "timestamp": "05:20",
+            "speaker": "operator",
+            "text": "To sum up: apply in Investments → IPO before 6 November, 18:00, with at least 2,000 USD on the account; results on 10 November. Is there anything else I can help you with? Have a great day!"
+          },
+          {
+            "timestamp": "05:22",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-12",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-03T11:20:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Қандай сұрақ бойынша жазып отырсыз? Тақырыпты таңдаңыз: шот ашу, толықтыру, қосымша."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Шот ашу"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:45",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Қандай сұрағыңыз бар?"
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "client",
+            "text": "Брокерлік шот ашқым келеді. Не істеуім керек және қанша уақыт кетеді?"
+          },
+          {
+            "timestamp": "02:10",
+            "speaker": "operator",
+            "text": "Шотты қосымша арқылы ашуға болады, онда бәрі көрсетілген."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Қосымшаның қай бөлімінде? Қандай құжаттар керек?"
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "operator",
+            "text": "Құжаттар әдетте стандартты, тіркелу кезінде сұралады."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "client",
+            "text": "Түсінбедім. Жеке куәлік жеткілікті ме, әлде басқа құжат керек пе? Шот қашан ашылады?"
+          },
+          {
+            "timestamp": "04:50",
+            "speaker": "operator",
+            "text": "Иә, негізінен жеткілікті болуы керек. Уақыты әртүрлі болады."
+          },
+          {
+            "timestamp": "05:20",
+            "speaker": "client",
+            "text": "Жарайды, өзім қарап көрейін."
+          },
+          {
+            "timestamp": "05:35",
+            "speaker": "operator",
+            "text": "Жақсы, сау болыңыз."
+          },
+          {
+            "timestamp": "05:36",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-13",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-03T12:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, пополнение, IPO."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "IPO"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:33",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "client",
+            "text": "Хочу подать заявку на IPO, которое сейчас висит в приложении. Как это сделать и когда я узнаю, сколько бумаг мне дадут?"
+          },
+          {
+            "timestamp": "01:50",
+            "speaker": "operator",
+            "text": "Заявка подаётся в разделе «Инвестиции» → «IPO»: выберите размещение, укажите сумму и нажмите «Подать заявку». Сумма заявки резервируется на счёте до распределения."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "Понятно. А когда будут результаты распределения?"
+          },
+          {
+            "timestamp": "02:55",
+            "speaker": "operator",
+            "text": "Результаты будут скоро, после закрытия книги заявок. Увидите их в том же разделе приложения."
+          },
+          {
+            "timestamp": "03:20",
+            "speaker": "client",
+            "text": "Скоро — это когда? Мне нужно понимать, сколько дней деньги будут заморожены."
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "operator",
+            "text": "Как только распределение утвердят, неисполненная часть суммы вернётся на счёт автоматически."
+          },
+          {
+            "timestamp": "03:52",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-14",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-03T13:30:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm the virtual assistant. Choose a topic: account, documents, taxes."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Taxes"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:35",
+            "speaker": "operator",
+            "text": "Hello, my name is [Имя скрыто]. Please confirm your identity in the app so I can check your account."
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "system",
+            "text": "Customer identity verified"
+          },
+          {
+            "timestamp": "01:25",
+            "speaker": "client",
+            "text": "I submitted the W-8BEN form last week. Has it been accepted? I don't want 30% withheld from my dividends."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "operator",
+            "text": "Yes, your W-8BEN was accepted on 31 October and is valid until 31 December 2029. Dividends on US shares will now be taxed at the reduced treaty rate instead of 30%."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Great. Do I need to do anything else?"
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "operator",
+            "text": "No. The form has to be renewed every three years, we will send a reminder before it expires."
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "client",
+            "text": "OK, thanks."
+          },
+          {
+            "timestamp": "03:31",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-15",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Елена В.",
+        "started_at": "2026-11-03T15:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: счёт, приложение, вывод средств."
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "client",
+            "text": "Приложение"
+          },
+          {
+            "timestamp": "00:08",
+            "speaker": "bot",
+            "text": "Соединяю с оператором, пожалуйста, ожидайте."
+          },
+          {
+            "timestamp": "00:09",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "01:15",
+            "speaker": "client",
+            "text": "Есть кто-нибудь?"
+          },
+          {
+            "timestamp": "01:52",
+            "speaker": "operator",
+            "text": "Добрый день! Меня зовут [Имя скрыто]. Подскажите, что у вас случилось?"
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "Вы на связи? Опишите, пожалуйста, ваш вопрос."
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "system",
+            "text": "Клиент покинул чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-16",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-03T16:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-03T16:40:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-03T16:40:03.0000000+05:00",
+            "speaker": "operator",
+            "text": "Добрый день! Меня зовут [Имя скрыто], брокерская компания, слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-03T16:40:11.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Я стал налоговым резидентом другой страны. Как передать вам справку о налоговом резидентстве, чтобы налог удерживали правильно?"
+          },
+          {
+            "timestamp": "2026-11-03T16:40:24.0000000+05:00",
+            "speaker": "operator",
+            "text": "Подскажу. Это изменение данных по вашему счёту, поэтому сначала подтвердим личность: назовите, пожалуйста, ФИО и дату рождения."
+          },
+          {
+            "timestamp": "2026-11-03T16:40:36.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-03T16:40:44.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, личность подтверждена. Уточните, пожалуйста: справка уже у вас на руках и выдана налоговым органом новой страны?"
+          },
+          {
+            "timestamp": "2026-11-03T16:40:55.0000000+05:00",
+            "speaker": "client",
+            "text": "Да, получил на прошлой неделе, она на английском."
+          },
+          {
+            "timestamp": "2026-11-03T16:41:06.0000000+05:00",
+            "speaker": "operator",
+            "text": "Хорошо. Мне нужно уточнить, принимаем ли мы справку на английском без перевода. Оставайтесь, пожалуйста, на линии, это займёт меньше минуты."
+          },
+          {
+            "timestamp": "2026-11-03T16:41:12.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-03T16:41:52.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-03T16:41:55.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо за ожидание. Справку на английском принимаем без перевода. Загрузите её скан в приложении: «Профиль» → «Документы» → «Налоговый статус»."
+          },
+          {
+            "timestamp": "2026-11-03T16:42:10.0000000+05:00",
+            "speaker": "client",
+            "text": "А когда налог начнут удерживать по-новому?"
+          },
+          {
+            "timestamp": "2026-11-03T16:42:22.0000000+05:00",
+            "speaker": "operator",
+            "text": "Проверка справки занимает до трёх рабочих дней. После одобрения придёт уведомление в приложении, и со следующей выплаты налог будет удерживаться по новому статусу."
+          },
+          {
+            "timestamp": "2026-11-03T16:42:37.0000000+05:00",
+            "speaker": "client",
+            "text": "Понятно, спасибо."
+          },
+          {
+            "timestamp": "2026-11-03T16:42:45.0000000+05:00",
+            "speaker": "operator",
+            "text": "Итак: загружаете справку в «Документы», проверка до трёх рабочих дней, затем уведомление. Могу ещё чем-то помочь? Всего доброго, до свидания!"
+          },
+          {
+            "timestamp": "2026-11-03T16:42:52.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-17",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-04T09:20:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: торговля, счёт, вывод средств."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Торговля"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:40",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "01:15",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "client",
+            "text": "Час назад выставил ордер на покупку, он висит в статусе «Обрабатывается», а деньги уже заблокированы. Это второй раз за неделю, мне это надоело!"
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "operator",
+            "text": "Попробуйте перезайти в приложение."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "client",
+            "text": "Перезаходил три раза, ничего не меняется. Деньги мне нужны, я не могу купить другие бумаги. Что вы будете делать?"
+          },
+          {
+            "timestamp": "03:40",
+            "speaker": "operator",
+            "text": "Иногда помогает обновить приложение до последней версии."
+          },
+          {
+            "timestamp": "04:10",
+            "speaker": "client",
+            "text": "Версия последняя. Вы вообще можете проверить, что с ордером?"
+          },
+          {
+            "timestamp": "04:55",
+            "speaker": "operator",
+            "text": "Обычно такие ордера потом проходят сами. Подождите немного."
+          },
+          {
+            "timestamp": "05:20",
+            "speaker": "client",
+            "text": "Сколько ждать? И что будет с деньгами?"
+          },
+          {
+            "timestamp": "06:05",
+            "speaker": "operator",
+            "text": "Точно сказать не могу. Ещё вопросы есть?"
+          },
+          {
+            "timestamp": "06:30",
+            "speaker": "client",
+            "text": "Понятно. Спасибо, очень помогли."
+          },
+          {
+            "timestamp": "06:31",
+            "speaker": "system",
+            "text": "Клиент покинул чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-18",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-04T10:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Тақырыпты таңдаңыз: шот, комиссиялар, қаражат шығару."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Комиссиялар"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Қалай көмектесе аламын?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "Өз шоттарымның арасында ақша аударсам, комиссия алына ма?"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Бір валютадағы өз шоттарыңыздың арасындағы аударым тегін. Аударым кезінде валюта айырбасталса, сомадан 0,5% комиссия алынады."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "client",
+            "text": "Ақша қанша уақытта түседі?"
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "operator",
+            "text": "Әдетте бірден, ең көбі 15 минут ішінде. Аударымды қосымшадағы «Шоттар» бөлімінен жасайсыз."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "client",
+            "text": "Жақсы, рахмет."
+          },
+          {
+            "timestamp": "02:52",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-19",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-04T10:45:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, инвестиции, IPO."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "IPO"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:31",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Подтвердите личность в приложении."
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "client",
+            "text": "Подавал заявку на IPO на 1 000 долларов, а получил бумаг всего на 120. Почему так мало?"
+          },
+          {
+            "timestamp": "01:55",
+            "speaker": "operator",
+            "text": "Спрос превысил предложение, заявки исполнены частично. Ваша заявка исполнена на 12%, остаток 880 USD уже вернулся на счёт."
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "client",
+            "text": "Не понимаю. Я же подал заявку вовремя, почему мне не дали всю сумму? Кто-то получил больше?"
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "operator",
+            "text": "Если вы не понимаете, как работает IPO, может, вам вообще не стоит инвестировать."
+          },
+          {
+            "timestamp": "03:40",
+            "speaker": "client",
+            "text": "Вообще-то я задал нормальный вопрос."
+          },
+          {
+            "timestamp": "04:10",
+            "speaker": "operator",
+            "text": "Распределение пропорциональное, у всех одинаковый процент. Больше сказать нечего."
+          },
+          {
+            "timestamp": "04:30",
+            "speaker": "client",
+            "text": "Ясно."
+          },
+          {
+            "timestamp": "04:32",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-20",
+        "channel": "voice call",
+        "language": "EN",
+        "operator": "Елена В.",
+        "started_at": "2026-11-04T11:30:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-04T11:30:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-04T11:30:04.0000000+05:00",
+            "speaker": "operator",
+            "text": "Hello, my name is [Имя скрыто], how can I help you?"
+          },
+          {
+            "timestamp": "2026-11-04T11:30:12.0000000+05:00",
+            "speaker": "client",
+            "text": "Hi. I got a margin call notification this morning and I don't understand what I have to do."
+          },
+          {
+            "timestamp": "2026-11-04T11:30:22.0000000+05:00",
+            "speaker": "operator",
+            "text": "I need to verify your identity first. Please tell me your full name and date of birth."
+          },
+          {
+            "timestamp": "2026-11-04T11:30:35.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-04T11:30:43.0000000+05:00",
+            "speaker": "operator",
+            "text": "Thank you, verified."
+          },
+          {
+            "timestamp": "2026-11-04T11:30:50.0000000+05:00",
+            "speaker": "client",
+            "text": "So what does the notification mean? Are you going to sell my shares?"
+          },
+          {
+            "timestamp": "2026-11-04T11:30:53.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-04T11:34:25.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-04T11:34:28.0000000+05:00",
+            "speaker": "operator",
+            "text": "So, the margin, it's about the level, the collateral is lower, and the positions, they can be closed if the level, well, if it's not restored, or you add funds, or partially, it depends."
+          },
+          {
+            "timestamp": "2026-11-04T11:34:52.0000000+05:00",
+            "speaker": "client",
+            "text": "I was on hold for almost four minutes without a word, and I still don't get it. Do I need to deposit money, and by when?"
+          },
+          {
+            "timestamp": "2026-11-04T11:35:05.0000000+05:00",
+            "speaker": "operator",
+            "text": "You can deposit, or close something yourself. The system checks the level and then it decides."
+          },
+          {
+            "timestamp": "2026-11-04T11:35:20.0000000+05:00",
+            "speaker": "client",
+            "text": "This is really frustrating. How much do I need to deposit?"
+          },
+          {
+            "timestamp": "2026-11-04T11:35:32.0000000+05:00",
+            "speaker": "operator",
+            "text": "It depends on the prices. You can see it in the app. Anything else?"
+          },
+          {
+            "timestamp": "2026-11-04T11:35:40.0000000+05:00",
+            "speaker": "client",
+            "text": "Forget it."
+          },
+          {
+            "timestamp": "2026-11-04T11:35:42.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-21",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-04T13:15:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: счёт, вывод средств, инвестиции."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Вывод средств"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:28",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], я помогу с выводом средств. Опишите, пожалуйста, что случилось."
+          },
+          {
+            "timestamp": "01:02",
+            "speaker": "client",
+            "text": "Шесть дней жду деньги! Подал вывод 120 000 тенге на карту, до сих пор ничего. Позовите руководителя, с вами разговаривать бесполезно."
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Понимаю ваше возмущение: шесть дней ожидания — это действительно долго, приношу извинения. Чтобы посмотреть заявку, подтвердите, пожалуйста, личность в приложении — я отправила запрос."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "Спасибо. Вижу заявку на вывод 120 000 тенге от 29.10: она задержалась на проверке у банка-получателя, сегодня в 11:20 деньги отправлены. Зачисление на карту — до конца дня 05.11."
+          },
+          {
+            "timestamp": "03:20",
+            "speaker": "client",
+            "text": "А если опять не придут? Мне нужен руководитель."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "operator",
+            "text": "Я зарегистрировала жалобу на задержку, номер обращения [Персональные данные скрыты]. Руководитель смены перезвонит вам в течение 24 часов на номер из профиля. Если до вечера 05.11 деньги не поступят, напишите в чат с номером обращения — мы сразу передадим запрос в отдел расчётов."
+          },
+          {
+            "timestamp": "04:40",
+            "speaker": "client",
+            "text": "Хорошо, жду звонка."
+          },
+          {
+            "timestamp": "05:05",
+            "speaker": "operator",
+            "text": "Итак: деньги отправлены, зачисление до конца дня 05.11, жалоба зарегистрирована, руководитель перезвонит в течение 24 часов. Могу ещё чем-то помочь?"
+          },
+          {
+            "timestamp": "05:30",
+            "speaker": "client",
+            "text": "Нет, спасибо."
+          },
+          {
+            "timestamp": "05:45",
+            "speaker": "operator",
+            "text": "Спасибо за терпение, хорошего вам дня! До свидания."
+          },
+          {
+            "timestamp": "05:46",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-22",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-04T14:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. Choose a topic: account, withdrawal, investments, app."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "App"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:35",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто]. How can I help you?"
+          },
+          {
+            "timestamp": "01:10",
+            "speaker": "client",
+            "text": "The app keeps crashing on my Android phone every time I open the portfolio screen. It started yesterday."
+          },
+          {
+            "timestamp": "01:55",
+            "speaker": "operator",
+            "text": "Please reinstall the app."
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "client",
+            "text": "I already reinstalled it this morning, same thing. What else can I do? I need to check my positions today."
+          },
+          {
+            "timestamp": "03:15",
+            "speaker": "operator",
+            "text": "Then reinstall it again and restart the phone, it should help."
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "client",
+            "text": "And if it doesn't?"
+          },
+          {
+            "timestamp": "04:30",
+            "speaker": "operator",
+            "text": "It usually helps. Thank you for contacting us, have a nice day."
+          },
+          {
+            "timestamp": "04:32",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-23",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-04T15:50:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: счёт, документы, вывод средств."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Документы"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "Пришло уведомление, что документы отклонены и нужно загрузить заново. Что не так и как загрузить?"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Чтобы посмотреть причину, подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "operator",
+            "text": "Спасибо. Скан удостоверения отклонён: нижняя часть обрезана, не читается дата выдачи. Загрузите новое фото в разделе «Профиль» → «Документы» → «Удостоверение личности»: обе стороны, документ целиком, без бликов, JPG или PDF до 10 МБ."
+          },
+          {
+            "timestamp": "03:10",
+            "speaker": "client",
+            "text": "Понял. А проверяют потом долго?"
+          },
+          {
+            "timestamp": "03:35",
+            "speaker": "operator",
+            "text": "После загрузки документы уйдут на повторную проверку, статус появится в «Документах»."
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "client",
+            "text": "Ладно, загружу."
+          },
+          {
+            "timestamp": "03:52",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-24",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-04T17:05:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Мен виртуалды көмекшімін. Тақырыпты таңдаңыз: шот, шотты толықтыру, қаражат шығару."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Шотты толықтыру"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:32",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Қандай сұрағыңыз бар?"
+          },
+          {
+            "timestamp": "01:00",
+            "speaker": "client",
+            "text": "Брокерлік шотты қалай толықтыруға болады? Қандай тәсілдер бар?"
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Екі тәсіл бар: қосымшадағы «Шотты толықтыру» бөлімінде банк картасымен — ақша бірден түседі, комиссия жоқ; немесе реквизиттер бойынша банктік аударыммен — 1 жұмыс күніне дейін. Реквизиттер сол бөлімде көрсетілген."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "client",
+            "text": "Түсінікті, рахмет."
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "operator",
+            "text": "Басқа сұрағыңыз болса, жазыңыз. Сау болыңыз!"
+          },
+          {
+            "timestamp": "02:32",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-25",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-05T09:10:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Тақырыпты таңдаңыз: шот, құжаттар, қаражат шығару."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Құжаттар"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:25",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто], құжаттар бойынша көмектесемін. Қандай құжатты жаңартқыңыз келеді?"
+          },
+          {
+            "timestamp": "00:55",
+            "speaker": "client",
+            "text": "Жеке куәлігімнің мерзімі бітті, жаңасын алдым. Қосымшада қалай жаңартамын?"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Жаңа куәлікті тіркеу үшін алдымен жеке басыңызды қосымшада растаңызшы, сұрау жібердім."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "system",
+            "text": "Клиенттің жеке басы расталды"
+          },
+          {
+            "timestamp": "02:25",
+            "speaker": "operator",
+            "text": "Рахмет! Қадамдар: «Профиль» → «Құжаттар» → «Жеке куәлікті жаңарту». Куәліктің екі жағын толық, жарқылсыз суретке түсіріңіз, содан кейін камераға қарап, бет растауынан өтіңіз. Тексеру 1 жұмыс күніне дейін созылады, нәтижесі туралы хабарлама келеді."
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "client",
+            "text": "Тексеру кезінде сауда жасай аламын ба?"
+          },
+          {
+            "timestamp": "03:35",
+            "speaker": "operator",
+            "text": "Иә, тексеру кезінде сауда мен ақша шығару әдеттегідей жұмыс істейді."
+          },
+          {
+            "timestamp": "04:00",
+            "speaker": "client",
+            "text": "Жақсы, рахмет."
+          },
+          {
+            "timestamp": "04:20",
+            "speaker": "operator",
+            "text": "Қорытындылайын: жаңа куәлікті «Профиль» → «Құжаттар» бөліміне жүктейсіз, тексеру 1 жұмыс күніне дейін, нәтижесі хабарламамен келеді. Тағы сұрағыңыз бар ма? Сау болыңыз, күніңіз сәтті өтсін!"
+          },
+          {
+            "timestamp": "04:22",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-26",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-05T09:55:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я виртуальный помощник. Выберите тему: открыть счёт, вывод средств, инвестиции."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Открыть счёт"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:34",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "client",
+            "text": "Хочу открыть брокерский счёт, но застряла на анкете в приложении — не принимает адрес. Сколько вообще занимает открытие?"
+          },
+          {
+            "timestamp": "01:50",
+            "speaker": "operator",
+            "text": "Обычно открытие идёт до трёх рабочих дней. Анкету надо заполнить заново."
+          },
+          {
+            "timestamp": "02:25",
+            "speaker": "client",
+            "text": "Три дня? Мне до пятницы нужно успеть купить облигации."
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "operator",
+            "text": "Могу оформить быстрее, без очереди: услуга 10 000 тенге, переведите мне на карту [Персональные данные скрыты], и завтра счёт будет открыт."
+          },
+          {
+            "timestamp": "03:40",
+            "speaker": "client",
+            "text": "Это официально? Я не буду переводить деньги на личную карту."
+          },
+          {
+            "timestamp": "04:15",
+            "speaker": "operator",
+            "text": "Как хотите. Тогда заполняйте анкету в приложении."
+          },
+          {
+            "timestamp": "04:30",
+            "speaker": "system",
+            "text": "Клиент покинул чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-27",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-05T10:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. Choose a topic: open an account, withdrawal, investments."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Open an account"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто]. How can I help?"
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "I moved to Kazakhstan for work last month. Can I open a brokerage account as a foreigner, and what documents do I need?"
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Yes, you can. You will need your passport, a residence permit or work visa, your local individual identification number (IIN) and a document confirming your address. Upload them in the app under «Profile» → «Documents», then sign the agreement in the app."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "Do I need the IIN even if I'm only staying for a year?"
+          },
+          {
+            "timestamp": "02:55",
+            "speaker": "operator",
+            "text": "Yes, the IIN is required for all clients."
+          },
+          {
+            "timestamp": "03:15",
+            "speaker": "client",
+            "text": "OK, I'll get one first then."
+          },
+          {
+            "timestamp": "03:17",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-28",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-05T11:25:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь?"
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Вывод средств"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Слушаю вас."
+          },
+          {
+            "timestamp": "00:58",
+            "speaker": "client",
+            "text": "Муж на прошлой неделе выводил деньги со своего счёта, говорит, они не пришли. Сам он в командировке, попросил меня узнать. Номер его счёта [Персональные данные скрыты]."
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "02:00",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "operator",
+            "text": "Спасибо. Смотрю счёт супруга. Вывод 450 000 тенге от 30.10 на его карту отклонён банком: не совпали реквизиты. Деньги вернулись на счёт, сейчас там свободный остаток 1 280 000 тенге."
+          },
+          {
+            "timestamp": "03:00",
+            "speaker": "client",
+            "text": "Ясно. А можно я сама отправлю заявку заново?"
+          },
+          {
+            "timestamp": "03:35",
+            "speaker": "operator",
+            "text": "Нет, заявку подаёт только владелец счёта. Пусть муж проверит реквизиты карты и подаст вывод заново в разделе «Вывод средств»."
+          },
+          {
+            "timestamp": "04:00",
+            "speaker": "client",
+            "text": "Хорошо, передам. Спасибо."
+          },
+          {
+            "timestamp": "04:15",
+            "speaker": "operator",
+            "text": "Пожалуйста, всего доброго!"
+          },
+          {
+            "timestamp": "04:16",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-29",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Елена В.",
+        "started_at": "2026-11-05T13:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-05T13:00:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-05T13:00:05.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-05T13:00:14.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. У меня со счёта списали комиссию 7 500 тенге, я ничего такого не заказывал. Что это за списание?"
+          },
+          {
+            "timestamp": "2026-11-05T13:00:30.0000000+05:00",
+            "speaker": "operator",
+            "text": "Назовите, пожалуйста, ФИО и дату рождения."
+          },
+          {
+            "timestamp": "2026-11-05T13:00:42.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-05T13:00:55.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, личность подтверждена."
+          },
+          {
+            "timestamp": "2026-11-05T13:01:02.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-05T13:05:10.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент больше не находится на удержании"
+          },
+          {
+            "timestamp": "2026-11-05T13:05:16.0000000+05:00",
+            "speaker": "operator",
+            "text": "Да. Это комиссия, она по тарифу."
+          },
+          {
+            "timestamp": "2026-11-05T13:05:30.0000000+05:00",
+            "speaker": "client",
+            "text": "Вы меня четыре минуты держали в тишине, чтобы сказать «по тарифу»? По какому тарифу? Я ничего не подключал."
+          },
+          {
+            "timestamp": "2026-11-05T13:05:48.0000000+05:00",
+            "speaker": "operator",
+            "text": "Ну, там списание за обслуживание, оно бывает, если тариф такой, это система считает, не мы."
+          },
+          {
+            "timestamp": "2026-11-05T13:06:05.0000000+05:00",
+            "speaker": "client",
+            "text": "Позовите руководителя. Иначе я напишу жалобу регулятору."
+          },
+          {
+            "timestamp": "2026-11-05T13:06:15.0000000+05:00",
+            "speaker": "operator",
+            "text": "Руководителя нет. Больше ничем помочь не могу."
+          },
+          {
+            "timestamp": "2026-11-05T13:06:28.0000000+05:00",
+            "speaker": "client",
+            "text": "То есть вы даже не скажете, как вернуть деньги?"
+          },
+          {
+            "timestamp": "2026-11-05T13:06:40.0000000+05:00",
+            "speaker": "operator",
+            "text": "Всё по тарифу, я уже сказала."
+          },
+          {
+            "timestamp": "2026-11-05T13:06:52.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-30",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-05T14:20:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hi! I'm a virtual assistant. Choose a topic: account, withdrawal, trading."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Trading"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:27",
+            "speaker": "operator",
+            "text": "Hello! My name is [Имя скрыто], happy to help with trading. What would you like to do?"
+          },
+          {
+            "timestamp": "00:55",
+            "speaker": "client",
+            "text": "How do I set a stop-loss on a stock I already own? I don't want to lose more than 10% on it."
+          },
+          {
+            "timestamp": "01:25",
+            "speaker": "operator",
+            "text": "Sure. Are you using the mobile app or the web terminal? The steps are slightly different."
+          },
+          {
+            "timestamp": "01:50",
+            "speaker": "client",
+            "text": "The mobile app, on iPhone."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "In the app open «Portfolio», tap the stock, then «Sell» and choose the order type «Stop-loss». Enter the stop price — for a 10% limit it's your purchase price minus 10% — and the quantity, then tap «Place order». You'll see it under «Orders» → «Active» until it triggers or you cancel it."
+          },
+          {
+            "timestamp": "03:20",
+            "speaker": "client",
+            "text": "Will it work outside trading hours?"
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "operator",
+            "text": "It stays active, but it can only trigger during the exchange session. If the market opens below your stop price, the order is filled at the next available price, so the loss may be slightly more than 10%."
+          },
+          {
+            "timestamp": "04:15",
+            "speaker": "client",
+            "text": "Got it, thanks."
+          },
+          {
+            "timestamp": "04:35",
+            "speaker": "operator",
+            "text": "To sum up: «Portfolio» → stock → «Sell» → «Stop-loss», set the stop price and quantity, then check it under «Orders» → «Active». Anything else I can help with? Have a great day, goodbye!"
+          },
+          {
+            "timestamp": "04:37",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-31",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-05T15:35:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-05T15:35:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-05T15:35:04.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-05T15:35:11.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Увидел в приложении новость про IPO технологической компании, хочу поучаствовать. Как подать заявку и до какого числа можно?"
+          },
+          {
+            "timestamp": "2026-11-05T15:35:30.0000000+05:00",
+            "speaker": "operator",
+            "text": "Да, IPO у нас есть. Заявку можно подать в приложении, раздел «Инвестиции»."
+          },
+          {
+            "timestamp": "2026-11-05T15:35:42.0000000+05:00",
+            "speaker": "client",
+            "text": "А до какого числа принимают заявки? И какая минимальная сумма?"
+          },
+          {
+            "timestamp": "2026-11-05T15:35:55.0000000+05:00",
+            "speaker": "operator",
+            "text": "Минимальная сумма указана в карточке размещения. По срокам точно не скажу, они бывают разные."
+          },
+          {
+            "timestamp": "2026-11-05T15:36:08.0000000+05:00",
+            "speaker": "client",
+            "text": "То есть я могу опоздать? Где посмотреть срок?"
+          },
+          {
+            "timestamp": "2026-11-05T15:36:20.0000000+05:00",
+            "speaker": "operator",
+            "text": "Ну, лучше подать пораньше. Обычно все успевают."
+          },
+          {
+            "timestamp": "2026-11-05T15:36:31.0000000+05:00",
+            "speaker": "client",
+            "text": "А деньги на счёте замораживаются сразу после заявки?"
+          },
+          {
+            "timestamp": "2026-11-05T15:36:44.0000000+05:00",
+            "speaker": "operator",
+            "text": "Да, сумма блокируется. Потом что-то распределят."
+          },
+          {
+            "timestamp": "2026-11-05T15:36:58.0000000+05:00",
+            "speaker": "client",
+            "text": "Понятно... Ладно, сам разберусь."
+          },
+          {
+            "timestamp": "2026-11-05T15:37:03.0000000+05:00",
+            "speaker": "operator",
+            "text": "Хорошо. Всего доброго."
+          },
+          {
+            "timestamp": "2026-11-05T15:37:06.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-32",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Елена В.",
+        "started_at": "2026-11-05T16:45:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Қандай сұрақ бойынша жазып отырсыз? Тақырыпты таңдаңыз: шот, салықтар, қосымша."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Салықтар"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:45",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе! Менің атым [Имя скрыто]. Сізге қалай көмектесе аламын?"
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "client",
+            "text": "270 нысанды декларацияны толтыру үшін брокерден кірістер туралы анықтама керек. Оны қалай алуға болады?"
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "operator",
+            "text": "Анықтаманы қосымшадан аласыз. Жоқ, кешіріңіз, кеңсеге келу керек сияқты. Әлде поштамен жібереміз бе, қазір нақтылаймын."
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "client",
+            "text": "Сонымен қалай? Қосымшада ма, кеңседе ме?"
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "operator",
+            "text": "«Есептер» бөлімінде салық анықтамасы бар. Бірақ ол дивидендтерді көрсетпейді, сондықтан декларацияға жарамауы мүмкін."
+          },
+          {
+            "timestamp": "04:05",
+            "speaker": "client",
+            "text": "Түсінбедім. Онда декларацияға қай құжатты тапсырамын?"
+          },
+          {
+            "timestamp": "04:50",
+            "speaker": "operator",
+            "text": "Сол анықтаманы тапсыра бересіз. Дивидендтер бойынша бөлек сұрау керек, бірақ қайдан екенін нақты білмеймін."
+          },
+          {
+            "timestamp": "05:20",
+            "speaker": "client",
+            "text": "Жарайды, бөлек анықтама үшін өтініш жазу керек пе?"
+          },
+          {
+            "timestamp": "06:00",
+            "speaker": "operator",
+            "text": "Иә, мүмкін. Немесе қажет емес. Қосымшадан қарап көріңіз."
+          },
+          {
+            "timestamp": "06:30",
+            "speaker": "client",
+            "text": "Ештеңе түсінбедім, рахмет."
+          },
+          {
+            "timestamp": "06:45",
+            "speaker": "operator",
+            "text": "Оқасы жоқ. Сау болыңыз!"
+          },
+          {
+            "timestamp": "06:46",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-33",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-06T09:15:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-06T09:15:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-06T09:15:03.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто], слушаю вас."
+          },
+          {
+            "timestamp": "2026-11-06T09:15:10.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Не могу войти в приложение: SMS с кодом не приходит уже второй день."
+          },
+          {
+            "timestamp": "2026-11-06T09:15:20.0000000+05:00",
+            "speaker": "operator",
+            "text": "Понимаю, это неудобно. Чтобы посмотреть настройки вашего профиля, назовите, пожалуйста, ФИО и дату рождения."
+          },
+          {
+            "timestamp": "2026-11-06T09:15:35.0000000+05:00",
+            "speaker": "client",
+            "text": "[Данные идентификации скрыты]"
+          },
+          {
+            "timestamp": "2026-11-06T09:15:44.0000000+05:00",
+            "speaker": "operator",
+            "text": "Спасибо, личность подтверждена. Вижу, что за последние сутки на ваш номер ушло три кода, все доставлены оператору связи."
+          },
+          {
+            "timestamp": "2026-11-06T09:16:02.0000000+05:00",
+            "speaker": "client",
+            "text": "Странно, у меня их нет."
+          },
+          {
+            "timestamp": "2026-11-06T09:16:10.0000000+05:00",
+            "speaker": "operator",
+            "text": "Скорее всего, их блокирует фильтр спама в телефоне. Проверьте папку «Спам» в сообщениях и отключите блокировку неизвестных отправителей."
+          },
+          {
+            "timestamp": "2026-11-06T09:16:40.0000000+05:00",
+            "speaker": "client",
+            "text": "Сейчас... Да, нашёл, они все там лежат."
+          },
+          {
+            "timestamp": "2026-11-06T09:16:48.0000000+05:00",
+            "speaker": "operator",
+            "text": "Отлично. Добавьте отправителя в контакты, тогда коды будут приходить сразу. Ещё можно включить вход по push-уведомлению: «Профиль», раздел «Безопасность»."
+          },
+          {
+            "timestamp": "2026-11-06T09:17:05.0000000+05:00",
+            "speaker": "client",
+            "text": "Понял, спасибо."
+          },
+          {
+            "timestamp": "2026-11-06T09:17:07.0000000+05:00",
+            "speaker": "operator",
+            "text": "Ага."
+          },
+          {
+            "timestamp": "2026-11-06T09:17:09.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-34",
+        "channel": "voice call",
+        "language": "RU",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-06T10:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "2026-11-06T10:00:00.0000000+05:00",
+            "speaker": "system",
+            "text": "Запись и транскрибирование запущены"
+          },
+          {
+            "timestamp": "2026-11-06T10:00:04.0000000+05:00",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто], слушаю."
+          },
+          {
+            "timestamp": "2026-11-06T10:00:10.0000000+05:00",
+            "speaker": "client",
+            "text": "Здравствуйте. Утром выставил лимитную заявку на покупку облигаций, хочу её отменить, а в приложении кнопка не нажимается."
+          },
+          {
+            "timestamp": "2026-11-06T10:00:24.0000000+05:00",
+            "speaker": "operator",
+            "text": "Номер счёта скажите."
+          },
+          {
+            "timestamp": "2026-11-06T10:00:30.0000000+05:00",
+            "speaker": "client",
+            "text": "[Персональные данные скрыты]"
+          },
+          {
+            "timestamp": "2026-11-06T10:00:41.0000000+05:00",
+            "speaker": "operator",
+            "text": "Так, нашёл. Отменяю заявку, которую вы назвали."
+          },
+          {
+            "timestamp": "2026-11-06T10:00:55.0000000+05:00",
+            "speaker": "operator",
+            "text": "Готово, заявка отменена."
+          },
+          {
+            "timestamp": "2026-11-06T10:01:02.0000000+05:00",
+            "speaker": "client",
+            "text": "Спасибо. А почему кнопка в приложении не работала?"
+          },
+          {
+            "timestamp": "2026-11-06T10:01:12.0000000+05:00",
+            "speaker": "operator",
+            "text": "Наверное, сбой в приложении. Обновите его до последней версии."
+          },
+          {
+            "timestamp": "2026-11-06T10:01:25.0000000+05:00",
+            "speaker": "client",
+            "text": "Хорошо, обновлю."
+          },
+          {
+            "timestamp": "2026-11-06T10:01:29.0000000+05:00",
+            "speaker": "operator",
+            "text": "Всего доброго."
+          },
+          {
+            "timestamp": "2026-11-06T10:01:31.0000000+05:00",
+            "speaker": "system",
+            "text": "Клиент завершил разговор"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-35",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Айгерим Т.",
+        "started_at": "2026-11-06T10:50:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Я помогу с вопросами по счёту, инвестициям и приложению. Выберите тему."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "IPO"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:28",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Расскажите, пожалуйста, какое размещение вас интересует?"
+          },
+          {
+            "timestamp": "01:02",
+            "speaker": "client",
+            "text": "Хочу подписаться на IPO, которое сейчас идёт в приложении. Это первое для меня. Как это сделать?"
+          },
+          {
+            "timestamp": "01:40",
+            "speaker": "operator",
+            "text": "Подскажите, вы подаёте заявку со счёта в тенге или в долларах? От этого зависит, какую сумму нужно держать на счёте."
+          },
+          {
+            "timestamp": "02:05",
+            "speaker": "client",
+            "text": "В долларах."
+          },
+          {
+            "timestamp": "02:50",
+            "speaker": "operator",
+            "text": "Тогда так: 1) откройте «Инвестиции» → «IPO» и выберите размещение; 2) укажите сумму заявки, минимум для этого размещения — 100 долларов; 3) подтвердите заявку кодом. После подтверждения сумма заявки блокируется на счёте до распределения."
+          },
+          {
+            "timestamp": "03:30",
+            "speaker": "client",
+            "text": "А до какого числа можно подать и когда станет понятно, сколько акций дали?"
+          },
+          {
+            "timestamp": "04:10",
+            "speaker": "operator",
+            "text": "Заявки принимаются до 18:00 по Астане 12 ноября. Итоги распределения придут push-уведомлением и появятся в «Отчётах» 14 ноября, неиспользованная часть суммы разблокируется в тот же день."
+          },
+          {
+            "timestamp": "04:40",
+            "speaker": "client",
+            "text": "Отлично, всё понятно."
+          },
+          {
+            "timestamp": "05:05",
+            "speaker": "operator",
+            "text": "Итак: заявка подаётся в «Инвестиции» → «IPO» до 18:00 12 ноября, минимум 100 долларов, итоги — 14 ноября. Могу ещё чем-то помочь?"
+          },
+          {
+            "timestamp": "05:20",
+            "speaker": "client",
+            "text": "Нет, спасибо!"
+          },
+          {
+            "timestamp": "05:30",
+            "speaker": "operator",
+            "text": "Спасибо за обращение, удачных инвестиций! Всего доброго."
+          },
+          {
+            "timestamp": "05:31",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-36",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Руслан М.",
+        "started_at": "2026-11-06T11:40:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите, пожалуйста, тему обращения."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Комиссии"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:33",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Чем могу помочь?"
+          },
+          {
+            "timestamp": "01:05",
+            "speaker": "client",
+            "text": "С меня списали плату за обслуживание счёта, хотя я ничего не покупал в этом месяце. Почему и можно ли её вернуть?"
+          },
+          {
+            "timestamp": "01:30",
+            "speaker": "operator",
+            "text": "Для проверки подтвердите, пожалуйста, личность в приложении."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "system",
+            "text": "Идентификация пройдена"
+          },
+          {
+            "timestamp": "02:40",
+            "speaker": "operator",
+            "text": "Спасибо. Плата за обслуживание списывается по тарифу, там есть свои условия."
+          },
+          {
+            "timestamp": "03:10",
+            "speaker": "client",
+            "text": "Какие условия? Сколько она стоит и за что именно?"
+          },
+          {
+            "timestamp": "03:50",
+            "speaker": "operator",
+            "text": "Это зависит от тарифа, точные суммы лучше посмотреть на сайте. Если не согласны, можно оставить заявку на возврат."
+          },
+          {
+            "timestamp": "04:20",
+            "speaker": "client",
+            "text": "А как оставить заявку и когда вернут деньги?"
+          },
+          {
+            "timestamp": "05:00",
+            "speaker": "operator",
+            "text": "Через приложение, там есть форма обратной связи. Рассмотрят."
+          },
+          {
+            "timestamp": "05:25",
+            "speaker": "client",
+            "text": "Понятно, что ничего не понятно."
+          },
+          {
+            "timestamp": "05:40",
+            "speaker": "operator",
+            "text": "Если будут вопросы, пишите. Хорошего дня!"
+          },
+          {
+            "timestamp": "05:41",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-37",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Камила Ж.",
+        "started_at": "2026-11-06T13:10:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Чем можем помочь? Выберите тему."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Налоги и справки"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:30",
+            "speaker": "operator",
+            "text": "Здравствуйте! Меня зовут [Имя скрыто]. Подскажите, пожалуйста, ваш вопрос."
+          },
+          {
+            "timestamp": "01:00",
+            "speaker": "client",
+            "text": "Мне нужна справка о доходах для налоговой декларации по форме 270 за прошлый год. Где её взять?"
+          },
+          {
+            "timestamp": "01:45",
+            "speaker": "operator",
+            "text": "Справку можно заказать в приложении: «Профиль» → «Документы» → «Заказать справку», тип «Справка о доходах для налоговой декларации». Выберите прошлый год и формат PDF. В справке будут дивиденды, купоны и доход от продажи бумаг."
+          },
+          {
+            "timestamp": "02:20",
+            "speaker": "client",
+            "text": "А когда она будет готова?"
+          },
+          {
+            "timestamp": "02:45",
+            "speaker": "operator",
+            "text": "Её готовят специалисты, готовую справку пришлют в приложение."
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "client",
+            "text": "Ладно, закажу."
+          },
+          {
+            "timestamp": "03:08",
+            "speaker": "system",
+            "text": "Оператор закрыл чат"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-38",
+        "channel": "agent chat",
+        "language": "EN",
+        "operator": "Елена В.",
+        "started_at": "2026-11-06T14:30:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Hello! How can we help you today? Please choose a topic."
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "client",
+            "text": "Documents"
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "system",
+            "text": "Chat transferred to an agent"
+          },
+          {
+            "timestamp": "00:50",
+            "speaker": "operator",
+            "text": "Hello, my name is [Имя скрыто]. How can I help?"
+          },
+          {
+            "timestamp": "01:25",
+            "speaker": "client",
+            "text": "I got a notification asking me to confirm my address. Which documents do you accept?"
+          },
+          {
+            "timestamp": "02:30",
+            "speaker": "operator",
+            "text": "You can upload a utility bill. Or a bank statement. Actually, I think only a notarised document works."
+          },
+          {
+            "timestamp": "03:05",
+            "speaker": "client",
+            "text": "So which one? Is a utility bill fine or does it need a notary?"
+          },
+          {
+            "timestamp": "04:20",
+            "speaker": "operator",
+            "text": "A utility bill is fine if it's recent. It should be no older than 3 months. Or 6 months, depending on the case."
+          },
+          {
+            "timestamp": "04:55",
+            "speaker": "client",
+            "text": "Three or six? And where do I upload it?"
+          },
+          {
+            "timestamp": "05:50",
+            "speaker": "operator",
+            "text": "In the app, Documents section. Or you can send it by email, but the app is better. Not by email."
+          },
+          {
+            "timestamp": "06:20",
+            "speaker": "client",
+            "text": "OK... and how long does the check take?"
+          },
+          {
+            "timestamp": "07:30",
+            "speaker": "operator",
+            "text": "It takes some time, usually a few days."
+          },
+          {
+            "timestamp": "07:50",
+            "speaker": "client",
+            "text": "Alright, I'll try."
+          },
+          {
+            "timestamp": "08:00",
+            "speaker": "operator",
+            "text": "Bye."
+          },
+          {
+            "timestamp": "08:01",
+            "speaker": "system",
+            "text": "Agent closed the chat"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-39",
+        "channel": "agent chat",
+        "language": "KZ",
+        "operator": "Нурлан Б.",
+        "started_at": "2026-11-06T15:45:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Сәлеметсіз бе! Тақырыпты таңдаңыз: шот, инвестициялар, қосымша."
+          },
+          {
+            "timestamp": "00:04",
+            "speaker": "client",
+            "text": "Қосымша"
+          },
+          {
+            "timestamp": "00:05",
+            "speaker": "system",
+            "text": "Чат операторға жіберілді"
+          },
+          {
+            "timestamp": "00:25",
+            "speaker": "operator",
+            "text": "Сәлеметсіз бе. Менің атым [Имя скрыто]. Сұрағыңызды жазыңыз."
+          },
+          {
+            "timestamp": "00:55",
+            "speaker": "client",
+            "text": "Қосымшадан хабарламалар келмей қойды: баға туралы ескертулер де, мәмілелер туралы хабарламалар да."
+          },
+          {
+            "timestamp": "01:20",
+            "speaker": "operator",
+            "text": "Телефон баптауларында қосымшаға хабарлама жіберуге рұқсат беріңіз."
+          },
+          {
+            "timestamp": "01:50",
+            "speaker": "client",
+            "text": "Рұқсат бар сияқты. Бәрібір келмейді."
+          },
+          {
+            "timestamp": "02:15",
+            "speaker": "operator",
+            "text": "Онда қосымшада «Профиль» → «Хабарламалар» бөлімін ашып, ескертулерді өшіріп, қайта қосыңыз. Қуат үнемдеу режимін де өшіріңіз."
+          },
+          {
+            "timestamp": "03:10",
+            "speaker": "client",
+            "text": "Жасадым, тексеру хабарламасы келді. Рахмет."
+          },
+          {
+            "timestamp": "03:15",
+            "speaker": "system",
+            "text": "Оператор чатты жапты"
+          }
+        ],
+        "audio_url": null
+      },
+      {
+        "conversation_id": "sc-40",
+        "channel": "agent chat",
+        "language": "RU",
+        "operator": "Елена В.",
+        "started_at": "2026-11-06T17:00:00+05:00",
+        "transcript": [
+          {
+            "timestamp": "00:00",
+            "speaker": "bot",
+            "text": "Здравствуйте! Выберите тему: открытие счёта, пополнение, приложение."
+          },
+          {
+            "timestamp": "00:06",
+            "speaker": "client",
+            "text": "Открытие счёта"
+          },
+          {
+            "timestamp": "00:07",
+            "speaker": "system",
+            "text": "Чат передан оператору"
+          },
+          {
+            "timestamp": "00:40",
+            "speaker": "operator",
+            "text": "Здравствуйте, меня зовут [Имя скрыто]. Слушаю вас."
+          },
+          {
+            "timestamp": "01:15",
+            "speaker": "client",
+            "text": "Хочу открыть брокерский счёт на сына, ему 15 лет. Это возможно и что для этого нужно?"
+          },
+          {
+            "timestamp": "06:40",
+            "speaker": "operator",
+            "text": "Да, возможно."
+          },
+          {
+            "timestamp": "07:05",
+            "speaker": "client",
+            "text": "А какие документы нужны? Приходить в офис или можно онлайн?"
+          },
+          {
+            "timestamp": "13:30",
+            "speaker": "client",
+            "text": "Вы здесь?"
+          },
+          {
+            "timestamp": "15:10",
+            "speaker": "operator",
+            "text": "Нужно свидетельство о рождении ребёнка и ваше удостоверение личности."
+          },
+          {
+            "timestamp": "15:40",
+            "speaker": "client",
+            "text": "А онлайн можно оформить? И кто будет управлять счётом, я или он?"
+          },
+          {
+            "timestamp": "22:05",
+            "speaker": "operator",
+            "text": "Лучше уточните в офисе."
+          },
+          {
+            "timestamp": "22:30",
+            "speaker": "client",
+            "text": "Двадцать минут переписки ради этого... Ладно."
+          },
+          {
+            "timestamp": "22:50",
+            "speaker": "system",
+            "text": "Клиент покинул чат"
+          }
+        ],
+        "audio_url": null
+      }
+    ]
+  }
+}

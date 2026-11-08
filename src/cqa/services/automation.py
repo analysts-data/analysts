@@ -29,6 +29,7 @@ from cqa.domain.automation import (
 from cqa.domain.checklist_export import excel_csv
 from cqa.domain.models import Dialog
 from cqa.domain.review import ASTANA
+from cqa.domain.sources import PULL
 from cqa.services.audit import Actor, record
 from cqa.services.batches import Batches
 from cqa.services.errors import Conflict, NotFound, Upstream
@@ -105,12 +106,12 @@ async def batch_evaluate(
 def wire(
     store: Store, syncer: Syncer, runner: Runner, batches: Batches, prosody: Callable[[str], Awaitable[Any]]
 ) -> Ports:
-    """Порты на кусках из main. Источник один — ссылка организаторов, код «org», как в реестре источников."""
+    """Порты на кусках из main: реестр источников, очередь батчей, достаточность, журнал действий."""
 
-    async def sync(source_id: str) -> Mapping[str, Any]:  # → реестр: registry.sync(source_id)
-        await syncer.sync()
-        st = syncer.status() or {}
-        return {"added": st.get("added", 0), "skipped": st.get("skipped", 0), "error": st.get("error")}
+    async def sync(source_id: str) -> Mapping[str, Any]:
+        row = await syncer.sync_source(source_id)  # строка журнала синхронизаций источника
+        error = row["errors"][0] if row["status"] == "error" and row["errors"] else None
+        return {"added": row["added"], "skipped": row["skipped"], "error": error}
 
     async def prosody_for_calls(ids: list[str]) -> None:
         for i in ids:
@@ -119,14 +120,13 @@ def wire(
                 with contextlib.suppress(NotFound, Upstream):
                     await prosody(i)
 
-    def source_of(d: Dialog) -> str:  # → d.source_id; до реестра — как его перенос старых диалогов
-        return "paste" if d.id.startswith("paste-") else "org" if store.org_source() else "file"
-
     return Ports(
-        sources=lambda: ["org"] if store.org_source() else [],  # → [s.id for s in registry if s.enabled]
+        sources=lambda: [
+            s["id"] for s in store.sources() if s["kind"] in PULL and s["enabled"] and not s["archived"]
+        ],
         sync=sync,
         evaluate=lambda ids, priority, stop: batch_evaluate(batches, runner, ids, priority, stop),
-        source_of=source_of,
+        source_of=lambda d: d.source_id or "",
         blocked=lambda d: assess_dialogs(store, [d])[d.id].status == "block",
         # notify → lambda h: store.add_alerts([h], now) — когда алерты (#87) в main
         audit=lambda action, kind, target, details: record(store, AUTOMATION, action, kind, target, details),

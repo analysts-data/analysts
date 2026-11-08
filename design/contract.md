@@ -337,6 +337,40 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
 
+## Источники диалогов (dialog-ingest, sources)
+
+Диалоги приходят из нескольких сервисов; у каждого диалога есть происхождение. `Dialog` получает поля `source_id` (id источника) и `external_id` (id записи в источнике); поле записи `operator` становится `Dialog.operator`, `product` (или `product_default` источника) виден в предпросмотре — тему диалога определяет раздел «Темы обращений»; дубли — по `(source_id, external_id)`. Диалоги организаторов и файла сохраняют `id` = `conversation_id`, у `http_json` и `webhook` `id` = `<source_id>-<external_id>`, название — «Чат <external_id>» / «Звонок <external_id>». `GET /api/state` получает `sources: [{id, name, kind, service}]` (без архивных) для фильтра и плашки источника.
+
+Source: `{"id": "src1", "name": "Чат-платформа", "kind": "org_api" | "http_json" | "webhook" | "file" | "paste" | "api", "service": "ChatDesk", "channel_default": "chat" | "call" | null, "product_default": "Карты" | null, "config": {…}, "has_secret": true, "enabled": true, "schedule_min": 5, "created": "<ISO>", "archived": false, "ingest_path": "/api/sources/src1/ingest" | null}`. Встроенные: `org` (API организаторов, по умолчанию выключен, расписание 5 мин; прежняя ссылка `PUT /api/source` переносится в него), `file` (`POST /api/datasets/upload`), `paste` (`POST /api/dialogs/text`), `api` (интеграционный API). Встроенные не удаляются; у `file`, `paste`, `api` меняются только `name`, `service`, `channel_default`, `product_default`.
+
+`config` (не секрет) по виду:
+- `org_api`: `{"group_id": "DEV"}`; секрет — подписанная ссылка `https://…`. Включить без ссылки — 422.
+- `http_json`: `{"url": "https://…", "method": "GET" | "POST", "auth_header": "Authorization" | "", "records_path": "data.items", "mapping": Mapping}`; секрет — значение заголовка. Логин, пароль или параметр вроде `token`, `key`, `signature` в адресе — 422 (адрес виден в интерфейсе).
+- `webhook`: `{"auth": "bearer" | "hmac", "records_path": "", "mapping": Mapping}`; секрет — токен, его выдаёт сервер.
+
+Mapping: пути (`agent.name`, `data.items.0`) к полям записи: обязательные `conversation_id`, `transcript` (список реплик), `speaker`, `text` (внутри реплики); необязательные `channel`, `language`, `timestamp` (внутри реплики), `audio_url`, `operator`, `product`, а также `speakers: {"<значение>": "client" | "operator" | "bot" | "system"}`. Роли и каналы понимаются по синонимам (`agent`, `customer`, `user`, `chat`, `call`, `voice`…); нет канала — `channel_default`; нет языка — по тексту; нет времени — `MM:SS` по номеру реплики.
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/sources` | — | `[Source]`, архивные с `archived: true` |
+| `POST /api/sources` | `{name, kind, service, channel_default, product_default, config, secret, enabled, schedule_min}` | Source; у `webhook` ещё `token` — показывается один раз |
+| `PUT /api/sources/{id}` | то же и `rotate_token` | Source; пустой `secret` оставляет сохранённый; `rotate_token: true` у webhook — новый `token` один раз; смена `kind` — 422 |
+| `DELETE /api/sources/{id}?archive=true` | — | `{deleted}` без диалогов; есть диалоги — 409, с `archive=true` — `{archived}` (выключен, учёт и диалоги остаются); встроенный — 409 |
+| `POST /api/sources/test` | поля `POST /api/sources` и `sample` | предпросмотр черновика, ничего не сохраняет |
+| `POST /api/sources/{id}/test` | `{sample}` (для webhook) или пусто | предпросмотр сохранённого источника |
+| `POST /api/sources/{id}/sync` | — | SourceSync: забрать сейчас (`org_api`, `http_json`); ошибка источника — `status: "error"`, не код HTTP; идёт синхронизация — 409; другой вид — 422 |
+| `GET /api/sources/{id}/syncs?limit=50` | — | `[SourceSync]`, новые первыми |
+| `GET /api/sources/stats` | — | `[SourceStats]` по всем источникам |
+| `POST /api/sources/{id}/ingest` | JSON: список записей, одна запись или объект со списком по `records_path` | `{added, skipped, errors: [до 20]}`; `Authorization: Bearer <token>` или `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела>` по `config.auth`; неверный — 401, выключен — 409, не webhook — 404, больше 10 МБ или не JSON — 422. Открыт и при `CQA_ACCESS_TOKEN` |
+
+Предпросмотр: `{ok, error: null | "<текст>", ms, records, preview: [{id, external_id, title, ch, lang, lines, operator, product, sample: [{who, text}] × 3}] × 3, errors: ["<id>: <причина>"], paths: ["id", "agent.name", …]}`. Сбой связи — `ok: false` и текст без адреса (200). Ошибки настроек в любом вызове — 422 `{"detail": "Проверьте поля источника", "fields": {"config.url": "…", "config.mapping.text": "…", "secret": "…"}}`. Секреты не уходят ни в один ответ и журнал, есть `has_secret`.
+
+SourceSync: `{id, source_id, started, finished, status: "running" | "ok" | "partial" | "error", added, skipped, errors: [..], duration_ms}`. Каждое поступление — строка журнала: синхронизация, webhook, файл, вставка, `POST /api/datasets`. `partial` — часть записей не разобрана, `error` — сбой целиком; прерванные перезапуском — `error` «прервана перезапуском сервера». Автосинхронизация: включённые `org_api` и `http_json` с `schedule_min > 0`, проверка раз в 30 с.
+
+SourceStats: `{id, name, kind, enabled, archived, dialogs, scored, avg_total, gross_share, running: SourceSync | null, last_sync: SourceSync | null, syncs, error_rate, newest_at, freshness_s, health: "ok" | "warning" | "error", basis}`. Итог и грубые ошибки — с учётом решений, как в отчёте; `error_rate` — доля `error` среди последних 10; `freshness_s` — возраст самого нового диалога. `health` — первое сработавшее правило, `basis` — его текст: выключен — warning «источник выключен»; последняя синхронизация `error` — error «последняя синхронизация с ошибкой: <первая ошибка>»; `error_rate > 0,2` — warning «N% синхронизаций с ошибкой (последние 10)»; `partial` — warning «последняя синхронизация с пропусками: N записей не разобраны»; `file`, `paste`, `api` — ok «загрузка вручную» / «ошибок нет»; pull без синхронизаций — warning «ещё не синхронизировался»; нет данных — warning «данные ещё не поступали»; новый диалог старше 24 ч — warning «нет новых данных 24 ч»; иначе ok.
+
+`http_json` ходит только в публичный интернет: адрес, который резолвится в частную сеть, loopback, link-local (169.254.169.254) и другие служебные диапазоны, — `ok: false` / `error` «адрес … во внутренней сети», перенаправления не выполняются. `CQA_ALLOW_PRIVATE_SOURCES=1` снимает запрет (источник в своей сети, `make demo`). Отчёт для руководства: `sources: [{key, label, n, avg}]` («По источникам»), фильтр `source=<id>`, `filters.source`.
+
 ## Сотрудники и журнал действий (eval-and-delivery)
 
 Текущий сотрудник — заголовок `X-CQA-User: <id>`, его шлёт интерфейс («Вы вошли как»). Пароля нет: в продукте личность даёт SSO / Dynamics 365 (Entra ID), заголовок ставит шлюз или встраивание, сервер ему доверяет. Нет заголовка, сотрудник неизвестен или `active: false` — без входа, всё как раньше: `by` и `reviewer` берутся из тела, в журнал пишется эта подпись (`actor_id: null`). Известный сотрудник: `by` апелляции и ручного ответа, `reviewer` решения — его `name`, подпись из тела не важна. Ролей и прав заголовок пока не проверяет.
@@ -391,7 +425,7 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 | `enabled` | bool | Главный выключатель: без него планировщик только читает настройки |
 | `sync.enabled` | bool | Забирать новые диалоги самим; при `true` прежний 5-минутный цикл Syncer уступает расписанию автоматизации |
 | `sync.every_min` | целое ≥ 1 | Период цикла (синхронизация и оценка): чаще — меньше ждать, реже — меньше запросов к источнику |
-| `sync.sources` | `"all"` или список кодов | Какие источники синхронизировать; до реестра источников есть один — `org` (ссылка организаторов) |
+| `sync.sources` | `"all"` или список кодов | Какие источники синхронизировать: включённые источники реестра `/api/sources`, которые сервер забирает сам (`org_api`, `http_json`) |
 | `evaluate.enabled` | bool | Отдавать новые диалоги модели без кнопки |
 | `evaluate.on_new_dialogs` | bool | `false` — плановые циклы только синхронизируют, оценка — по «Запустить сейчас» |
 | `evaluate.sources`, `ch`, `lang` | `"all"` или список (`ch`: `chat`, `call`) | Оценивать только нужное: например, только звонки на казахском |
