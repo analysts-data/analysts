@@ -141,6 +141,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
 | `CQA_ALLOW_PRIVATE_SOURCES` | `allow_private_sources` | `bool` | `False` | dialog-ingest (`src/cqa/adapters/http_source.py`): `http_json` во внутренней сети |
+| `CQA_EVAL_REPORTS_DIR` | `eval_reports_dir` | `Path` | `eval/reports` | eval-and-delivery (`GET /api/quality`) |
+| `CQA_RESULTS_DIR` | `results_dir` | `Path` | `results` | eval-and-delivery (`GET /api/results`, каталог отчётов) |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.

@@ -3,8 +3,11 @@
 import asyncio
 import json
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
+from cqa.domain.agreement import Disagreement, Report, TagStats
 from cqa.domain.models import (
     Checklist,
     Criterion,
@@ -113,3 +116,37 @@ class FakeEvaluator:
             if c.id not in self.skip
         ]
         return DialogEvaluation(results, self.verifier_calls, self.verifier_usd)
+
+
+MODEL_REASON = "синтетическое обоснование модели"
+
+
+def eval_report_body(**over: Any) -> dict[str, Any]:
+    """Синтетическое тело eval/reports/<stamp>.json, как его пишет make eval: без реальных диалогов."""
+    report = Report(
+        agree_total=0.9,
+        per_lang={"RU": 0.92, "KZ": 0.85},
+        per_cid={"c1": 1.0, "c2": 0.8},
+        missing=1,
+        kz_gap_pts=7.0,
+        gross_recall={"k1": 1.0, "k2": 0.5},
+        gross_recall_lang={"RU": 0.5},
+        gross_missed=[("dlg-2", "k2")],
+        na_precision=0.95,
+        na_recall=None,
+        stability=0.97,
+        evidence_ok=0.99,
+        cost=0.12,
+        calls=40,
+        seconds=31.0,
+        n_dialogs=4,
+        model="model-x",
+        false_flags=2,
+        tags=TagStats(recurring=3, single=1),
+        disagreements=[
+            Disagreement("dlg-1", "c2", ["yes"], "no", MODEL_REASON, "синтетическая цитата"),
+            Disagreement("dlg-2", "c3", [{"k1": False, "k2": True}], None, None, None),
+        ],
+    )
+    extra = {"cost_per_dialog": 0.03, "calls_per_dialog": 10.0, "problems": ["замечание"]}
+    return asdict(report) | extra | over
