@@ -29,6 +29,8 @@ EXEMPT |= {
     "/bands", "/checklist/simulate", "/checklist/trial", "/checklist/normalize", "/checklist/presets",
     "/criteria/templates",
 }  # fmt: skip
+# страницы документации, не API интерфейса (src/cqa/http/docs.py)
+EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
