@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS bands (
+  id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL, saved TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS markers (
   dialog_id TEXT NOT NULL REFERENCES dialogs(id), label TEXT NOT NULL, by TEXT NOT NULL, at TEXT NOT NULL,
   PRIMARY KEY (dialog_id, label));
@@ -728,6 +730,19 @@ class Store:
                 "INSERT INTO overrides (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 [(k, _dump(v)) for k, v in values.items()],
+            )
+
+    def bands(self) -> tuple[dict[str, Any], str] | None:
+        """Шкала оценок из интерфейса и время сохранения (ISO); None — не сохранялась."""
+        row = self._conn.execute("SELECT body, saved FROM bands").fetchone()
+        return (json.loads(row["body"]), row["saved"]) if row else None
+
+    def set_bands(self, body: Mapping[str, Any]) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO bands (id, body, saved) VALUES (1, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET body = excluded.body, saved = excluded.saved",
+                (_dump(body), _now()),
             )
 
     def sufficiency_outcomes(self) -> dict[str, Outcome]:
