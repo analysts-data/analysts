@@ -33,7 +33,7 @@ export function CustomerCases() {
   return (
     <div className="space-y-5">
       <PageHead title="Клиентские случаи" sub="Повторные обращения, решение проблемы и подходящие банковские предложения" />
-      <p className="text-sm text-ink2">Связь выполняется только по псевдонимному ID из интеграции. Предложения подбираются по подтверждённой теме или ключевой фразе в реплике клиента и требуют предварительного одобрения в разделе «Каталог решений». Это подсказка сотруднику, не автоматическая продажа и не прогноз ухода клиента.</p>
+      <p className="text-sm text-ink2">Связь выполняется только по псевдонимному ID из интеграции. Предложения подбираются только для обращений со статусом «Не решено» или «В работе», по подтверждённой теме или ключевой фразе клиента; каталог требует предварительного одобрения. Это подсказка сотруднику, не автоматическая продажа и не прогноз ухода клиента.</p>
       {error && <Card className="p-4 text-risk">{error}</Card>}
       {!rows && !error && <Skeleton className="h-40" />}
       {rows?.length === 0 && <Card className="p-6 text-sm text-ink2">Нет связанных случаев. Проверьте, что источник передаёт стабильный client_ref.</Card>}
@@ -52,7 +52,7 @@ export function CustomerCases() {
 
           <section className="space-y-3">
             <h3 className="font-semibold">Возможные решения из одобренного каталога</h3>
-            {row.suggestions.length === 0 && <p className="text-sm text-ink2">Подходящего подтверждённого предложения пока нет. Добавьте предложение и правила соответствия в «Каталог решений».</p>}
+            {row.suggestions.length === 0 && <p className="text-sm text-ink2">Для открытой проблемы нет совпавшего одобренного предложения. Проверьте статус и заполните правила в «Каталог решений».</p>}
             {row.suggestions.map(({ offer, basis, matched_topics, evidence }) => (
               <div key={offer.id} className="rounded-lg border border-line p-4">
                 <div className="font-semibold">{offer.name}</div>
