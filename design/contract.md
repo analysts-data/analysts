@@ -160,6 +160,8 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 Ключ только записывается: ни в ответах, ни в журнале его нет, есть `has_key`; пустой `key` при изменении оставляет сохранённый. Список провайдеров хранится в базе и заменяет `CQA_PROVIDERS` из `.env`.
 
+Провайдер `openrouter-jev` (Jev Router через OpenRouter) есть всегда, вторым после `env`: `{"label": "OpenRouter — Jev Router", "base_url": "https://openrouter.ai/api/v1", "model": "typesafe/jev-router", "profile": "plain", "where": "external"}`, ключ — `CQA_OPENROUTER_API_KEY` или `PUT`. `PUT /api/providers/openrouter-jev` меняет только `model` и `key`, остальные поля тела игнорирует; `DELETE` не удаляет, а возвращает его к умолчанию (409 — как у других, если он выбран). Если провайдер возвращает `usage.cost` (OpenRouter), `cost` — эта цена, а не цена за токены.
+
 Основная модель — провайдер `llm_provider`: его `where` становится `mode.where`, `model` — `mode.model`. `verifier`: `"jev"`, код провайдера (те же вопросы по критериям уходят модели этого провайдера, её ответ — в `alt`) или `null`; `mode.verifier` повторяет его, поэтому в `mode` бывает и код провайдера.
 
 Ошибки: неизвестный провайдер в `llm_provider` или `verifier`, нет ключа для `live` — 422, режим не меняется. Неверный `id`, адрес не `http(s)://`, неизвестный профиль, `PUT /api/providers/env` — 422. `DELETE` основной модели, второго мнения или `env` — 409, неизвестный `id` — 404. Любое изменение во время запуска — 409, как у `PUT /api/config`.

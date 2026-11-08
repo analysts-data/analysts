@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     llm_price_in: float = 0.0  # USD per 1M tokens
     llm_price_out: float = 0.0
     llm_provider: str = "env"  # main model: id in providers
-    providers: dict[str, Provider] = {}  # JSON {id: Provider}; llm_config.effective adds "env"
+    providers: dict[str, Provider] = {}  # JSON {id: Provider}; effective adds "env", "openrouter-jev"
+    openrouter_api_key: SecretStr | None = None  # key of the built-in "openrouter-jev" provider
     verifier: str | None = None  # "jev" or id in providers
     evaluator: Literal["llm", "jev"] = "llm"  # jev: all criteria by Jev alone, no rationale
     jev_api_key: SecretStr | None = None
