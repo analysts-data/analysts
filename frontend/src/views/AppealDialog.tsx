@@ -3,13 +3,24 @@
 // у флага флажок по каждому вопросу; комментарий от 10 символов.
 import { useState, type FormEvent } from 'react';
 import { allowed, answerOf, signOf } from '../lib/appeal.js';
-import { ansTxt, titleOf } from '../lib/format.js';
-import { ans } from '../lib/scoring.js';
+import { ansTxt, f2, titleOf } from '../lib/format.js';
+import { ans, calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
 import { useS } from '../store';
+import { Term } from '../terms';
 import { Button, Field, Modal } from '../ui';
 
 const MIN_COMMENT = 10;
+
+// «символ», «символа», «символов» по последним цифрам числа.
+const chars = (n: number) => {
+  const d = n % 10, dd = n % 100;
+  return `${n} ${d === 1 && dd !== 11 ? 'символ' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'символа' : 'символов'}`;
+};
+
+/** Ошибка API без кода статуса; known — понятный текст для ожидаемых кодов (409 и т. п.). */
+export const humanError = (e: any, known: Record<number, string> = {}) =>
+  known[e?.status] ?? (e?.status ? String(e.message).replace(/^\d+:\s*/, '') : 'Нет связи с сервером. Попробуйте ещё раз.');
 
 export function AppealDialog({ dialog, cid, onClose }: { dialog: any; cid: string | null; onClose: () => void }) {
   if (!cid || !dialog) return null;
@@ -33,6 +44,7 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
   const S = useS();
   const [cid, setCid] = useState(first);
   const [comment, setComment] = useState('');
+  const [askBy, setAskBy] = useState<Record<string, string>>({});
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const pending = (id: string) => S.appeals.some((a: any) => a.dlg === d.id && a.cid === id && a.status === 'pending');
@@ -40,24 +52,29 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
   const c = S.checklist.criteria.find((x: any) => x.id === cid);
   const a = ans(d, cid, S.appeals);
   const lines = (d.lines || []).filter((l: any) => !l.fold && l.who !== 'system');
+  const asks = c.type === 'flag' ? [] : allowed(c).filter((v: any) => v !== a);
+  const askRaw = askBy[cid] ?? String(asks[0]);
+  const before = calc(d, S.checklist, S.appeals).total;
+  const after = c.type === 'flag' ? before : calc(d, S.checklist, S.appeals, { cid, val: answerOf(askRaw) }).total;
+  const left = MIN_COMMENT - comment.trim().length;
 
   async function send(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const on = new Set(f.getAll('fq'));
-    const ask = c.type === 'flag' ? Object.fromEntries((c.questions || []).map((q: any) => [q.k, on.has(q.k)])) : answerOf(String(f.get('ask')));
+    const ask = c.type === 'flag' ? Object.fromEntries((c.questions || []).map((q: any) => [q.k, on.has(q.k)])) : answerOf(askRaw);
     const ev = f.get('ev');
     setBusy(true);
     try {
       await api.postAppeal({ dlg: d.id, cid, ask, ev: ev ? [Number(ev)] : [], comment: comment.trim(), by: signOf(S.role) });
     } catch (x: any) {
-      setErr(`Апелляция не отправлена: ${x.message}`);
+      setErr(`Апелляция не отправлена. ${humanError(x, { 409: 'По этому критерию уже есть апелляция, дождитесь решения.' })}`);
       setBusy(false);
       return;
     }
     onClose();
     await reload();
-    toast(`Апелляция по критерию «${c.name}» отправлена проверяющему.`);
+    toast('Апелляция отправлена проверяющему. Решение появится в карточке и в разделе «Апелляции».');
   }
 
   return (
@@ -71,7 +88,7 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
           ))}
         </select>
       </Field>
-      <p className="box na">
+      <p className="text-[13px] text-ink2">
         Сейчас: <b>{ansTxt(c, a)}</b>. {c.type === 'flag' ? '' : d.res[cid]?.why || ''}
       </p>
       {/* key: при смене критерия поля просимого ответа начинаются заново */}
@@ -89,19 +106,17 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
           </fieldset>
         ) : (
           <Field label="Какой ответ вы считаете верным">
-            <select name="ask" className="fld">
-              {allowed(c)
-                .filter((v: any) => v !== a)
-                .map((v: any) => (
-                  <option key={v} value={v}>
-                    {ansTxt(c, v)}
-                  </option>
-                ))}
+            <select name="ask" className="fld" value={askRaw} onChange={e => setAskBy({ ...askBy, [cid]: e.target.value })}>
+              {asks.map((v: any) => (
+                <option key={v} value={v}>
+                  {ansTxt(c, v)}
+                </option>
+              ))}
             </select>
           </Field>
         )}
       </div>
-      <Field label="Комментарий, обязательно" hint={`Не короче ${MIN_COMMENT} символов`}>
+      <Field label="Комментарий, обязательно" hint={left > 0 ? `Ещё ${chars(left)}` : 'Можно отправлять'}>
         <textarea
           name="comment"
           className="fld"
@@ -129,7 +144,19 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
           {err}
         </p>
       )}
-      <p className="text-xs text-muted">Апелляцию рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.</p>
+      <p className="text-[13px]">
+        Если апелляцию примут:{' '}
+        {c.type === 'flag' ? (
+          <>итог не изменится, {f2(before)}. Грубые ошибки в итог не входят.</>
+        ) : (
+          <>
+            итог {f2(before)} → <b className="font-semibold">{f2(after)}</b>
+          </>
+        )}
+      </p>
+      <p className="text-xs text-muted">
+        <Term k="appeal">Апелляцию</Term> рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.
+      </p>
       <div className="flex justify-end gap-2.5 border-t border-line pt-3">
         <Button variant="ghost" onClick={onClose}>
           Отмена
