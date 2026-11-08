@@ -23,6 +23,13 @@ EXEMPT = {
     "/alerts/{alert_id}/resolve",
     "/dialogs/{dialog_id}/markers",
     "/markers/catalog",
+    # UI в работе: «Вы вошли как», #/people, #/audit (PR сотрудников и журнала действий)
+    "/audit",
+    "/employees",
+    "/employees/import",
+    "/employees/{employee_id}",
+    "/me",
+    "/overview",
 }
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
