@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome
+from cqa.domain.models import Appeal, Checklist, Cost, CriterionResult, Dialog, Outcome, ReasonCode
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dialogs (
@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS overrides (key TEXT PRIMARY KEY, value TEXT NOT NULL)
 CREATE TABLE IF NOT EXISTS org_source (
   id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, group_id TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS prosody (dialog_id TEXT PRIMARY KEY REFERENCES dialogs(id), body TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS appeal_reasons (id INTEGER PRIMARY KEY CHECK (id = 1), body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sources (
   id TEXT PRIMARY KEY, name TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('org_api', 'http_json', 'webhook', 'file', 'paste', 'api')),
@@ -627,6 +628,19 @@ class Store:
     def list_appeals(self) -> list[tuple[Appeal, str]]:
         rows = self._conn.execute("SELECT body, fp FROM appeals ORDER BY n").fetchall()
         return [(Appeal.model_validate(json.loads(row["body"])), row["fp"]) for row in rows]
+
+    def appeal_reasons(self) -> list[ReasonCode] | None:
+        """Каталог кодов причин, сохранённый из интерфейса; `None` — ещё не сохраняли."""
+        row = self._conn.execute("SELECT body FROM appeal_reasons").fetchone()
+        return [ReasonCode.model_validate(r) for r in json.loads(row["body"])] if row else None
+
+    def set_appeal_reasons(self, reasons: Sequence[ReasonCode]) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO appeal_reasons (id, body) VALUES (1, ?) "
+                "ON CONFLICT(id) DO UPDATE SET body = excluded.body",
+                (_dump([r.model_dump() for r in reasons]),),
+            )
 
     # --- адресаты причин ---
 
