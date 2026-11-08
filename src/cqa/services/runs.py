@@ -56,6 +56,12 @@ class Runner:
         self._active: int | None = None
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
+    def use(self, evaluator: Evaluator) -> None:
+        """Новый оценщик для следующих запусков (смена режима из интерфейса); во время запуска — Conflict."""
+        if self._active is not None:
+            raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
+        self._evaluator = evaluator
+
     def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
         if self._active is not None:

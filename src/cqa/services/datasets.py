@@ -11,10 +11,14 @@ def _save(store: Store, result: IngestResult) -> dict[str, int]:
     return {"added": added, "skipped": duplicates + result.skipped}
 
 
-async def load_group(store: Store, source: DialogSource, group_id: str) -> dict[str, int]:
+async def load_group(
+    store: Store, source: DialogSource, group_id: str, url: str | None = None
+) -> dict[str, int]:
+    """`url` по умолчанию — ссылка, сохранённая из интерфейса; без неё источник берёт `CQA_ORG_API_URL`."""
     if not group_id.strip():
         raise Invalid("Укажите group_id")
-    return _save(store, await source.fetch(group_id))
+    saved = store.org_source()
+    return _save(store, await source.fetch(group_id, url or (saved[0] if saved else None)))
 
 
 def load_upload(store: Store, source: DialogSource, raw: bytes) -> dict[str, int]:

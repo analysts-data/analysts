@@ -1,6 +1,7 @@
 // Редактор чек-листа: черновик — копия применяемой версии, правки живут в браузере до сохранения.
 import { S, api, reload, render, startRun, toast } from '../state.js';
 import { esc, fn } from '../format.js';
+import { runErrors } from './queue.js';
 
 const SIGNALS = [['', 'Нет'], ['resolution', 'Решение запроса'], ['risk', 'Риск']];
 const TYPES = [['bool', 'Да / Нет'], ['scale', 'Шкала'], ['flag', 'Флаг нарушения, без баллов']];
@@ -11,13 +12,14 @@ const scored = cl => cl.criteria.filter(c => c.type !== 'flag');
 const wsum = cs => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
 const selected = () => S.draft.criteria.find(x => x.id === S.cSel);
-// pending приходит только из ответа PUT /api/checklist и держится, пока у диалогов нет записи критерия
-const waiting = () => (S.pending || []).filter(cid => S.dialogs.some(d => !d.res[cid]));
+// pending приходит только из ответа PUT /api/checklist и держится, пока критерий есть в версии и у диалогов нет его записи
+const waiting = () => (S.pending || []).filter(cid => S.checklist.criteria.some(c => c.id === cid) && S.dialogs.some(d => !d.res[cid]));
 
 export function view(S) {
   // новая версия с сервера сбрасывает черновик; если сохранение упало, правки остаются
   if (S.draft?.version !== S.checklist.version) S.draft = structuredClone(S.checklist);
   const cl = S.checklist, dr = S.draft, pend = waiting(), run = S.run?.status === 'running' ? S.run : null;
+  const errs = runErrors(S.run); // запуск с ошибками остаётся на баннере до следующего запуска
   const c = selected() || dr.criteria[0];
   S.cSel = c?.id;
   const sum = wsum(scored(dr));
@@ -29,14 +31,16 @@ export function view(S) {
   };
   return `
   <div class="head"><div><h1 class="h1">Чек-лист качества</h1><p class="sub">Версия ${cl.version} применяется к набору. Изменения сохраняются новой версией.</p></div>
-    <div class="row only-qa">${dirty ? '<span class="chip c-ev">Есть несохранённые изменения</span>' : ''}
-      <button type="button" class="btn" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
-      <button type="button" class="btn pri" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
-  ${pend.length || run ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
+    <div class="row">${dirty ? '<span class="chip c-ev only-qa">Есть несохранённые изменения</span>' : ''}
+      <button type="button" class="btn" data-act="cexport">Скачать v${cl.version} (JSON)</button>
+      <label class="btn only-qa">Загрузить из файла<input type="file" accept=".json,application/json" data-act="cimport" class="sr" ${dirty ? 'disabled' : ''}></label>
+      <button type="button" class="btn only-qa" data-act="creset" ${dirty ? '' : 'disabled'}>Отменить изменения</button>
+      <button type="button" class="btn pri only-qa" data-act="csave" ${dirty && !S.busy ? '' : 'disabled'}>Сохранить как v${cl.version + 1}</button></div></div>
+  ${pend.length || run || errs ? `<section class="card pad row" style="justify-content:space-between;background:var(--ev-soft);border-color:var(--ev-line)">
     <span>${pend.length ? `Критерии ${pend.map(esc).join(', ')} ждут оценки: <b>${pend.length * S.dialogs.length} вызовов</b> основной модели, остальные ответы берутся из кэша.` : ''}
       ${run ? `Оценено <b>${run.done} из ${run.total}</b> ответов по критериям, $${fn(run.cost)}${run.eta_s != null ? `, осталось около ${Math.ceil(run.eta_s)} с` : ''}.` : ''}</span>
     <span class="row only-qa">${run ? '<button type="button" class="btn" data-act="stop">Остановить</button>' : ''}
-      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span></section>` : ''}
+      ${pend.length ? `<button type="button" class="btn pri" data-act="crun" ${run || S.busy ? 'disabled' : ''}>${run ? 'Идёт оценка…' : 'Оценить набор'}</button>` : ''}</span>${errs}</section>` : ''}
   <div class="split" style="grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr)">
     <section class="card" style="padding:10px" aria-label="Структура чек-листа">
       ${dr.sections.map((s, si) => `<p class="label row" style="justify-content:space-between;padding:8px 10px 4px"><span>${esc(s)}</span><span>${wsum(scored(dr).filter(x => x.sec === si)) || ''}</span></p><div class="clist">
@@ -132,6 +136,7 @@ function syncSave() {
   const dirty = JSON.stringify(S.draft) !== JSON.stringify(S.checklist);
   S.app.querySelector('[data-act="creset"]').disabled = !dirty;
   S.app.querySelector('[data-act="csave"]').disabled = !dirty || S.busy;
+  S.app.querySelector('[data-act="cimport"]').disabled = dirty; // импорт не стирает несохранённые правки
 }
 
 // csave и crun неактивны, пока запрос в пути: двойной клик не создаёт две версии или два запуска
@@ -156,6 +161,7 @@ export const actions = {
     try {
       const { version, pending } = await api.putChecklist(S.draft);
       S.pending = [...new Set([...(S.pending || []), ...pending])];
+      if (S.run?.status !== 'running') S.run = null; // итог прошлого запуска относится к прежней версии
       await reload();
       toast(pending.length ? `Сохранена версия v${version}. Критерии ${pending.join(', ')} ждут оценки.` : `Сохранена версия v${version}. Итоги пересчитаны без вызова модели.`);
     } catch (e) {
@@ -164,4 +170,25 @@ export const actions = {
   }),
   crun: () => busy(() => startRun({ dialogs: null, criteria: waiting() })),
   crules: t => { S.draft.rules = t.value; syncSave(); },
+  // в файл — применяемая версия, по которой оценены диалоги, а не черновик
+  cexport: () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(S.checklist, null, 2)], { type: 'application/json' }));
+    a.download = `checklist-v${S.checklist.version}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  },
+  // файл — в черновик с текущей версией (иначе view() сбросит черновик, а сервер ответит 409); остальное проверит сервер при сохранении
+  cimport: async t => {
+    const f = t.files[0];
+    t.value = '';
+    if (!f) return;
+    let cl = null;
+    try { cl = JSON.parse(await f.text()); } catch { /* не JSON */ }
+    if (!Array.isArray(cl?.sections) || !Array.isArray(cl?.criteria)) return toast('Файл не похож на чек-лист: нужны поля sections и criteria.');
+    S.draft = { ...cl, version: S.checklist.version };
+    S.cSel = null;
+    render();
+    toast(`Чек-лист из файла в черновике. Проверьте изменения и сохраните как v${S.checklist.version + 1}.`);
+  },
 };

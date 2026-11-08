@@ -5,22 +5,29 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
-from cqa.domain.models import Appeal, Checklist
+from cqa.compose import build_evaluator
+from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import save_checklist
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
+from cqa.services.llm_config import configure, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import build_state
+from cqa.services.state import build_state, mode_from_settings
+from cqa.services.sync import Syncer
+from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
 
 Owner = Literal["Не назначено", "Инструкция", "Сервис", "Продукт"]
+# ответ bool или scale; флаг — объект {"<k>": true | false}, строгие bool: 0 и "false" дают 422
+AppealValue = str | int | dict[str, StrictBool]
 
 
 class ReviewedIn(BaseModel):
@@ -35,6 +42,29 @@ class PasteIn(BaseModel):
 
 class DatasetIn(BaseModel):
     group_id: str
+
+
+class SourceIn(BaseModel):
+    url: str
+    group_id: str
+
+
+class AnswerIn(BaseModel):
+    a: Answer
+    reason: str = ""
+    by: str
+
+
+class ConfigIn(BaseModel):
+    llm_base_url: str
+    llm_model: str
+    llm_profile: str
+    llm_api_key: str = ""  # пусто — оставить сохранённый ключ
+    data_where: Literal["kz", "local", "external"]
+    anonymize: bool
+    verifier: Literal["jev"] | None = None
+    jev_api_key: str = ""
+    allow_real_data: bool
 
 
 class RunIn(BaseModel):
@@ -56,9 +86,18 @@ def _source(request: Request) -> DialogSource:
     return source
 
 
+def _syncer(request: Request) -> Syncer:
+    syncer: Syncer | None = request.app.state.syncer
+    if syncer is None:
+        raise Unavailable("Загрузка наборов не подключена")
+    return syncer
+
+
 @router.get("/state")
 async def get_state(request: Request) -> dict[str, Any]:
-    return build_state(request.app.state.store, request.app.state.mode)
+    syncer: Syncer | None = request.app.state.syncer
+    state = build_state(request.app.state.store, request.app.state.mode)
+    return {**state, "source": syncer.status() if syncer else None}
 
 
 @router.post("/dialogs/text")
@@ -85,14 +124,14 @@ async def put_owners(body: dict[str, Owner], request: Request) -> dict[str, str]
 class AppealIn(BaseModel):
     dlg: str
     cid: str
-    ask: str | int
+    ask: AppealValue
     ev: list[int] = []
     comment: str
     by: str
 
 
 class DecisionIn(BaseModel):
-    to: str | int
+    to: AppealValue
     reason: str
     reviewer: str
 
@@ -100,8 +139,8 @@ class DecisionIn(BaseModel):
 class ReviewIn(BaseModel):
     dlg: str
     cid: str
-    from_: str | int = Field(alias="from")
-    to: str | int
+    from_: AppealValue = Field(alias="from")
+    to: AppealValue
     reason: str
     reviewer: str
 
@@ -129,9 +168,40 @@ async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
     return _appeal_out(record)
 
 
+@router.put("/dialogs/{dialog_id}/answers/{cid}")
+async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request) -> dict[str, Any]:
+    result = set_answer(
+        request.app.state.store, dlg=dialog_id, cid=cid, a=body.a, reason=body.reason, by=body.by
+    )
+    return result.model_dump(mode="json", exclude_none=True)
+
+
+@router.get("/config")
+async def get_config(request: Request) -> dict[str, Any]:
+    return view(request.app.state.settings)
+
+
+@router.put("/config")
+async def put_config(body: ConfigIn, request: Request) -> dict[str, Any]:
+    """Режим оценки из интерфейса: оценщик пересобирается без перезапуска, во время запуска — 409."""
+    state = request.app.state
+
+    def apply(settings: Settings) -> None:
+        _runner(request).use(build_evaluator(settings))
+        state.settings, state.mode = settings, mode_from_settings(settings)
+
+    return view(configure(state.store, state.settings, body.model_dump(), apply))
+
+
 @router.post("/datasets")
 async def post_dataset(body: DatasetIn, request: Request) -> dict[str, int]:
     return await load_group(request.app.state.store, _source(request), body.group_id)
+
+
+@router.put("/source")
+async def put_source(body: SourceIn, request: Request) -> dict[str, int]:
+    """Ссылка API организаторов из интерфейса: сразу загрузка набора, затем автосинхронизация."""
+    return await _syncer(request).configure(body.url, body.group_id)
 
 
 @router.post("/datasets/upload")

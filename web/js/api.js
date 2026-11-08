@@ -32,6 +32,10 @@ export function createApi(base, fetchFn = globalThis.fetch.bind(globalThis)) {
     postReview: payload => call('POST', '/decisions', payload),
     postReviewed: (did, reviewed) => call('POST', `/dialogs/${id(did)}/reviewed`, { reviewed }),
     putOwners: owners => call('PUT', '/owners', owners),
+    putSource: (url, groupId) => call('PUT', '/source', { url, group_id: groupId }),
+    putAnswer: (did, cid, payload) => call('PUT', `/dialogs/${id(did)}/answers/${id(cid)}`, payload),
+    getConfig: () => call('GET', '/config'),
+    putConfig: cfg => call('PUT', '/config', cfg),
     audioUrl: did => `${base}/dialogs/${id(did)}/audio`,
     playerUrl: did => `${base}/dialogs/${id(did)}/player`,
   };

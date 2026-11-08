@@ -162,3 +162,59 @@ def test_cost_line_without_evaluation(page: Page, open_card: Callable[..., list[
     errors = open_card("p1-en-006")
     expect(page.locator(".meta")).to_contain_text("ещё не оценивался")
     assert errors == []
+
+
+FLAG_WHY = (
+    "Оскорбление клиента: Грубых слов нет; "
+    "Платная услуга в обход компании: Предложил консультацию за плату; через личный номер (реплики 6); "
+    "Раскрытие конфиденциальной информации: Назвал данные счёта (реплики 4, 8)"
+)
+
+
+def test_flag_shows_reason_and_evidence_lines_per_question(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    def two_flags(d: dict[str, Any]) -> None:
+        d["res"]["08"].update(a={"insult": False, "paid": True, "leak": True}, ev=[4, 6, 8], why=FLAG_WHY)
+
+    errors = open_card("p1-ru-022", two_flags)
+    open_crit(page, "08")
+    body = page.locator('.crit[data-cid="08"] .crit-body')
+    paid, leak, insult = (body.locator(f'[data-k="{k}"]') for k in ("paid", "leak", "insult"))
+    expect(paid).to_contain_text("Предложил консультацию за плату; через личный номер")
+    expect(paid.locator('[data-act="ev"]')).to_have_count(1)
+    expect(paid.locator('[data-act="ev"][data-n="6"]')).to_be_visible()
+    expect(leak).to_contain_text("Назвал данные счёта")
+    expect(leak.locator('[data-act="ev"]')).to_have_count(2)
+    expect(insult).to_contain_text("Грубых слов нет")
+    expect(insult.locator('[data-act="ev"]')).to_have_count(0)
+    expect(body).not_to_contain_text("(реплики")
+    expect(body.locator('[data-act="appeal"][data-cid="08"]')).to_be_visible()
+    assert errors == []
+
+
+def test_expand_all_opens_every_reason_and_collapse_closes_them(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    errors = open_card("p1-ru-022")
+    toggle = page.locator('[data-act="critall"]')
+    expect(toggle).to_have_text("Развернуть все обоснования")
+    toggle.click()
+    expect(page.locator(".crit-body")).to_have_count(page.locator(".crit").count())
+    expect(toggle).to_have_text("Свернуть")
+    toggle.click()
+    expect(page.locator(".crit-body")).to_have_count(0)
+    expect(toggle).to_have_text("Развернуть все обоснования")
+    assert errors == []
+
+
+def test_scale_below_max_without_evidence_shows_checked_segment(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    def segment(d: dict[str, Any]) -> None:
+        d["res"]["06"].update(ev=[], seg="реплики 4–8")  # 4 из 10
+
+    errors = open_card("p1-ru-003", segment)
+    open_crit(page, "06")
+    expect(page.locator('.crit[data-cid="06"] .crit-body')).to_contain_text("Проверен участок: реплики 4–8")
+    assert errors == []

@@ -152,10 +152,13 @@ def merge_flag(
     ]
     keys = {q.k for q, _, _ in found}
     proven = [raw for _, raw, fail in found if not fail]
-    why = [
-        f"{q.label}: {raw.get('reason_ru') if raw else 'не найдено, модель не дала ответа'}"
-        for q, (raw, _) in zip(questions, subs, strict=True)
-    ]
+    # «<label>: <причина> (реплики 6, 7)»: реплики только у найденного и проверенного нарушения
+    why = []
+    for q, (raw, fail) in zip(questions, subs, strict=True):
+        text = f"{q.label}: {raw.get('reason_ru') if raw else 'не найдено, модель не дала ответа'}"
+        if raw and q.k in keys and not fail and raw["turn_ids"]:
+            text += f" (реплики {', '.join(map(str, raw['turn_ids']))})"
+        why.append(text)
     return CriterionResult(
         a={q.k: q.k in keys for q in questions},
         ev=sorted({n for raw in proven for n in raw["turn_ids"]}),

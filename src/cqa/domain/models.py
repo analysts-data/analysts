@@ -38,7 +38,7 @@ class Criterion(BaseModel):
     call: str | None = None  # уточнение для звонка: модель получает его после text только на звонке
     channel: Literal["all", "chat", "call"] = "all"
 
-    def accepts(self, a: Answer) -> bool:
+    def accepts(self, a: object) -> bool:
         """Whether `a` is a valid answer to this criterion (scale steps, N/A permission, flag keys)."""
         if a == "na":
             return self.na
@@ -46,7 +46,11 @@ class Criterion(BaseModel):
             return a in ("yes", "no")
         if self.type == "scale":
             return isinstance(a, int) and a in (self.steps or [])
-        return isinstance(a, dict) and set(a) == {q.k for q in self.questions or []}
+        return (
+            isinstance(a, dict)
+            and set(a) == {q.k for q in self.questions or []}
+            and all(isinstance(v, bool) for v in a.values())
+        )
 
 
 class Checklist(BaseModel):

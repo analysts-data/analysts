@@ -28,6 +28,18 @@ def test_mode_banner_and_badges_come_from_state(page: Page, web_url: str) -> Non
     expect(page.locator("#bAppeals")).to_have_text("1")
 
 
+def test_mode_banner_says_answers_are_recorded_in_replay(page: Page, web_url: str) -> None:
+    serve_state(page)
+    page.route(
+        "**/api/config",
+        lambda r: r.fulfill(status=200, content_type="application/json", body='{"llm_mode": "replay"}'),
+    )
+    page.goto(f"{web_url}/#/queue")
+    mode = page.locator("#mode")
+    expect(mode).to_contain_text("Записанные ответы")
+    expect(mode).not_to_contain_text("qwen3-6")
+
+
 def test_state_error_is_shown_on_the_page(page: Page, web_url: str) -> None:
     page.route("**/api/state", lambda route: route.fulfill(status=500, body='{"detail": "база недоступна"}'))
     page.goto(f"{web_url}/#/queue")
@@ -49,6 +61,16 @@ def test_dataset_by_group_id_posts_and_reports_counts(page: Page, web_url: str) 
     expect(page.locator("#toast")).to_contain_text("12")
     expect(page.locator("#toast")).to_contain_text("2")
     assert posted == [{"group_id": "CTRL"}]
+
+
+def test_product_name_and_favicon(page: Page, web_url: str) -> None:
+    NAME = "CQA"
+    serve_state(page)
+    page.goto(f"{web_url}/#/queue")
+    assert page.title() == f"{NAME} — контроль качества диалогов"
+    expect(page.locator(".brand")).to_contain_text(NAME)
+    expect(page.locator("#crumb")).to_contain_text(NAME)
+    assert page.request.get(f"{web_url}/favicon.svg").status == 200
 
 
 def test_run_filtered_dialogs_then_stop(page: Page, web_url: str) -> None:
