@@ -15,12 +15,14 @@ from cqa.adapters.store import Store
 from cqa.domain.results import to_results
 from cqa.domain.review import effective_answer
 from cqa.domain.scoring import total
+from cqa.services.datasets import logged
 from cqa.services.dialogs import paste_text
 from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import current_state
 
+API = "api"  # встроенный источник интеграционного API (раздел контракта «Источники диалогов»)
 CODES = Path(__file__).resolve().parents[3] / "results" / "criteria_map.json"  # как у scripts/results.py
 TEAM = "analysts"  # team_name файла результатов, как у scripts/results.py
 WAIT_S = 120.0
@@ -36,14 +38,16 @@ def save(store: Store, source: DialogSource, items: Sequence[Mapping[str, Any]])
     ids = []
     for item in items:
         if "conversation_id" in item:
-            envelope = {"isSuccess": True, "data": {"dataset_group_id": "api", "records": [dict(item)]}}
+            envelope = {"isSuccess": True, "data": {"dataset_group_id": API, "records": [dict(item)]}}
             result = source.upload(json.dumps(envelope, ensure_ascii=False).encode())
             if result.errors:
                 raise Invalid("; ".join(result.errors))
-            store.add_dialogs(result.dialogs, result.audio)
+            with logged(store, API) as keep:  # учёт источников: строка журнала источника «api»
+                keep(result)
             ids.append(result.dialogs[0].id)
         else:
-            ids.append(paste_text(store, title=item.get("title", ""), ch=item["ch"], text=item["text"]))
+            title, ch, text = item.get("title", ""), item["ch"], item["text"]
+            ids.append(paste_text(store, title=title, ch=ch, text=text, source_id=API))
     return ids
 
 

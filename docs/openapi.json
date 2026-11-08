@@ -3255,6 +3255,93 @@
         "description": "Кому чинить причину сниженного ответа: Инструкция, Сервис или Продукт; ответ — весь словарь."
       }
     },
+    "/api/appeals/reasons": {
+      "get": {
+        "summary": "Каталог кодов причин решений",
+        "operationId": "get_reasons_api_appeals_reasons_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReasonCode"
+                  },
+                  "type": "array",
+                  "title": "Response Get Reasons Api Appeals Reasons Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Заменить каталог кодов причин решений",
+        "operationId": "put_reasons_api_appeals_reasons_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/ReasonCode"
+                },
+                "type": "array",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReasonCode"
+                  },
+                  "type": "array",
+                  "title": "Response Put Reasons Api Appeals Reasons Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/appeals/stats": {
+      "get": {
+        "summary": "Решения по кодам причин и доля изменённых людьми",
+        "description": "Решения по кодам причин × критерий × исход и доля пар, изменённых людьми, по критериям и языкам.",
+        "operationId": "get_appeal_stats_api_appeals_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Appeal Stats Api Appeals Stats Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/appeals": {
       "post": {
         "summary": "Подать апелляцию",
@@ -3878,6 +3965,417 @@
           "Апелляции"
         ],
         "description": "Решение по расхождению моделей или проваленному основанию: Appeal с `kind: \"review\"`."
+      }
+    },
+    "/api/markers/catalog": {
+      "get": {
+        "summary": "Список ручных маркеров",
+        "operationId": "get_catalog_api_markers_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response Get Catalog Api Markers Catalog Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Сохранить список ручных маркеров",
+        "operationId": "put_catalog_api_markers_catalog_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Raw"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dialogs/{dialog_id}/markers": {
+      "put": {
+        "summary": "Поставить и снять ручные маркеры диалога",
+        "operationId": "put_markers_api_dialogs__dialog_id__markers_put",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dialog Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkersIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Markers Api Dialogs  Dialog Id  Markers Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/rules": {
+      "get": {
+        "summary": "Правила алертов",
+        "operationId": "get_rules_api_alerts_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Rules Api Alerts Rules Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Сохранить правила алертов",
+        "operationId": "put_rules_api_alerts_rules_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "title": "Raw"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/evaluate": {
+      "post": {
+        "summary": "Проверить правила алертов сейчас",
+        "operationId": "post_evaluate_api_alerts_evaluate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Evaluate Api Alerts Evaluate Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "Алерты и счётчики колокольчика",
+        "operationId": "get_alerts_api_alerts_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new",
+                    "ack",
+                    "resolved"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "info",
+                    "warning",
+                    "critical"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Alerts Api Alerts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alert_id}/ack": {
+      "post": {
+        "summary": "Принять алерт",
+        "operationId": "post_ack_api_alerts__alert_id__ack_post",
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Alert Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ByIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Post Ack Api Alerts  Alert Id  Ack Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alert_id}/resolve": {
+      "post": {
+        "summary": "Закрыть алерт с заметкой",
+        "operationId": "post_resolve_api_alerts__alert_id__resolve_post",
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Alert Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Post Resolve Api Alerts  Alert Id  Resolve Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/alerts/{alert_id}/assignee": {
+      "put": {
+        "summary": "Назначить ответственного за алерт",
+        "operationId": "put_assignee_api_alerts__alert_id__assignee_put",
+        "parameters": [
+          {
+            "name": "alert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Alert Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssigneeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Assignee Api Alerts  Alert Id  Assignee Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/dialogs/{dialog_id}/answers/{cid}": {
@@ -11671,6 +12169,26 @@
         ],
         "title": "AppealIn"
       },
+      "AssigneeIn": {
+        "properties": {
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assignee"
+        ],
+        "title": "AssigneeIn"
+      },
       "BatchFilter": {
         "properties": {
           "source_id": {
@@ -11815,6 +12333,17 @@
           "dialog_ids"
         ],
         "title": "BatchOut"
+      },
+      "ByIn": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By",
+            "default": "Специалист КК"
+          }
+        },
+        "type": "object",
+        "title": "ByIn"
       },
       "Checklist": {
         "properties": {
@@ -12490,6 +13019,17 @@
           "reviewer": {
             "type": "string",
             "title": "Reviewer"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
           }
         },
         "type": "object",
@@ -13023,6 +13563,19 @@
         ],
         "title": "Fold"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
       "JevQuestion": {
         "properties": {
           "type": {
@@ -13176,6 +13729,33 @@
           "text"
         ],
         "title": "Line"
+      },
+      "MarkersIn": {
+        "properties": {
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Add",
+            "default": []
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Remove",
+            "default": []
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "default": "Специалист КК"
+          }
+        },
+        "type": "object",
+        "title": "MarkersIn"
       },
       "OperatorIn": {
         "properties": {
@@ -13375,6 +13955,34 @@
         ],
         "title": "Reason"
       },
+      "ReasonCode": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "applies": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "changed",
+              "both"
+            ],
+            "title": "Applies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "label",
+          "applies"
+        ],
+        "title": "ReasonCode"
+      },
       "RecordIn": {
         "properties": {
           "conversation_id": {
@@ -13468,6 +14076,22 @@
           }
         ]
       },
+      "ResolveIn": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By",
+            "default": "Специалист КК"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ResolveIn"
+      },
       "ReviewIn": {
         "properties": {
           "dlg": {
@@ -13519,6 +14143,17 @@
           "reviewer": {
             "type": "string",
             "title": "Reviewer"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
           }
         },
         "type": "object",
@@ -13706,6 +14341,46 @@
           "text"
         ],
         "title": "TurnIn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       },
       "cqa__http__api__SourceIn": {
         "properties": {

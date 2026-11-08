@@ -101,6 +101,7 @@
 - Флаг тоже оспаривается и решается: для критерия `type: "flag"` поля `from`, `ask` и `to` — объекты `{"<k>": true | false}` по всем вопросам флага. Итог флаг не меняет. Очередь, фильтр «Грубые ошибки» и аналитика берут флаг с учётом последнего решения.
 - `status`: `pending`, `confirmed` (оценка оставлена), `changed` (оценка изменена на `to`), `closed` (критерий изменён или удалён новой версией чек-листа).
 - `reason` обязателен при решении. Исходный `res` не меняется никогда: итог считается с учётом последнего решения.
+- `reason_code`: код причины решения из каталога `GET /api/appeals/reasons` или `null` (нет кода, записи до каталога). Необязателен, текст `reason` по-прежнему обязателен.
 
 ## Итог
 
@@ -144,8 +145,10 @@
 | `GET /api/operators/{name}` | — | OperatorRow и `dialog_ids: [..]`, `reasons` (как в отчёте), `definitions`, `min_n`; `Не указан` — диалоги без сотрудника; неизвестное имя — 404 |
 | `GET /api/scores/export?format=csv&shape=wide\|long&lang=RU&ch=chat\|call` | — | оценки для Excel: CSV UTF-8 с BOM, `;`, ячейка с `= + - @` в начале — текстом; `attachment; filename="cqa-scores-v<n>.csv"`. `wide` (по умолчанию) — строка на диалог: ID, название, канал, язык, дата, сотрудник (пусто — не указан), итог, грубое нарушение и виды, нужна проверка, проверен, ответ по каждому критерию (заголовок — название из чек-листа); `long` — строка на оценённую пару диалог × критерий: ответ, доля, `why`, `ev`, `tag`, `better`, модель, решение проверяющего. Ответы и итог с учётом решений; другой формат, форма или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
-| `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
-| `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
+| `POST /api/appeals/{id}/decision` | `{to, reason, reviewer, reason_code?}` | Appeal |
+| `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer, reason_code?}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
+| `GET /api/appeals/reasons`; `PUT` с каталогом | — или `[{code, label, applies}]` | каталог кодов причин решений (раздел «Коды причин решений») |
+| `GET /api/appeals/stats` | — | решения по кодам причин и доля ответов, изменённых людьми (раздел «Коды причин решений») |
 | `POST /api/dialogs/{id}/reviewed` | `{"reviewed": true \| false}` | `{ok}`; снятие отметки возвращает диалог в верхние группы очереди |
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
@@ -303,6 +306,64 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 - `gross_errors`, `needs_review`, `appeals_open` — как `risk.dialogs`, `needs_review`, `open_appeals` отчёта по его диалогам. `weakest` — до трёх критериев с наименьшей средней долей баллов ниже 1, худший первым. `trend` — по дням `ДД.ММ` из `at` в порядке календаря: средний итог и число оценённых диалогов дня (у чата `at` — время загрузки набора).
 - Раздел отчёта «По сотрудникам» — только ранжированные, и только если их не меньше двух: `attention` («требуют внимания», до 5 с меньшим средним итогом) и `strengths` («сильные стороны», до 3 с большим); списки не пересекаются, при малом числе сотрудников в `strengths` не больше половины. В таблицах — n, средний итог и 95 % интервал. Это не рейтинг: формулировок «лучший», «худший», «место» в интерфейсе и отчётах нет.
 
+## Маркеры и алерты (eval-and-delivery, alerts)
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/markers/catalog` | — | `["Жалоба", "Эскалация", "VIP-клиент", "Для обучения", "Повторное обращение"]` — подписи ручных маркеров (по умолчанию эти) |
+| `PUT /api/markers/catalog` | список подписей | тот же список; непустые неповторяющиеся строки до 40 символов, иначе 422 `{detail: [{loc: ["body", i], msg}]}` |
+| `PUT /api/dialogs/{id}/markers` | `{"add": [..], "remove": [..], "by": "Специалист КК"}` | `{markers}` диалога после правки; подпись не из каталога — 422, неизвестный диалог — 404 |
+| `GET /api/alerts/rules` | — | правила `[{id, title, kind, params, severity, enabled, why}]` |
+| `PUT /api/alerts/rules` | весь список правил | список после сохранения; ошибки — 422 `{detail: [{loc: ["body", i, "params", "threshold"], msg: "Порог итога: число от 0 до 100"}]}` по-русски, ничего не сохраняется |
+| `POST /api/alerts/evaluate` | — | `{created: [Alert]}` — только новые |
+| `GET /api/alerts?status=new\|ack\|resolved&severity=info\|warning\|critical` | — | `{alerts: [Alert] новыми первыми, counts: {new, ack, resolved, info, warning, critical}}`; счётчики по всей таблице, важность — среди незакрытых (колокольчик) |
+| `POST /api/alerts/{id}/ack` | `{"by": "…"}` | Alert; только из `new`, иначе 409 |
+| `POST /api/alerts/{id}/resolve` | `{"note": "что сделано", "by": "…"}` | Alert; из `new` или `ack`, иначе 409; пустая заметка — 422 |
+| `PUT /api/alerts/{id}/assignee` | `{"assignee": "Борис" \| null}` | Alert; у закрытого — 409 |
+
+Кто действует — как в журнале действий: активный сотрудник из `X-CQA-User` (`actor_from`), без входа — `by` из тела, по умолчанию «Специалист КК». Правка каталога, маркеров, правил и статусов алертов пишется в журнал (`markers.catalog`, `markers.change`, `alerts.rules`, `alert.ack`, `alert.resolve`, `alert.assign`).
+
+`markers` у каждого диалога в `GET /api/state`: `[{k, label, auto: true, basis} | {k, label, auto: false, by, at}]`, автоматические первыми. Автоматические считаются при каждом запросе и не хранятся:
+
+| `k` | `label` | Когда | `basis` |
+| --- | --- | --- | --- |
+| `gross` | Грубое нарушение | вопрос флага отмечен в ответе с учётом последнего решения | `criteria`, `flags` (ключи вопросов), `lines` (`ev`), `appeals` (решения, от которых ответ) |
+| `no_next_step` | Нет следующего шага | у критерия `signal: "resolution"` доля ниже 1 (N/A — нет) | `criteria`, `answers`, `top` (верхняя ступень), `lines` |
+| `raised_tone` | Клиент повысил тон | в сохранённой интонации звонка флаг `raised` у реплики клиента | `lines` |
+| `long_pause` | Долгая пауза | в сохранённой интонации флаг `long_pause` | `lines`, `value` (самая долгая, с), `threshold` (5 с) |
+| `long_silence` | Долгая тишина | в сохранённой интонации `pause` реплики больше `seconds` первого включённого правила `long_silence`; нет правила — нет маркера | `rule`, `lines`, `value` (самая долгая, с), `threshold` |
+| `needs_human` | Нужен человек | точное правило: у пары второе мнение расходится (`alt` ≠ `a`) или `evFail`; остаётся и после решения | `criteria`, `appeals` (решения, если есть); `why` — «решено: r1» или «решения нет» |
+| `needs_review` | Нужна проверка | то же, пока у пары нет решения и диалог не отмечен проверенным | `criteria` |
+| `appeal` | Апелляция | апелляция на рассмотрении | `appeals`, `criteria` |
+| `low_total` | Низкий итог | итог с учётом решений ниже порога первого включённого правила `low_total`; нет такого правила — нет маркера | `rule`, `threshold`, `value` |
+
+Риски диалога: каждый элемент `Dialog.risks` `{k, label, lines, basis}` (llm-evaluation, products; пока поля нет — нет и маркеров) — автоматический маркер `k: "risk:<k>"`, `label` риска, `basis: {risk, lines, source, why}`; `source` — обоснование модели как есть, в алерты и события не попадает.
+
+Интонация не запрашивается: маркеры звука есть, только если она уже посчитана (`GET /api/dialogs/{id}/prosody`). Ручной маркер: `k` = `label`, ставится из каталога, снимается любой.
+
+`basis` — машиночитаемое обоснование и фраза `why` «Почему: …» по-русски: правило (`rule`), порог (`threshold`), наблюдённое значение (`value`), диалоги (`dialogs`), номера реплик (`lines`), критерии (`criteria`), апелляции и решения (`appeals`) — только те поля, что есть у вывода. Текста реплик, цитат и объяснений модели в `basis`, заголовках и событиях нет.
+
+Правило алерта — данные: `{id, title, kind, params, severity: "info" | "warning" | "critical", enabled, why}`. `why` — одна строка, почему правило и его порог такие; у вида с порогом обязательна, интерфейс показывает её рядом с правилом. Недостающий параметр берёт значение по умолчанию; неизвестный параметр, число вне диапазона, дробное там, где нужно целое, маркер не из каталога — 422 по полю.
+
+| `kind` | `params` (по умолчанию, диапазон) | Цель | Срабатывает |
+| --- | --- | --- | --- |
+| `gross_error` | — | `dialog` | есть маркер `gross` |
+| `low_total` | `threshold` 60, 0–100 | `dialog` | итог < `threshold` |
+| `operator_avg` | `n` 5, `threshold` 70, `min_dialogs` 3 | `operator` | средний итог последних `n` оценённых диалогов оператора (`Dialog.operator`) < `threshold`, если их не меньше `min_dialogs`; без оператора диалог не считается |
+| `no_next_step_share` | `threshold` 30 (%), `min_dialogs` 5 | `set`, `all` | доля оценённых диалогов с маркером `no_next_step` > `threshold`, если оценённых не меньше `min_dialogs` |
+| `raised_tone` | — | `dialog` | есть маркер `raised_tone` |
+| `appeal_overdue` | `hours` 24, 1–8760 | `appeal` | апелляция на рассмотрении дольше `hours` с `at` (Астана, год текущий) |
+| `run_errors` | — | `run` | запуск `done` с ошибками; в `basis` только id диалогов и число ошибок |
+| `marker` | `label` из каталога | `dialog` | стоит ручной маркер `label` |
+| `long_silence` | `seconds` 30, 1–3600 | `dialog` | есть маркер `long_silence` (порог правила задаёт и маркер) |
+| `risk` | `k` — ключ риска, непустая строка | `dialog` | есть маркер `risk:<k>`; `source` в `basis` не копируется |
+
+Правила по умолчанию: `gross` (critical), `low-total` 60 (warning), `operator-avg` 5/70/3 (warning), `no-next-step` 30 %/5 (warning), `raised-tone` (info), `appeal-overdue` 24 ч (warning), `run-errors` (warning), `complaint` — маркер «Жалоба» (critical), `long-silence` 30 с (info, «регламент удержания: предупредить о паузе»).
+
+Alert: `{id, rule_id, severity, title, target_type: "dialog" | "operator" | "set" | "appeal" | "run", target_id, basis, created, status: "new" | "ack" | "resolved", assignee, acked_by, acked_at, resolved_by, resolved_at, note}`; время — ISO по Астане. Правила проверяются после каждого запуска оценки, после апелляции, решения и правки маркеров и по `POST /api/alerts/evaluate`. Пара (правило, цель) создаёт алерт один раз: повтор в любом статусе пропускается (уникальный ключ в базе). Сбой проверки после действия пишется в журнал и действие не отменяет.
+
+Событие `alert.created` уходит на `CQA_WEBHOOK_URL` для каждого нового алерта: `POST` JSON `{"event": "alert.created", "data": Alert}`, заголовок `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела ключом CQA_WEBHOOK_SECRET>` (без ключа — без подписи). Таймаут 5 с, сбой получателя пишется в журнал, алерт остаётся.
+
 ## Рекомендации (eval-and-delivery)
 
 Чистые функции `src/cqa/domain/recommend.py`, без модели и без весовых сумм: явные правила над ответами с учётом последнего решения и формулой «Итог». Сотрудник — `Dialog.operator`, продукт — `Dialog.product`; пока поля продукта нет, разрез по нему пуст.
@@ -337,6 +398,26 @@ OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranke
 `GET /api/quality/{id}`: `json` — тело файла `make eval` (поля `Report`, `cost_per_dialog`, `calls_per_dialog`, `problems`) и `{id, created, thresholds: [{name, label, limit, upper, value, ok}]}` — каждый порог `eval/thresholds.yaml` против значения прогона: `upper` — порог сверху, `ok: null` — значения нет (у `baseline_drop_max_pts` всегда, регресс к лучшему прогону — в `problems`). `csv`, `md`, `html` — сводка, совпадение по языкам и критериям, полнота грубых ошибок по видам и языкам и ложные флаги, пропущенные грубые ошибки, N/A, цена и время, пороги, замечания прогона, расхождения (диалог, критерий, эталон, ответ модели). Обоснования и цитаты модели (`why`, `quote`) — только в `json`: печатные отчёты не несут текста, производного от диалогов. Отчёты `make eval` в git не попадают.
 
 `GET /api/runs/{id}/report`: `json` — `{id, total, done, cost, calls, errors, status, started, finished, started_at, finished_at, progress, models: [строка], checklist_versions: [число], criteria: [{cid, name, n, answers: {"yes": 5, "no": 2, "na": 1, "3": 4, "<k>+<k>": 1, "none": 3}}]}`; `answers` — ответы запуска по значению (флаг — отмеченные подвопросы через `+`, `none` — без нарушений). Ответы запуска — результаты, записанные между `started` и `finished` (у идущего — до сейчас), включая ручные.
+
+## Коды причин решений (eval-and-delivery, reason-codes)
+
+- Каталог — данные: `[{"code": "misread", "label": "Модель неверно поняла реплику", "applies": "changed"}]`, `applies` — `confirmed`, `changed` или `both`: к какому исходу решения подходит причина. Пока каталог не сохраняли, `GET` отдаёт набор по умолчанию: `misread` «Модель неверно поняла реплику», `context` «Не учтён контекст диалога», `asr` «Ошибка распознавания речи» (`changed`); `violation` «Нарушение подтверждено», `by_rules` «Оценка верна по регламенту» (`confirmed`); `ambiguous` «Критерий сформулирован неоднозначно», `other` «Другое» (`both`).
+- `PUT /api/appeals/reasons` заменяет каталог целиком и отдаёт сохранённый. 422: пустой список, `code` не `[a-z0-9_-]{1,32}`, пустой `label`, повтор `code`, неизвестный `applies`. Записи с удалённым кодом остаются как есть.
+- `reason_code` в решении (`POST /api/appeals/{id}/decision`, `POST /api/decisions`) необязателен, пустая строка — как `null`. Код не из каталога — 422 «Неизвестный код причины <code>: допустимы …»; код не подходит к исходу (`confirmed`, если `to` совпадает с `from`, иначе `changed`) — 422 «Причина «<label>» не подходит к решению «оценка оставлена» | «оценка изменена»». Решение при отказе не записывается.
+- `GET /api/appeals/stats` из того же состояния, что `GET /api/state` (решения прежнего смысла критерия не в счёт):
+
+```json
+{"decisions": 2,
+ "reasons": [{"code": "misread", "label": "Модель неверно поняла реплику", "cid": "04", "name": "…",
+              "status": "changed", "n": 1, "share": 0.5}],
+ "modified": {"pairs": 5, "changed": 2, "share": 0.4,
+              "criteria": [{"id": "01", "name": "…", "pairs": 2, "changed": 1, "share": 0.5}],
+              "langs": [{"key": "RU", "pairs": 4, "changed": 1, "share": 0.25}]}}
+```
+
+- `reasons`: решения `confirmed` и `changed` по `reason_code` × критерий × исход, больше — выше; `share` — от `decisions`. Без кода — `code: null`, `label: "Без кода"`; код, удалённый из каталога, — `label` равен коду.
+- `modified` («Изменено людьми», Modified AutoQA): пары диалог × критерий с текущим результатом; пара изменена людьми, если её ответ ручной (`model: "вручную"`) или последнее решение заменило ответ модели (`to` ≠ `res.a`). `criteria` — худшие для модели первыми (доля по убыванию, затем `id`), `langs` — по числу пар. Доли до 4 знаков, без пар — `null`.
+- Интерфейс: в форме решения — выбор «Причина решения» из каталога, отфильтрованный по исходу; в аналитике — плитка «Изменено людьми» с долей и разбивкой по критериям и языкам.
 
 ## Доступ по токену (eval-and-delivery)
 

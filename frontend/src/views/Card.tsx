@@ -17,12 +17,13 @@ import { AppealDialog } from './AppealDialog';
 import { ALL, Criteria, type Ctx } from './card/Criteria';
 import { CardForms, type Pending } from './card/Forms';
 import { IntonationPanel, useProsody } from './card/Intonation';
+import { TalkStats } from './card/TalkStats';
 import { evalOf, OpsBar, rerun } from './card/Ops';
 import { Player, seek } from './card/Player';
 import { RecheckMenu } from './card/Recheck';
 import { SufficiencyChip } from './SufficiencyChip';
 import { Transcript } from './card/Transcript';
-import { lineBy, plural, scored } from './card/util';
+import { lineBy, partialTip, plural, scored } from './card/util';
 import { Why } from './card/Why';
 
 // функции, а не значения: t() срабатывает при отрисовке, на выбранном языке
@@ -175,6 +176,7 @@ export function CardView({ id }: { id: string | null }) {
     startRun({ dialogs: [d.id], criteria: null });
   };
 
+  const partial = partialTip(d, cl, S.appeals, sum.total);
   const C = 2 * Math.PI * 52,
     dash = sum.total == null ? 0 : (C * sum.total) / 100;
 
@@ -263,16 +265,25 @@ export function CardView({ id }: { id: string | null }) {
             <h2 className="cursor-help self-start text-[15px] font-semibold">{t('Итог')}</h2>
           </Tip>
           <div className="flex flex-wrap items-center gap-4" data-total={sum.total ?? ""}>
-            <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={t('Итог {total} из 100', { total: f2(sum.total) })} className="flex-none">
-              <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent-soft" strokeWidth="11" />
-              <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${dash} ${C}`} transform="rotate(-90 62 62)" />
-              <text x="62" y="66" textAnchor="middle" fontSize="25" fontWeight="700" className="fill-ink">
-                <CountUp value={sum.total} format={f2} />
-              </text>
-              <text x="62" y="86" textAnchor="middle" fontSize="12" className="fill-muted">
-                {t('из 100')}
-              </text>
-            </svg>
+            <div className="flex flex-none flex-col items-center gap-1">
+              <svg width="124" height="124" viewBox="0 0 124 124" role="img" aria-label={t('Итог {total} из 100', { total: f2(sum.total) })}>
+                <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent-soft" strokeWidth="11" />
+                <circle cx="62" cy="62" r="52" fill="none" className="stroke-accent" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${dash} ${C}`} transform="rotate(-90 62 62)" />
+                <text x="62" y="66" textAnchor="middle" fontSize="25" fontWeight="700" className={partial ? 'fill-muted' : 'fill-ink'}>
+                  <CountUp value={sum.total} format={f2} />
+                </text>
+                <text x="62" y="86" textAnchor="middle" fontSize="12" className="fill-muted">
+                  {t('из 100')}
+                </text>
+              </svg>
+              {partial && (
+                <Tip content={partial}>
+                  <span tabIndex={0} className="cursor-help text-xs text-muted" data-partial>
+                    {t('Итог предварительный')}
+                  </span>
+                </Tip>
+              )}
+            </div>
             <div className="secs flex min-w-[150px] flex-1 flex-col gap-1 text-[13px]">
               {sum.secs.map((s: any) => (
                 <div key={s.name} className="flex justify-between gap-2">
@@ -311,7 +322,7 @@ export function CardView({ id }: { id: string | null }) {
                   <button
                     key={r.c.id}
                     type="button"
-                    className="loss grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-2.5 px-3 py-2 text-left hover:bg-hover"
+                    className="loss -mx-3 grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-2.5 px-3 py-2 text-left hover:bg-hover"
                     data-act="goto"
                     data-cid={r.c.id}
                     onClick={() => goto(r.c.id)}
@@ -413,7 +424,7 @@ export function CardView({ id }: { id: string | null }) {
             <h2 className="text-base font-semibold">{call ? t('Расшифровка звонка') : t('Переписка')}</h2>
             <span className="text-xs text-muted">{call ? t('Время от начала записи. ▶ ставит запись на начало реплики') : t('Время из чата, исходные метки сохранены')}</span>
           </div>
-          <div className="tr flex max-h-[78vh] flex-col gap-2 overflow-y-auto p-3" id="tr">
+          <div className="tr flex flex-col gap-2 p-3" id="tr">
             <Transcript
               d={d}
               prosody={prosody}
@@ -423,7 +434,7 @@ export function CardView({ id }: { id: string | null }) {
             />
           </div>
         </section>
-        <section className="min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-card" aria-label={t('Оценка по критериям')}>
+        <section className="min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-card xl:sticky xl:top-[72px] xl:max-h-[calc(100vh-88px)] xl:overflow-y-auto" aria-label={t('Оценка по критериям')}>
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
             <h2 className="text-base font-semibold">{t('Оценка по критериям')}</h2>
             <span className="flex flex-wrap items-center gap-2">
@@ -436,6 +447,7 @@ export function CardView({ id }: { id: string | null }) {
           <Criteria ctx={ctx} sum={sum} />
         </section>
       </div>
+      {S.role !== 'operator' && <TalkStats key={`ts-${d.id}`} id={d.id} />}
       {qa && <p className="meta text-xs text-muted">{costLine(S, d)}</p>}
 
       <CardForms d={d} p={form} onClose={() => setForm(null)} />

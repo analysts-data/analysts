@@ -2,8 +2,9 @@
 отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Awaitable, Callable, Coroutine, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -16,6 +17,8 @@ from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
 from cqa.services.sufficiency import assess_dialogs
+
+log = logging.getLogger(__name__)
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -135,10 +138,7 @@ def compare_runs(store: Store, a: int, b: int) -> dict[str, Any]:
 
 
 class Runner:
-    """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди.
-
-    `on_finish` получает событие `run.finished` по каждому запуску из `start` (вебхук интеграции).
-    """
+    """Один активный запуск в фоне. `parallel` воркеров берут диалоги плана строго по очереди."""
 
     def __init__(
         self,
@@ -147,13 +147,14 @@ class Runner:
         *,
         parallel: int,
         clock: Callable[[], float] = time.time,
-        on_finish: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        # конец запуска: алерты и вебхук run.finished; получает событие без текста диалогов
+        on_finish: Callable[[dict[str, Any]], Awaitable[object]] | None = None,
     ) -> None:
+        self._on_finish = on_finish
         self._store = store
         self._evaluator = evaluator
         self._parallel = parallel
         self._clock = clock
-        self._on_finish = on_finish
         self._cancel = asyncio.Event()
         self._active: int | None = None
         self._failed = 0  # пары упавших диалогов активного запуска: «done» за 0 с, ETA их не считает
@@ -230,37 +231,22 @@ class Runner:
         rows += [(i, "skipped", 0, n) for i, n in held.items() if i not in planned]
         self._store.queue_dialogs(run_id, rows)
         self._insufficient[run_id] = len(insufficient(self._store, dialogs))
-        ids = list(dict.fromkeys(dialogs)) if dialogs is not None else [d.id for d, _ in plan]
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
             if self._on_finish is not None:
-                self._spawn(self._announce(run_id, ids))
+                task = asyncio.create_task(self._finished(run_id))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
             return run_id
         self._active = run_id
         self._failed = 0
         self._cancel = asyncio.Event()
-        run = self.execute(run_id, checklist, plan, evaluator=evaluator, shadow=apply == "compare")
-        self._spawn(self._then_announce(run, run_id, ids))
-        return run_id
-
-    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
-        task = asyncio.create_task(coro)
+        task = asyncio.create_task(
+            self.execute(run_id, checklist, plan, evaluator=evaluator, shadow=apply == "compare")
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
-
-    async def _then_announce(self, run: Coroutine[Any, Any, None], run_id: int, ids: list[str]) -> None:
-        try:
-            await run
-        finally:
-            await self._announce(run_id, ids)
-
-    async def _announce(self, run_id: int, ids: list[str]) -> None:
-        """Событие без текста диалогов: счётчики, ошибки и id запрошенных диалогов."""
-        if self._on_finish is None:
-            return
-        p = self.progress(run_id)
-        counts = {k: p[k] for k in ("status", "done", "total", "errors")}
-        await self._on_finish({"event": "run.finished", "run_id": run_id, **counts, "dialog_ids": ids})
+        return run_id
 
     def progress(self, run_id: int) -> dict[str, Any]:
         row = self._run(run_id)
@@ -326,6 +312,18 @@ class Runner:
         finally:
             self._store.finish_run(run_id, self._clock(), "cancelled" if cancelled else "done")
             self._active = None
+        await self._finished(run_id)
+
+    async def _finished(self, run_id: int) -> None:
+        """`on_finish` с событием `run.finished`: счётчики, ошибки, диалоги очереди запуска."""
+        if self._on_finish is None:
+            return
+        p = self.progress(run_id)
+        counts = {k: p[k] for k in ("status", "done", "total", "errors")}
+        try:
+            await self._on_finish({"run_id": run_id, **counts, "dialog_ids": [d["id"] for d in p["dialogs"]]})
+        except Exception:  # алерты и вебхук вторичны: запуск уже сохранён
+            log.exception("действия после запуска %s", run_id)
 
     async def _evaluate(
         self,

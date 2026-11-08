@@ -402,7 +402,6 @@ async def test_finished_run_is_announced_with_counts_and_requested_dialogs(store
     await _drain(runner)
     assert events == [
         {
-            "event": "run.finished",
             "run_id": run_id,
             "status": "done",
             "done": 16,
@@ -420,7 +419,7 @@ async def test_run_with_nothing_to_do_is_announced_too(store: Store) -> None:
     await _drain(runner)
     run_id = runner.start(["call-024"], None)
     await _drain(runner)
-    assert [(e["run_id"], e["total"], e["dialog_ids"]) for e in events][-1] == (run_id, 0, ["call-024"])
+    assert [(e["run_id"], e["total"], e["dialog_ids"]) for e in events][-1] == (run_id, 0, [])
 
 
 async def test_ensure_idle_refuses_while_a_run_is_active(store: Store) -> None:
@@ -666,3 +665,18 @@ async def test_override_alone_is_a_forced_re_check(store: Store) -> None:
     await _drain(runner)
     run = store.get_run(run_id)
     assert run is not None and (run.force, run.total, run.apply) == (True, 1, "replace")
+
+
+async def test_finished_run_calls_alert_hook_and_survives_its_failure(store: Store) -> None:
+    calls: list[int] = []
+
+    async def hook(run: dict[str, Any]) -> None:
+        calls.append(1)
+        raise RuntimeError("alerts down")
+
+    plan = plan_run(store, CHECKLIST, None, None)
+    run_id = store.add_run(sum(len(cs) for _, cs in plan), 100.0)
+    await Runner(store, FakeEvaluator(), parallel=1, on_finish=hook).execute(run_id, CHECKLIST, plan)
+
+    run = store.get_run(run_id)
+    assert calls == [1] and run is not None and run.status == "done"

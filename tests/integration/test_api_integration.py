@@ -206,12 +206,14 @@ def test_finished_run_posts_a_signed_webhook_without_dialogue_text(
     request = route.calls.last.request
     assert json.loads(request.content) == {
         "event": "run.finished",
-        "run_id": run_id,
-        "status": "done",
-        "done": 8,
-        "total": 8,
-        "errors": [],
-        "dialog_ids": ["syn-chat-ru"],
+        "data": {
+            "run_id": run_id,
+            "status": "done",
+            "done": 8,
+            "total": 8,
+            "errors": [],
+            "dialog_ids": ["syn-chat-ru"],
+        },
     }
     signature = hmac.new(b"s3cret", request.content, hashlib.sha256).hexdigest()
     assert request.headers["X-CQA-Signature"] == f"sha256={signature}"
@@ -334,3 +336,12 @@ def test_results_export_is_the_organisers_json_1_0_for_the_chosen_dialogues(api:
     ]
     every = api.get("/api/results").json()["results"]
     assert {r["conversation_id"] for r in every} == {"call-024", "p1-ru-003", "syn-chat-ru"}
+
+
+def test_dialogues_from_the_integration_api_are_counted_under_the_api_source(
+    api: TestClient, store: Store
+) -> None:
+    api.post("/api/evaluate", json=CHAT)
+    api.post("/api/evaluate/batch", json={"dialogs": [PASTE]})
+    origin = {d["id"]: d.get("source_id") for d in api.get("/api/state").json()["dialogs"]}
+    assert (origin["syn-chat-ru"], origin["paste-1"]) == ("api", "api")

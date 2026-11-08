@@ -5,7 +5,6 @@ import contextlib
 import sqlite3
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -16,18 +15,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.adapters import webhook
 from cqa.adapters.batches import BatchStore
 from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.adapters.webhook import send_event
 from cqa.compose import build_routed, build_source
 from cqa.domain.models import Checklist
+from cqa.domain.review import ASTANA
 from cqa.http import api, batches, docs, integration, sources
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
 from cqa.http.openapi import document
 from cqa.http.validation import validation_error
+from cqa.services.alerts import refresh
 from cqa.services.batches import Batches
 from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unavailable, Upstream
 from cqa.services.llm_config import effective
@@ -43,7 +44,6 @@ ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
 # ponytail: seed is the test fixture; a separate product file if the two ever diverge
 SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
-WEBHOOK_TIMEOUT_S = 10
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -136,16 +136,34 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
+    # ponytail: вебхук ждём в самом запросе; очередь — если получатель окажется медленным
+    hooks = httpx.AsyncClient(timeout=5)
+
+    async def alerts() -> list[dict[str, Any]]:
+        """Проверить правила алертов и отправить новые как `alert.created` (вебхук только при настройке)."""
+        created = refresh(store, datetime.now(ASTANA))
+        s = app.state.settings
+        if s.webhook_url and created:
+            secret = s.webhook_secret.get_secret_value() if s.webhook_secret else None
+            await webhook.send(hooks, s.webhook_url, secret, "alert.created", created)
+        return created
+
+    app.state.alerts = alerts
     evaluator = (
         evaluator if evaluator is not None else build_routed(settings, prosody, store)
     )  # llm-evaluation
-    secret = settings.webhook_secret.get_secret_value() if settings.webhook_secret else None
-    webhook = (
-        partial(send_event, httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT_S), settings.webhook_url, secret)
-        if settings.webhook_url
-        else None
-    )
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=webhook)
+
+    async def finished(run: dict[str, Any]) -> None:
+        """Конец запуска: алерты (`alert.created`) и событие `run.finished` на вебхук, если он задан."""
+        try:
+            await alerts()
+        finally:
+            s = app.state.settings
+            if s.webhook_url:
+                secret = s.webhook_secret.get_secret_value() if s.webhook_secret else None
+                await webhook.send(hooks, s.webhook_url, secret, "run.finished", [run])
+
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=finished)
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)

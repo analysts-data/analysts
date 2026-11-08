@@ -177,6 +177,13 @@ class Appeal(BaseModel):
     reviewer: str | None = None
     reason: str | None = None
     decidedAt: str | None = None
+    reason_code: str | None = None  # код из каталога GET /api/appeals/reasons; у старых записей нет
+
+
+class ReasonCode(BaseModel):  # элемент каталога GET/PUT /api/appeals/reasons
+    code: str
+    label: str
+    applies: Literal["confirmed", "changed", "both"]
 
 
 class Mode(BaseModel):  # mode in GET /api/state
