@@ -60,6 +60,7 @@ def test_whole_set_is_evaluated_with_progress(api: TestClient) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "products": {"done": 0, "total": 0, "errors": 0, "cost": 0.0},
     }
     assert {d: len(r) for d, r in _res(api).items()} == {"call-024": 8, "p1-ru-003": 8}
 

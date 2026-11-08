@@ -9,7 +9,7 @@ from html import escape
 from typing import Any
 
 from cqa.domain.checklist_export import CSS as MEMO_CSS
-from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
+from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog, Product
 from cqa.domain.review import effective_answer, needs_review
 from cqa.domain.scoring import frac, r2, total
 
@@ -17,6 +17,8 @@ TOP = 10
 CHANNEL = {"chat": "Чат", "call": "Звонок"}
 NOBODY = "Не назначено"
 EMPTY = "Нет оценённых диалогов"
+NO_TOPIC = "Тема не определена"
+TOP_TOPIC = 3
 NOTE = (
     "Итог — с учётом решений по апелляциям и проверкам. Грубые нарушения в итог не входят. "
     "Доля баллов критерия считается среди применимых оценок, N/A показан отдельно."
@@ -51,8 +53,12 @@ def build_report(
     at: str,
     lang: str | None = None,
     ch: str | None = None,
+    products: Sequence[Product] = (),
 ) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны."""
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны.
+
+    `products` — справочник тем: раздел «По продуктам» (`products`) только с ним.
+    """
     lang = lang.upper() if lang else None
     picked = [d for d in dialogs if lang in (None, d.lang.upper()) and ch in (None, d.ch)]
     ids = {d.id for d in picked}
@@ -142,8 +148,57 @@ def build_report(
         "channels": _groups([(d.ch, t) for d, _, t in rows], CHANNEL),
         "langs": _groups([(d.lang, t) for d, _, t in rows], {}),
     }
+    if products:
+        stats = product_stats(checklist, picked, appeals, owners, products)
+        rep["products"] = sorted((p for p in stats if p["dialogs"]), key=lambda p: -p["dialogs"])
     rep["findings"] = _findings(rep, any(c.signal == "resolution" for c in scored_cs))
     return rep
+
+
+def product_stats(
+    checklist: Checklist,
+    dialogs: Sequence[Dialog],
+    appeals: Sequence[Appeal],
+    owners: Mapping[str, str],
+    products: Sequence[Product],
+) -> list[dict[str, Any]]:
+    """`GET /api/products/stats`: по каждой теме справочника и «Тема не определена» (тема не выбрана, ошибка,
+    тема удалена из справочника) — те же числа, что в отчёте на этих диалогах."""
+    known = {p.id for p in products}
+
+    def topic(d: Dialog) -> str | None:
+        pid = d.product.id if d.product and d.product.status == "done" else None
+        return pid if pid in known else None
+
+    groups: list[tuple[str | None, str]] = [(p.id, p.name) for p in products]
+    if any(topic(d) is None for d in dialogs):
+        groups.append((None, NO_TOPIC))
+    out = []
+    for pid, name in groups:
+        subset = [d for d in dialogs if topic(d) == pid]
+        rep = build_report(checklist, subset, appeals, owners, at="")
+        s = rep["summary"]
+        out.append(
+            {
+                "id": pid,
+                "name": name,
+                "dialogs": s["dialogs"],
+                "scored": s["scored"],
+                "avg_total": s["avg_total"],
+                "risk_share": s["risk"]["share"],
+                "no_next_step_share": s["no_next_step"]["share"],
+                "needs_review": sum(bool(d.product and d.product.needs_review) for d in subset),
+                "reasons": [
+                    {k: r[k] for k in ("tag", "dialogs", "owner")} for r in rep["reasons"][:TOP_TOPIC]
+                ],
+                "weakest": [
+                    {k: c[k] for k in ("id", "name", "share")}
+                    for c in rep["criteria"][:TOP_TOPIC]
+                    if c["share"] < 1
+                ],
+            }
+        )
+    return out
 
 
 # --- Выводы словами ---
@@ -197,6 +252,15 @@ def _findings(rep: dict[str, Any], resolution: bool) -> list[str]:
             f"Самая частая причина потери баллов — «{r['tag']}»: {_dialogs(r['dialogs'])}, "
             f"что менять: {r['owner'].lower()}."
         )
+    scored_topics = [p for p in rep.get("products", []) if p["avg_total"] is not None and p["id"]]
+    if len(scored_topics) > 1:
+        lo = min(scored_topics, key=lambda p: p["avg_total"])
+        hi = max(scored_topics, key=lambda p: p["avg_total"])
+        if lo["avg_total"] < hi["avg_total"]:
+            out.append(
+                f"Темы: ниже всего средний итог у «{lo['name']}» — {_d(lo['avg_total'])}, "
+                f"выше всего у «{hi['name']}» — {_d(hi['avg_total'])}."
+            )
     for title, groups in (("Языки", rep["langs"]), ("Каналы", rep["channels"])):
         lo, hi = min(groups, key=lambda g: g["avg"]), max(groups, key=lambda g: g["avg"])
         if lo["avg"] < hi["avg"]:
@@ -235,6 +299,21 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
             [
                 ([r["tag"], str(r["dialogs"]), r["owner"], ", ".join(r["criteria"])], r["dialogs"] / most)
                 for r in rep["reasons"]
+            ],
+        ),
+        (
+            "По продуктам",
+            ["Тема", "Диалогов", "Средний итог", "Грубые нарушения", "Без след. шага", "Главная причина"],
+            {1, 2, 3, 4},
+            [
+                (
+                    [
+                        p["name"], str(p["dialogs"]), _d(p["avg_total"]), _pct(p["risk_share"]),
+                        _pct(p["no_next_step_share"]), p["reasons"][0]["tag"] if p["reasons"] else "—",
+                    ],
+                    (p["avg_total"] or 0) / 100,
+                )
+                for p in rep.get("products", [])
             ],
         ),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),

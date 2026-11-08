@@ -8,8 +8,8 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
-from cqa.compose import build_evaluator, check_provider
-from cqa.domain.models import Answer, Appeal, Checklist
+from cqa.compose import build_classifier, build_evaluator, check_provider
+from cqa.domain.models import Answer, Appeal, Checklist, Product
 from cqa.domain.review import ASTANA
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
@@ -26,8 +26,9 @@ from cqa.services.dialogs import paste_text, save_owners, set_reviewed
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
+from cqa.services.products import save_products, set_manual, taxonomy
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report
+from cqa.services.state import ReportFormat, build_state, mode_from_settings, product_stats_of, report
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -79,6 +80,11 @@ class ProviderIn(BaseModel):
     profile: str = "plain"
     where: Literal["kz", "local", "external"]
     key: str = ""  # пусто — оставить сохранённый ключ
+
+
+class ProductIn(BaseModel):
+    id: str
+    reason: str = ""
 
 
 class RunIn(BaseModel):
@@ -242,7 +248,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings, state.prosody))
+        _runner(request).use(build_evaluator(settings, state.prosody), build_classifier(settings))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply
@@ -306,3 +312,23 @@ async def get_run(run_id: int, request: Request) -> dict[str, Any]:
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: int, request: Request) -> dict[str, str]:
     return _runner(request).cancel(run_id)
+
+
+@router.get("/products")
+async def get_products(request: Request) -> list[dict[str, Any]]:
+    return [p.model_dump() for p in taxonomy(request.app.state.store)]
+
+
+@router.put("/products")
+async def put_products(body: list[Product], request: Request) -> list[dict[str, Any]]:
+    return [p.model_dump() for p in save_products(request.app.state.store, body)]
+
+
+@router.get("/products/stats")
+async def get_product_stats(request: Request) -> list[dict[str, Any]]:
+    return product_stats_of(request.app.state.store)
+
+
+@router.put("/dialogs/{dialog_id}/product")
+async def put_dialog_product(dialog_id: str, body: ProductIn, request: Request) -> dict[str, Any]:
+    return set_manual(request.app.state.store, dialog_id, body.id, body.reason).model_dump(mode="json")

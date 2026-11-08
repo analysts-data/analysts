@@ -13,6 +13,7 @@ from cqa.services.evaluation import ChatVerifier, JevEvaluator, LlmEvaluator, Pr
 from cqa.services.ingest import OrgDialogSource
 from cqa.services.llm_config import as_llm, config_error
 from cqa.services.ports import Evaluator
+from cqa.services.products import Classifier
 from cqa.settings import Provider, Settings
 
 CASSETTES = Path(__file__).resolve().parents[2] / "tests" / "cassettes"  # {llm,jev}/{sha}.json
@@ -76,4 +77,21 @@ def build_evaluator(settings: Settings, prosody: Prosody | None = None) -> Evalu
         allow_real_data=settings.allow_real_data,
         config_error=config_error(settings),
         prosody=prosody,
+    )
+
+
+def build_classifier(settings: Settings) -> Classifier:
+    """Тема обращения: Jev, если задан ключ Jev, иначе основная модель без рассуждения (короткий JSON).
+
+    Охрана реальных звонков и обезличивание — те же, что у `build_evaluator`.
+    """
+    llm = settings.model_copy(update={"llm_reasoning": "off", "evaluator": "llm", "verifier": None})
+    return Classifier(
+        jev=_jev(settings) if settings.jev_api_key is not None else None,
+        model=ChatClient(llm, _http(settings, "llm")),
+        model_name=settings.llm_model,
+        anonymize=settings.anonymize,
+        sends_real_data=settings.llm_mode == "live",
+        allow_real_data=settings.allow_real_data,
+        config_error=config_error(llm),
     )

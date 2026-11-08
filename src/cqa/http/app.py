@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 import sqlite3
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -15,15 +16,15 @@ from fastapi.staticfiles import StaticFiles
 
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_evaluator, build_source
-from cqa.domain.models import Checklist
+from cqa.compose import build_classifier, build_evaluator, build_source
+from cqa.domain.models import Checklist, Product
 from cqa.http import api
 from cqa.http.audio import router as audio_router
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.prosody import dialog_prosody
-from cqa.services.runs import Runner
+from cqa.services.runs import Classifier, Runner
 from cqa.services.state import mode_from_settings
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
@@ -32,6 +33,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
 # ponytail: seed is the test fixture; a separate product file if the two ever diverge
 SEED_CHECKLIST = ROOT / "tests" / "fixtures" / "checklist_v3.json"
+SEED_PRODUCTS = ROOT / "tests" / "fixtures" / "products.json"  # справочник тем — данные, как чек-лист
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -67,12 +69,20 @@ def seed_checklist(store: Store) -> None:
         )
 
 
+def seed_products(store: Store) -> None:
+    """Начальный справочник тем обращений на пустой базе."""
+    if store.products() is None:
+        raw = json.loads(SEED_PRODUCTS.read_text(encoding="utf-8"))
+        store.set_products([Product.model_validate(p) for p in raw])
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     source: DialogSource | None = None,
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
+    classifier: Classifier | None = None,
 ) -> FastAPI:
     app = FastAPI(title="CQA", lifespan=_lifespan)
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
@@ -95,7 +105,9 @@ def create_app(
     store = Store(conn if conn is not None else connect(settings.db_path))
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
+    store.clear_pending_products()
     seed_checklist(store)
+    seed_products(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
     app.state.syncer = Syncer(store, app.state.source)
@@ -106,8 +118,10 @@ def create_app(
         return await dialog_prosody(store, app.state.source, app.state.voice, dialog_id)
 
     app.state.prosody = prosody
-    evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    if evaluator is None:  # llm-evaluation; подставленный оценщик (тесты) — без своего классификатора тем
+        evaluator = build_evaluator(settings, prosody)
+        classifier = classifier if classifier is not None else build_classifier(settings)
+    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, classifier=classifier)
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)

@@ -447,3 +447,20 @@ async def test_jev_only_blocks_real_call_and_config_error_before_any_request():
         await _evaluate_jev_only({}, dialog=call, sends_real_data=True)
     with pytest.raises(ConfigError, match="CQA_JEV_API_KEY"):
         await _evaluate_jev_only({}, config_error="нет ключа: задайте CQA_JEV_API_KEY")
+
+
+async def test_topic_pick_is_one_choice_question_with_probability_of_every_topic():
+    options = {"funding": "Пополнение и вывод: деньги", "account": "Счёт: открытие"}
+    answer = {"type": "choice", "choice": "funding", "probabilities": {"funding": 0.83, "account": "0.17"}}
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(JEV_URL).respond(
+            200, json={"answers": {"q0": answer}, "usage": {"input_tokens": 1000}}
+        )
+        async with httpx.AsyncClient() as http:
+            pick = await JevVerifier(KEY, http).pick(DIALOG_TEXT, options)
+    body = json.loads(route.calls[0].request.content)
+    assert body["state"] == {"dialog": DIALOG_TEXT}
+    (question,) = body["questions"].values()
+    assert (question["type"], question["criteria"]) == ("choice", options)
+    assert (pick.choice, pick.probs, pick.p) == ("funding", {"funding": 0.83, "account": 0.17}, 0.83)
+    assert pick.cost == pytest.approx(1000 * JEV_PRICE_IN / 1_000_000)

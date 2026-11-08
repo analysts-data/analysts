@@ -122,6 +122,32 @@ class Cost(BaseModel):  # Dialog.cost
     ms: int
 
 
+class Product(BaseModel):  # тема обращения: справочник GET/PUT /api/products — данные, как чек-лист
+    id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    name: str = Field(min_length=1)
+    description: str = ""
+
+
+class ProductBasis(BaseModel):
+    why: str | None = None  # обоснование: причина от модели с номерами реплик, вывод Jev или причина вручную
+    ev: list[int] = []  # реплики-основания (модель)
+    probs: dict[str, float] | None = None  # Jev: вероятность каждой темы по id
+    threshold: float | None = None  # Jev: ниже порога — needs_review
+    threshold_why: str | None = None
+
+
+class ProductTag(BaseModel):  # Dialog.product
+    status: Literal["pending", "done", "error"]
+    id: str | None = None
+    name: str | None = None
+    confidence: float | None = None
+    by: str | None = None  # "jev", имя модели или "вручную"
+    needs_review: bool = False
+    basis: ProductBasis = ProductBasis()
+    error: str | None = None
+    cost: float = 0.0
+
+
 class Dialog(BaseModel):
     id: str
     title: str | None = None
@@ -133,6 +159,7 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    product: ProductTag | None = None
 
 
 class Appeal(BaseModel):
