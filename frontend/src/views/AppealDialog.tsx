@@ -4,6 +4,7 @@
 import { useState, type FormEvent } from 'react';
 import { allowed, answerOf, signOf } from '../lib/appeal.js';
 import { ansTxt, f2, titleOf } from '../lib/format.js';
+import { t } from '../lib/i18n.js';
 import { ans, calc } from '../lib/scoring.js';
 import { api, reload, toast } from '../lib/state.js';
 import { useS } from '../store';
@@ -15,17 +16,17 @@ const MIN_COMMENT = 10;
 // «символ», «символа», «символов» по последним цифрам числа.
 const chars = (n: number) => {
   const d = n % 10, dd = n % 100;
-  return `${n} ${d === 1 && dd !== 11 ? 'символ' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'символа' : 'символов'}`;
+  return d === 1 && dd !== 11 ? t('{n} символ', { n }) : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? t('{n} символа', { n }) : t('{n} символов', { n });
 };
 
 /** Ошибка API без кода статуса; known — понятный текст для ожидаемых кодов (409 и т. п.). */
 export const humanError = (e: any, known: Record<number, string> = {}) =>
-  known[e?.status] ?? (e?.status ? String(e.message).replace(/^\d+:\s*/, '') : 'Нет связи с сервером. Попробуйте ещё раз.');
+  known[e?.status] ?? (e?.status ? String(e.message).replace(/^\d+:\s*/, '') : t('Нет связи с сервером. Попробуйте ещё раз.'));
 
 export function AppealDialog({ dialog, cid, onClose }: { dialog: any; cid: string | null; onClose: () => void }) {
   if (!cid || !dialog) return null;
   return (
-    <Modal open onOpenChange={v => !v && onClose()} title="Оспорить оценку" description={<AppealSub d={dialog} />}>
+    <Modal open onOpenChange={v => !v && onClose()} title={t('Оспорить оценку')} description={<AppealSub d={dialog} />}>
       <AppealForm key={cid} d={dialog} cid={cid} onClose={onClose} />
     </Modal>
   );
@@ -35,7 +36,7 @@ function AppealSub({ d }: { d: any }) {
   const S = useS();
   return (
     <>
-      {titleOf(d)}, подаёт: {signOf(S.role)}
+      {t('{title}, подаёт: {who}', { title: titleOf(d), who: signOf(S.role) })}
     </>
   );
 }
@@ -68,18 +69,18 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
     try {
       await api.postAppeal({ dlg: d.id, cid, ask, ev: ev ? [Number(ev)] : [], comment: comment.trim(), by: signOf(S.role) });
     } catch (x: any) {
-      setErr(`Апелляция не отправлена. ${humanError(x, { 409: 'По этому критерию уже есть апелляция, дождитесь решения.' })}`);
+      setErr(t('Апелляция не отправлена. {err}', { err: humanError(x, { 409: t('По этому критерию уже есть апелляция, дождитесь решения.') }) }));
       setBusy(false);
       return;
     }
     onClose();
     await reload();
-    toast('Апелляция отправлена проверяющему. Решение появится в карточке и в разделе «Апелляции».');
+    toast(t('Апелляция отправлена проверяющему. Решение появится в карточке и в разделе «Апелляции».'));
   }
 
   return (
     <form className="flex flex-col gap-4" onSubmit={send}>
-      <Field label="Критерий">
+      <Field label={t('Критерий')}>
         <select name="cid" className="fld" data-act="acid" value={cid} onChange={e => setCid(e.target.value)}>
           {cs.map((x: any) => (
             <option key={x.id} value={x.id}>
@@ -89,23 +90,23 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
         </select>
       </Field>
       <p className="text-[13px] text-ink2">
-        Сейчас: <b>{ansTxt(c, a)}</b>. {c.type === 'flag' ? '' : d.res[cid]?.why || ''}
+        {t('Сейчас:')} <b>{ansTxt(c, a)}</b>. {c.type === 'flag' ? '' : d.res[cid]?.why || ''}
       </p>
       {/* key: при смене критерия поля просимого ответа начинаются заново */}
       <div key={cid}>
         {c.type === 'flag' ? (
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1.5 text-[13px] font-semibold text-ink2">Какие нарушения были на самом деле</legend>
+            <legend className="mb-1.5 text-[13px] font-semibold text-ink2">{t('Какие нарушения были на самом деле')}</legend>
             {(c.questions || []).map((q: any) => (
               <label key={q.k} className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg border border-line px-3 hover:bg-hover">
                 <input type="checkbox" name="fq" value={q.k} defaultChecked={!!a?.[q.k]} className="h-4 w-4 accent-[var(--accent)]" />
                 {q.label}
               </label>
             ))}
-            <span className="text-xs text-muted">Отмечено: нарушение было. Снимите отметку, если модель ошиблась.</span>
+            <span className="text-xs text-muted">{t('Отмечено: нарушение было. Снимите отметку, если модель ошиблась.')}</span>
           </fieldset>
         ) : (
-          <Field label="Какой ответ вы считаете верным">
+          <Field label={t('Какой ответ вы считаете верным')}>
             <select name="ask" className="fld" value={askRaw} onChange={e => setAskBy({ ...askBy, [cid]: e.target.value })}>
               {asks.map((v: any) => (
                 <option key={v} value={v}>
@@ -116,20 +117,20 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
           </Field>
         )}
       </div>
-      <Field label="Комментарий, обязательно" hint={left > 0 ? `Ещё ${chars(left)}` : 'Можно отправлять'}>
+      <Field label={t('Комментарий, обязательно')} hint={left > 0 ? t('Ещё {n}', { n: chars(left) }) : t('Можно отправлять')}>
         <textarea
           name="comment"
           className="fld"
           data-act="acomment"
           value={comment}
           onChange={e => setComment(e.target.value)}
-          placeholder={`Почему оценка неверна, со ссылкой на реплику, не короче ${MIN_COMMENT} символов`}
+          placeholder={t('Почему оценка неверна, со ссылкой на реплику, не короче {n} символов', { n: MIN_COMMENT })}
         />
       </Field>
       {lines.length > 0 && (
-        <Field label="Реплика в подтверждение">
+        <Field label={t('Реплика в подтверждение')}>
           <select name="ev" className="fld" defaultValue="">
-            <option value="">Не выбрана</option>
+            <option value="">{t('Не выбрана')}</option>
             {lines.map((l: any) => (
               <option key={l.n} value={l.n}>
                 {l.n}: {l.text.slice(0, 60)}
@@ -145,24 +146,24 @@ function AppealForm({ d, cid: first, onClose }: { d: any; cid: string; onClose: 
         </p>
       )}
       <p className="text-[13px]">
-        Если апелляцию примут:{' '}
+        {t('Если апелляцию примут:')}{' '}
         {c.type === 'flag' ? (
-          <>итог не изменится, {f2(before)}. Грубые ошибки в итог не входят.</>
+          <>{t('итог не изменится, {total}. Грубые ошибки в итог не входят.', { total: f2(before) })}</>
         ) : (
           <>
-            итог {f2(before)} → <b className="font-semibold">{f2(after)}</b>
+            {t('итог {total} →', { total: f2(before) })} <b className="font-semibold">{f2(after)}</b>
           </>
         )}
       </p>
       <p className="text-xs text-muted">
-        <Term k="appeal">Апелляцию</Term> рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.
+        <Term k="appeal">{t('Апелляцию')}</Term> {t('рассмотрит проверяющий. Исходная оценка сохранится, решение и новый итог появятся в карточке рядом с ней.')}
       </p>
       <div className="flex justify-end gap-2.5 border-t border-line pt-3">
         <Button variant="ghost" onClick={onClose}>
-          Отмена
+          {t('Отмена')}
         </Button>
         <Button type="submit" variant="primary" data-act="asend" disabled={busy || comment.trim().length < MIN_COMMENT}>
-          Отправить апелляцию
+          {t('Отправить апелляцию')}
         </Button>
       </div>
     </form>

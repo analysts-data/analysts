@@ -4,16 +4,17 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { href } from '../lib/router.js';
 import { canSave } from '../lib/paste.js';
+import { t } from '../lib/i18n.js';
 import { api, reload, startRun, toast } from '../lib/state.js';
 import { Button, Field, Modal } from '../ui';
 
 // Подсказка формата: строки «Роль: текст», строка без роли продолжает предыдущую реплику.
-const HINT = [
-  'Клиент: Здравствуйте, хочу подать заявку на карту',
-  'Оператор: Добрый день! Как вас зовут?',
-  'Система: Клиент находится на удержании',
+const hint = () => [
+  t('Клиент: Здравствуйте, хочу подать заявку на карту'),
+  t('Оператор: Добрый день! Как вас зовут?'),
+  t('Система: Клиент находится на удержании'),
   '',
-  'Строка без роли продолжает предыдущую реплику.',
+  t('Строка без роли продолжает предыдущую реплику.'),
 ].join('\n');
 
 function PasteDialog({ onClose }: { onClose: () => void }) {
@@ -31,7 +32,7 @@ function PasteDialog({ onClose }: { onClose: () => void }) {
     try {
       ({ id } = await api.postPaste({ title: title.trim(), ch, text }));
     } catch (e) {
-      setErr(`Диалог не сохранён: ${e.message}`);
+      setErr(t('Диалог не сохранён: {error}', { error: e.message }));
       setBusy(false);
       return;
     }
@@ -42,7 +43,7 @@ function PasteDialog({ onClose }: { onClose: () => void }) {
 
   function evaluate() {
     onClose();
-    toast('Оценка диалога запущена, прогресс виден в очереди.');
+    toast(t('Оценка диалога запущена, прогресс виден в очереди.'));
     startRun({ dialogs: [saved.id], criteria: null });
   }
 
@@ -50,46 +51,46 @@ function PasteDialog({ onClose }: { onClose: () => void }) {
     <Modal
       open
       onOpenChange={v => !v && onClose()}
-      title={saved ? 'Диалог добавлен' : 'Вставить диалог'}
+      title={saved ? t('Диалог добавлен') : t('Вставить диалог')}
       description={
         saved
-          ? `«${saved.title}» уже в очереди, карточка открыта. Модель его ещё не оценивала.`
-          : 'Диалог появится в очереди, и карточка откроется сразу. Оценку запустите кнопкой «Оценить».'
+          ? t('«{title}» уже в очереди, карточка открыта. Модель его ещё не оценивала.', { title: saved.title })
+          : t('Диалог появится в очереди, и карточка откроется сразу. Оценку запустите кнопкой «Оценить».')
       }
     >
       <form id="dlgForm" className="flex flex-col gap-4" onSubmit={e => e.preventDefault()}>
         {saved ? (
           <>
-            <p className="text-[13px] text-muted">Запустить оценку можно и позже из очереди: «Оценить» по видимым диалогам.</p>
+            <p className="text-[13px] text-muted">{t('Запустить оценку можно и позже из очереди: «Оценить» по видимым диалогам.')}</p>
             <div className="flex justify-end gap-2.5">
-              <Button onClick={onClose}>Закрыть</Button>
+              <Button onClick={onClose}>{t('Закрыть')}</Button>
               <Button variant="primary" data-act="prun" data-id={saved.id} onClick={evaluate}>
-                Оценить
+                {t('Оценить')}
               </Button>
             </div>
           </>
         ) : (
           <>
-            <Field label="Название">
-              <input name="title" className="fld" value={title} onChange={e => setTitle(e.target.value)} placeholder="Например: обращение из чата поддержки" autoFocus />
+            <Field label={t('Название')}>
+              <input name="title" className="fld" value={title} onChange={e => setTitle(e.target.value)} placeholder={t('Например: обращение из чата поддержки')} autoFocus />
             </Field>
-            <Field label="Канал">
+            <Field label={t('Канал')}>
               <select name="ch" className="fld" value={ch} onChange={e => setCh(e.target.value)}>
-                <option value="chat">Чат</option>
-                <option value="call">Звонок</option>
+                <option value="chat">{t('Чат')}</option>
+                <option value="call">{t('Звонок')}</option>
               </select>
             </Field>
-            <Field label="Текст диалога" hint="Каждая реплика с новой строки: «Клиент:», «Оператор:» или «Система:».">
-              <textarea name="text" className="fld" rows={10} value={text} onChange={e => setText(e.target.value)} placeholder={HINT} />
+            <Field label={t('Текст диалога')} hint={t('Каждая реплика с новой строки: «Клиент:», «Оператор:» или «Система:».')}>
+              <textarea name="text" className="fld" rows={10} value={text} onChange={e => setText(e.target.value)} placeholder={hint()} />
             </Field>
             <p className="box risk" id="pErr" role="alert" hidden={!err}>
               {err}
             </p>
             <div className="flex flex-wrap items-center justify-end gap-2.5">
-              {!canSave(title, text) && <span className="mr-auto text-xs text-muted">Заполните название и текст диалога.</span>}
-              <Button onClick={onClose}>Отмена</Button>
+              {!canSave(title, text) && <span className="mr-auto text-xs text-muted">{t('Заполните название и текст диалога.')}</span>}
+              <Button onClick={onClose}>{t('Отмена')}</Button>
               <Button variant="primary" data-act="psave" disabled={busy || !canSave(title, text)} onClick={save}>
-                {busy ? 'Сохраняем…' : 'Сохранить'}
+                {busy ? t('Сохраняем…') : t('Сохранить')}
               </Button>
             </div>
           </>

@@ -99,6 +99,9 @@ class Fold(BaseModel):
     label: str
 
 
+MANUAL = "вручную"  # CriterionResult.model ручного ответа
+
+
 class CriterionResult(BaseModel):
     a: Answer
     alt: Answer | None = None
@@ -133,6 +136,7 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
 
 
 class Appeal(BaseModel):

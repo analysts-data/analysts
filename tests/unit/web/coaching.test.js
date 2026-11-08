@@ -25,8 +25,18 @@ test('a moment carries the operator line, why and better', () => {
 });
 
 test('goodExamples takes operator evidence lines with full score', () => {
-  assert.equal(goodExamples(S, '01', 10).length, 4);
+  assert.equal(goodExamples(S, '01', 10).length, 3);
   assert.equal(goodExamples(S, '01').length, 3);
   assert.deepEqual(Object.keys(goodExamples(S, '01')[0]).sort(), ['dialogId', 'lineNo', 'text']);
   assert.deepEqual(goodExamples(S, '04'), []);
+});
+
+test('goodExamples never shows a gross error or evidence of a lowered criterion', () => {
+  // p1-ru-022: грубая ошибка «платная услуга» на реплике 6, а 01 у него с полным баллом
+  assert.ok(!goodExamples(S, '01', 10).some(x => x.dialogId === 'p1-ru-022'));
+  // p1-ru-003: реплика 6 — основание сниженного 02; та же реплика у 01 с полным баллом в пример не идёт
+  const s2 = structuredClone(S);
+  const d = s2.dialogs.find(x => x.id === 'p1-ru-003');
+  d.res['01'].ev = [4, 6];
+  assert.deepEqual(goodExamples(s2, '01', 10).filter(x => x.dialogId === 'p1-ru-003').map(x => x.lineNo), [4]);
 });
