@@ -4,12 +4,14 @@ import { Download } from 'lucide-react';
 import { useState } from 'react';
 import { t } from '../../lib/i18n.js';
 import { api, toast, userHeader } from '../../lib/state.js';
+import { track } from '../../lib/telemetry.js';
 import { Button } from '../../ui';
 
 export function ExportButton({ lang, ch }: { lang?: string; ch?: string }) {
   const [busy, setBusy] = useState(false);
   async function download() {
     setBusy(true);
+    track('export', { kind: 'scores', format: 'csv' });
     try {
       const q = new URLSearchParams({
         format: 'csv',

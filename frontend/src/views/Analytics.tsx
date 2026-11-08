@@ -19,6 +19,7 @@ import { Products } from './analytics/Products';
 import { Runs } from './analytics/Runs';
 import { Slices } from './analytics/Slices';
 import { DownloadButton } from './people/net';
+import { track } from '../lib/telemetry.js';
 
 // Вкладки: «Обзор» считается из /api/state; остальные зовут новые пути сервера только при открытии вкладки.
 const TABS = ['overview', 'products', 'runs', 'slices'] as const;
@@ -185,10 +186,10 @@ export function Analytics() {
           </>
         }
       >
-        <LinkButton size="sm" variant="primary" href={reportUrl()} target="_blank" rel="noopener">
+        <LinkButton size="sm" variant="primary" href={reportUrl()} target="_blank" rel="noopener" onClick={() => track('report_open', { kind: 'executive', format: 'html' })}>
           <Printer size={16} aria-hidden="true" /> {t('Отчёт для руководства')}
         </LinkButton>
-        <LinkButton size="sm" href={reportUrl('?format=md')} download="cqa-report.md">
+        <LinkButton size="sm" href={reportUrl('?format=md')} download="cqa-report.md" onClick={() => track('export', { kind: 'report', format: 'md' })}>
           <Download size={16} aria-hidden="true" /> {t('Отчёт .md')}
         </LinkButton>
         <Tip content={t('Итог и ответы по каждому диалогу с учётом решений, как на экране.')}>

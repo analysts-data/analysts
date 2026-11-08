@@ -308,7 +308,10 @@ export function App() {
   // Метрики (если сервер их собирает): экран, открытие диалога, действия с data-act — без текста и значений полей.
   useEffect(() => {
     track('page_view');
-    if (r.page === 'd') track('dialog_open');
+    if (r.page === 'd') track('dialog_open', { id: r.id });
+    const start = Date.now();
+    const page = r.page; // при уходе адрес уже другой: экран передаётся явно
+    return () => track('time_on_page', { ms: Date.now() - start }, page);
   }, [r.page, r.id]);
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
