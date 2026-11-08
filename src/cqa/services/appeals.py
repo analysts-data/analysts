@@ -1,15 +1,76 @@
-"""Апелляции и решения проверяющего (review-workflow, решения 13–15). Таблица results не трогается."""
+"""Апелляции и решения проверяющего (review-workflow, решения 13–15). Таблица results не трогается.
 
+Коды причин решений (eval-and-delivery, reason-codes): каталог — данные, по умолчанию REASONS."""
+
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from cqa.adapters.store import Store
+from cqa.domain.appeal_stats import appeal_stats
 from cqa.domain.models import Answer as ResultAnswer
-from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, ReasonCode
 from cqa.domain.review import Answer, allowed_answers, effective_answer, fingerprint, needs_review, stamp
 from cqa.domain.sufficiency import mark_unsupported
 from cqa.services.errors import Conflict, Invalid, NotFound
+from cqa.services.state import current_state
 from cqa.services.sufficiency import assess_dialogs
+
+REASONS = [
+    ReasonCode.model_validate({"code": code, "label": label, "applies": applies})
+    for code, label, applies in (
+        ("misread", "Модель неверно поняла реплику", "changed"),
+        ("context", "Не учтён контекст диалога", "changed"),
+        ("ambiguous", "Критерий сформулирован неоднозначно", "both"),
+        ("asr", "Ошибка распознавания речи", "changed"),
+        ("violation", "Нарушение подтверждено", "confirmed"),
+        ("by_rules", "Оценка верна по регламенту", "confirmed"),
+        ("other", "Другое", "both"),
+    )
+]
+OUTCOME = {"confirmed": "оценка оставлена", "changed": "оценка изменена"}
+_CODE = re.compile(r"[a-z0-9_-]{1,32}")
+
+
+def reasons(store: Store) -> list[ReasonCode]:
+    return store.appeal_reasons() or REASONS
+
+
+def save_reasons(store: Store, items: Sequence[ReasonCode]) -> list[ReasonCode]:
+    """Заменить каталог целиком. Записи с удалённым кодом остаются как есть, новые решения его не примут."""
+    if not items:
+        raise Invalid("Нужна хотя бы одна причина")
+    seen: set[str] = set()
+    for r in items:
+        if not _CODE.fullmatch(r.code):
+            raise Invalid(f"Код причины «{r.code}»: строчная латиница, цифры, _ и -, до 32 знаков")
+        if not r.label.strip():
+            raise Invalid(f"У причины {r.code} нет названия")
+        if r.code in seen:
+            raise Invalid(f"Код причины {r.code} повторяется")
+        seen.add(r.code)
+    saved = [r.model_copy(update={"label": r.label.strip()}) for r in items]
+    store.set_appeal_reasons(saved)
+    return saved
+
+
+def _check_code(store: Store, code: str | None, status: str) -> None:
+    if code is None:
+        return
+    catalogue = reasons(store)
+    item = next((r for r in catalogue if r.code == code), None)
+    if item is None:
+        raise Invalid(f"Неизвестный код причины {code}: допустимы {', '.join(r.code for r in catalogue)}")
+    if item.applies not in ("both", status):
+        raise Invalid(f"Причина «{item.label}» не подходит к решению «{OUTCOME[status]}»")
+
+
+def stats(store: Store) -> dict[str, Any]:
+    """GET /api/appeals/stats из того же состояния, что GET /api/state."""
+    checklist, dialogs, appeals = current_state(store)
+    return appeal_stats(checklist, dialogs, appeals, reasons(store))
 
 
 @dataclass(frozen=True)
@@ -102,7 +163,16 @@ def file_appeal(
     return store.add_appeal(appeal, pair.fp)
 
 
-def decide(store: Store, appeal_id: str, *, to: Answer, reason: str, reviewer: str, now: datetime) -> Appeal:
+def decide(
+    store: Store,
+    appeal_id: str,
+    *,
+    to: Answer,
+    reason: str,
+    reviewer: str,
+    now: datetime,
+    reason_code: str | None = None,
+) -> Appeal:
     found = store.get_appeal(appeal_id)
     if found is None:
         raise NotFound(f"Апелляция {appeal_id} не найдена")
@@ -111,13 +181,16 @@ def decide(store: Store, appeal_id: str, *, to: Answer, reason: str, reviewer: s
         raise Conflict(f"Апелляция {appeal_id} уже рассмотрена: {appeal.status}")
     _check_signed(reason, reviewer)
     _check_allowed(_criterion(store, appeal.cid)[1], to)
+    status = "confirmed" if to == appeal.from_ else "changed"
+    _check_code(store, reason_code or None, status)
     decided = appeal.model_copy(
         update={
             "to": to,
             "reason": reason.strip(),
             "reviewer": reviewer,
             "decidedAt": stamp(now),
-            "status": "confirmed" if to == appeal.from_ else "changed",
+            "status": status,
+            "reason_code": reason_code or None,
         }
     )
     store.save_decision(decided)
@@ -125,7 +198,16 @@ def decide(store: Store, appeal_id: str, *, to: Answer, reason: str, reviewer: s
 
 
 def record_review(
-    store: Store, *, dlg: str, cid: str, frm: Answer, to: Answer, reason: str, reviewer: str, now: datetime
+    store: Store,
+    *,
+    dlg: str,
+    cid: str,
+    frm: Answer,
+    to: Answer,
+    reason: str,
+    reviewer: str,
+    now: datetime,
+    reason_code: str | None = None,
 ) -> Appeal:
     pair = _pair(store, dlg, cid)
     if not needs_review(pair.criterion, pair.result):
@@ -139,6 +221,8 @@ def record_review(
         raise Conflict(f"Текущий ответ по критерию {cid}: {current}. Обновите страницу.")
     _check_allowed(pair.criterion, to)
     _check_signed(reason, reviewer)
+    status = "confirmed" if to == frm else "changed"
+    _check_code(store, reason_code or None, status)
     at = stamp(now)
     record = Appeal.model_validate(
         {
@@ -150,10 +234,11 @@ def record_review(
             "to": to,
             "by": reviewer,
             "at": at,
-            "status": "confirmed" if to == frm else "changed",
+            "status": status,
             "reviewer": reviewer,
             "reason": reason.strip(),
             "decidedAt": at,
+            "reason_code": reason_code or None,
         }
     )
     return store.add_appeal(record, pair.fp)
