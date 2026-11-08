@@ -2,6 +2,7 @@
 // и мастер добавления: вид → подключение → сопоставление полей с предпросмотром /test → проверка → сохранение.
 import { Copy } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { f2, fn } from '../lib/format.js';
 import { t } from '../lib/i18n.js';
 import { reload, toast } from '../lib/state.js';
 import { Button, Card, Chip, cn, Empty, Field, Modal, PageHead, Skeleton, Tip, type Tone } from '../ui';
@@ -510,7 +511,7 @@ function Journal({ src, onClose }: { src: any; onClose: () => void }) {
                   </td>
                   <td className="num">{r.added}</td>
                   <td className="num">{r.skipped}</td>
-                  <td className="num">{r.duration_ms == null ? '—' : t('{s} с', { s: (r.duration_ms / 1000).toFixed(1) })}</td>
+                  <td className="num">{r.duration_ms == null ? '—' : t('{s} с', { s: fn(r.duration_ms / 1000) })}</td>
                   <td className="max-w-[320px] text-[13px] text-ink2">{r.errors?.length ? r.errors.slice(0, 3).join('; ') : '—'}</td>
                 </tr>
               ))}
@@ -661,7 +662,7 @@ export function Sources(_: { id: string | null }) {
                   </div>
                   <div>
                     <dt className="text-muted">{t('Средний итог')}</dt>
-                    <dd>{st.avg_total ?? '—'}</dd>
+                    <dd>{f2(st.avg_total ?? null)}</dd>
                   </div>
                   <div>
                     <dt className="text-muted">{t('С грубой ошибкой')}</dt>
