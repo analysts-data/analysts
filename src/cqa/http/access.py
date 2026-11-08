@@ -1,5 +1,7 @@
 """Доступ по токену для показа по сети (CQA_ACCESS_TOKEN): вход /login?token=… кладёт cookie
-cqa_access, без неё /api/* — 401 JSON, остальное — страница входа; /api/health открыт."""
+cqa_access, без неё /api/* — 401 JSON, остальное — страница входа; /api/health открыт.
+Клиенты интеграционного API вместо cookie шлют `Authorization: Bearer <token>`; предзапрос CORS
+(OPTIONS) проходит без токена — в нём нет данных."""
 
 import hmac
 import logging
@@ -33,11 +35,17 @@ def protect(app: FastAPI, token: str) -> None:
     @app.middleware("http")
     async def access(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         path = request.url.path
+        auth = request.headers.get("authorization", "")
+        bearer = auth[7:] if auth[:7].lower() == "bearer " else None
         if path == "/login" and valid(request.query_params.get("token")):
             response = RedirectResponse("/", status_code=302)
             response.set_cookie(COOKIE, token, httponly=True, samesite="lax")
             return response
-        if path == "/api/health" or (path != "/login" and valid(request.cookies.get(COOKIE))):
+        if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
+            return await call_next(request)
+        if path == "/api/health" or (
+            path != "/login" and (valid(request.cookies.get(COOKIE)) or valid(bearer))
+        ):
             return await call_next(request)
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Нужен вход по ссылке с токеном"}, status_code=401)
