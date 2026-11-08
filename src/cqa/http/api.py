@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, StrictBool
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.domain.scores_export import Shape
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import (
@@ -34,6 +35,7 @@ from cqa.services.state import (
     mode_from_settings,
     recommendations,
     report,
+    scores_csv,
 )
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
@@ -141,6 +143,20 @@ async def get_recommendations(
 ) -> dict[str, Any]:
     """Рекомендации оператору (id — имя), проверяющему, руководителю и автору чек-листа; без модели."""
     return recommendations(request.app.state.store, audience, operator)
+
+
+@router.get("/scores/export")
+async def get_scores_export(
+    request: Request,
+    fmt: Annotated[Literal["csv"], Query(alias="format")] = "csv",
+    shape: Shape = "wide",
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+) -> Response:
+    """Оценки для Excel: wide — строка на диалог, long — на пару диалог × критерий."""
+    version, body = scores_csv(request.app.state.store, shape, lang=lang, ch=ch)
+    disposition = f'attachment; filename="cqa-scores-v{version}.{fmt}"'
+    return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
 
 
 @router.post("/dialogs/text")
