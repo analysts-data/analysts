@@ -49,9 +49,12 @@
   ],
   "res": {"<criterion id>": "CriterionResult"},
   "reviewed": false,
-  "cost": {"calls": 10, "verifier_calls": 1, "usd": 0.0121, "ms": 41000}
+  "cost": {"calls": 10, "verifier_calls": 1, "usd": 0.0121, "ms": 41000},
+  "operator": "Алия К."
 }
 ```
+
+- `operator` — сотрудник, необязательное поле (нет поля — не указан). В записях организаторов его нет; источники по порядку: поле записи при загрузке (`POST /api/datasets`, `/upload`, автосинхронизация) — первое непустое из `operator`, `operator_id`, `agent`, `agent_id`, `agent_name`, `employee` (число — строкой); `PUT /api/dialogs/{id}/operator`; `POST /api/operators/import`. Повторная загрузка дописывает сотрудника только диалогу без него. Хранится в колонке `dialogs.operator`. Имя — данные пользователя: интерфейс и отчёты экранируют его, в запрос модели (и второго мнения, и Jev) оно не входит, обезличивание текста реплик прежнее.
 
 - `cost` — сумма по последней оценке диалога: вызовы основной модели, запросы второго мнения, цена в долларах и время. Это «стоимость одной оценки с учётом всех вызовов» из задания; интерфейс показывает её как есть. Цена второго мнения входит только сюда, по критериям она не делится: `CriterionResult.cost` — только основная модель.
 
@@ -117,8 +120,12 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
-| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
-| `GET /api/scores/export?format=csv&shape=wide\|long&lang=RU&ch=chat\|call` | — | оценки для Excel: CSV UTF-8 с BOM, `;`, ячейка с `= + - @` в начале — текстом; `attachment; filename="cqa-scores-v<n>.csv"`. `wide` (по умолчанию) — строка на диалог: ID, название, канал, язык, дата, итог, грубое нарушение и виды, нужна проверка, проверен, ответ по каждому критерию (заголовок — название из чек-листа); `long` — строка на оценённую пару диалог × критерий: ответ, доля, `why`, `ev`, `tag`, `better`, модель, решение проверяющего. Ответы и итог с учётом решений; другой формат, форма или канал — 422 |
+| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call&operator=<имя>` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang`, `ch` и `operator` необязательны (`operator=Не указан` — диалоги без сотрудника); без `format` — `html`; неизвестный формат или канал — 422 |
+| `PUT /api/dialogs/{id}/operator` | `{"operator": "…" \| null}` | `{operator}` после обрезки пробелов; `null` или пустая строка снимает назначение; неизвестный id — 404, длиннее 200 знаков — 422 |
+| `POST /api/operators/import` | CSV-текст или файл сырым телом: `conversation_id;operator` (UTF-8, разделитель `;` или `,`, строка заголовка `conversation_id` необязательна, пустой сотрудник снимает назначение) | `{updated, unknown_ids: [..]}`; не UTF-8 или нет ни одной строки — 422 |
+| `GET /api/operators` | — | `{definitions: {"<поле>": "<определение>"}, min_n: 5, operators: [OperatorRow]}` (раздел «По сотрудникам») |
+| `GET /api/operators/{name}` | — | OperatorRow и `dialog_ids: [..]`, `reasons` (как в отчёте), `definitions`, `min_n`; `Не указан` — диалоги без сотрудника; неизвестное имя — 404 |
+| `GET /api/scores/export?format=csv&shape=wide\|long&lang=RU&ch=chat\|call` | — | оценки для Excel: CSV UTF-8 с BOM, `;`, ячейка с `= + - @` в начале — текстом; `attachment; filename="cqa-scores-v<n>.csv"`. `wide` (по умолчанию) — строка на диалог: ID, название, канал, язык, дата, сотрудник (пусто — не указан), итог, грубое нарушение и виды, нужна проверка, проверен, ответ по каждому критерию (заголовок — название из чек-листа); `long` — строка на оценённую пару диалог × критерий: ответ, доля, `why`, `ev`, `tag`, `better`, модель, решение проверяющего. Ответы и итог с учётом решений; другой формат, форма или канал — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -128,8 +135,14 @@
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
 | `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
-| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data}` — режим оценки без ключей; провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
+| `GET /api/config` | — | `{llm_mode, llm_provider, providers, llm_base_url, llm_model, llm_profile, profiles, has_llm_key, data_where, anonymize, verifier, evaluator, has_jev_key, allow_real_data, features}` — режим оценки без ключей; `features` — ключи разделов, которые сервер умеет (`alerts`, `employees`, `audit`, `reports`, `usage`, `telemetry`, `docs`, `sources`, `batches`, `routing`, `automation`; ключ есть, если зарегистрирован его маршрут); провайдеры — раздел «Провайдеры моделей», `evaluator` — «Режим „только Jev“» |
 | `PUT /api/config` | `{llm_provider, verifier, evaluator, anonymize, jev_api_key, allow_real_data}` (раздел «Провайдеры моделей») | то же, что `GET /api/config`, после применения |
+| `GET /api/employees` | — | `[{id, name, role, team, active}]` по имени; раздел «Сотрудники и журнал действий» |
+| `PUT /api/employees/{id}` | `{name, role: "operator" \| "qa" \| "reviewer" \| "manager" \| "admin", team, active}` | сотрудник после записи: создан или изменён; пустое имя или другая роль — 422 |
+| `POST /api/employees/import` | CSV `id;name;role;team`, UTF-8 (BOM можно), первая строка `id;…` — заголовок | `{added, updated}`; ошибка в строке — 422 «Строка N: …», ничего не сохранено |
+| `GET /api/me` | — | `{id, name, role}` сотрудника из `X-CQA-User`; без входа `{id: null, name: "без входа", role: ""}` |
+| `GET /api/audit?actor=&action=&since=&limit=&format=json\|csv` | — | журнал новыми первыми: `[{id, at, actor_id, actor_name, role, action, target_type, target_id, details}]`; без `limit` json — 500 последних, csv — весь отбор (`attachment; filename="cqa-audit.csv"`) |
+| `GET /api/overview` | — | обзор работы: `{at, employees, teams, unattributed, workload}` |
 
 Ссылки организаторов на записи подписаны и живут около часа, поэтому в браузер они не уходят: интерфейс ходит только в `/audio` и `/player`. Сервер хранит `audio_url` в колонке таблицы `dialogs` и не отдаёт её ни в одном ответе. Если ссылку получить не удалось, `/audio` отвечает 502.
 
@@ -207,8 +220,42 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 ## Отчёт для руководства (eval-and-delivery)
 
-JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], strengths: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## По сотрудникам (eval-and-delivery)
+
+OperatorRow: `{operator, dialogs, n, avg_total, sd, ci95: [lo, hi] | null, ranked, reason: null | "<почему не ранжирован>", gross_errors, needs_review, appeals_open, weakest: [{cid, name, share}], trend: [{day, avg_total, dialogs}]}`.
+
+- Считается из того же текущего состояния, что `GET /api/state` и отчёт: ответы с учётом последнего решения, итог как в «Итог». Диалоги без `operator` — группа «Не указан».
+- `dialogs` — все диалоги сотрудника, `n` — оценённые (есть итог), `avg_total` — их средний итог (`null` при `n = 0`); `sd` — выборочное стандартное отклонение итога (делитель `n − 1`); `ci95` — 95 % доверительный интервал среднего по Стьюденту: `avg ± t(0,975; n − 1) · sd / √n`, обрезан до 0–100; при `n < 2` `sd` и `ci95` — `null`. Тексты определений сервер отдаёт в `definitions`, интерфейс показывает их в подсказках.
+- `ranked: true` только при `n ≥ min_n` (`MIN_SCORED = 5` в `src/cqa/domain/report.py`: при `n = 4` одна оценка сдвигает среднее на четверть шкалы, а интервал — ±1,6 стандартного отклонения) и известном сотруднике; иначе `reason`: «недостаточно данных (n=3, нужно ≥5)» или «сотрудник не указан». Порядок `operators`: ранжированные по возрастанию `avg_total` (кому нужна помощь — выше), затем остальные по убыванию `n`.
+- `gross_errors`, `needs_review`, `appeals_open` — как `risk.dialogs`, `needs_review`, `open_appeals` отчёта по его диалогам. `weakest` — до трёх критериев с наименьшей средней долей баллов ниже 1, худший первым. `trend` — по дням `ДД.ММ` из `at` в порядке календаря: средний итог и число оценённых диалогов дня (у чата `at` — время загрузки набора).
+- Раздел отчёта «По сотрудникам» — только ранжированные, и только если их не меньше двух: `attention` («требуют внимания», до 5 с меньшим средним итогом) и `strengths` («сильные стороны», до 3 с большим); списки не пересекаются, при малом числе сотрудников в `strengths` не больше половины. В таблицах — n, средний итог и 95 % интервал. Это не рейтинг: формулировок «лучший», «худший», «место» в интерфейсе и отчётах нет.
 
 ## Доступ по токену (eval-and-delivery)
 
 Пустой `CQA_ACCESS_TOKEN` — всё открыто, как раньше. Заданный: `GET /login?token=<токен>` — 302 на `/` и cookie `cqa_access` (HttpOnly, SameSite=Lax, path `/`), неверный токен — 401 со страницей входа без cookie. Без верной cookie `/api/*` — 401 `{"detail": "Нужен вход по ссылке с токеном"}`, остальные пути — 401, самодостаточная страница «Доступ по ссылке с токеном» без данных; `GET /api/health` открыт всегда. Сравнение — `hmac.compare_digest`, значение `token=` в журнале uvicorn заменено на `***`.
+
+## Сотрудники и журнал действий (eval-and-delivery)
+
+Текущий сотрудник — заголовок `X-CQA-User: <id>`, его шлёт интерфейс («Вы вошли как»). Пароля нет: в продукте личность даёт SSO / Dynamics 365 (Entra ID), заголовок ставит шлюз или встраивание, сервер ему доверяет. Нет заголовка, сотрудник неизвестен или `active: false` — без входа, всё как раньше: `by` и `reviewer` берутся из тела, в журнал пишется эта подпись (`actor_id: null`). Известный сотрудник: `by` апелляции и ручного ответа, `reviewer` решения — его `name`, подпись из тела не важна. Ролей и прав заголовок пока не проверяет.
+
+`Dialog.operator` — `name` сотрудника с ролью `operator`. Демо (`make demo`) загружает вымышленных сотрудников из `tests/e2e/fixtures/employees.csv`.
+
+Журнал (`audit`) только дополняется. Каждое удачное изменение и выгрузка пишет строку `{at: ISO +05:00, actor_id, actor_name, role, action, target_type, target_id, details}`; поля `details`, в имени которых есть key, token, secret или password, отбрасываются на любой глубине, ссылка API организаторов не пишется.
+
+| `action` | Путь | `target_type`, `target_id` | `details` |
+| --- | --- | --- | --- |
+| `dataset.load`, `dataset.source`, `dataset.upload`, `dataset.paste` | `POST /api/datasets`, `PUT /api/source`, `POST /api/datasets/upload`, `POST /api/dialogs/text` | `dataset`, `group_id` (у upload пусто); у paste — `dialog`, id | `{added, skipped}`; у paste `{ch}` |
+| `run.start`, `run.cancel` | `POST /api/runs`, `/cancel` | `run`, id | `{dialogs: число \| null, criteria}` |
+| `checklist.save` | `PUT /api/checklist` | `checklist`, версия | `{pending: число}` |
+| `appeal.file`, `appeal.decide`, `review.decide` | `POST /api/appeals`, `/decision`, `POST /api/decisions` | `appeal`, id | `{dlg, cid}`; у decide `{status}` |
+| `answer.manual` | `PUT /api/dialogs/{id}/answers/{cid}` | `dialog`, id | `{cid}` |
+| `dialog.reviewed`, `dialog.unreviewed` | `POST /api/dialogs/{id}/reviewed` | `dialog`, id | — |
+| `owners.save`, `config.save`, `provider.save`, `provider.delete` | `PUT /api/owners`, `PUT /api/config`, `PUT`, `DELETE /api/providers/{id}` | `owners`, `config`, `provider` и id | тело без ключей |
+| `employee.save`, `employee.import` | `PUT /api/employees/{id}`, `POST /api/employees/import` | `employee`, id | тело; у import `{added, updated}` |
+| `export` | `GET /api/report`, `/api/checklist/export`, `/api/scores/export`, `/api/audit?format=csv` | `report`, `checklist`, `scores`, `audit` и формат или версия | параметры выгрузки |
+
+Фильтры `GET /api/audit`: `actor` — `actor_id` или подпись без входа, `action` — точное имя, `since` — начало ISO-даты (`2026-11-08` или `2026-11-08T09:00`). CSV — UTF-8 с BOM и `;`, колонки как в json, `details` — JSON, ячейки с `= + - @` в начале — текстом.
+
+`GET /api/overview`: `employees` — `[{id, name, role, team, active, today: {"<action>": n}, week: {"<action>": n}, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed, median_decision_min}]`; `today` — с полуночи по Астане, `week` — 7 календарных дней с сегодняшним, счётчики — за всё время журнала (`decisions` — `appeal.decide` и `review.decide`), `median_decision_min` — медиана минут от `at` до `decidedAt` апелляций, решённых сотрудником, или `null`. `teams` — `[{team, employees, today, week, appeals_filed, decisions, manual_answers, checklist_saves, dialogs_reviewed}]` по имени команды, суммы её сотрудников. `unattributed` — `{today, week}` действий без входа. `workload` — `{pending_appeals, needs_review, unreviewed}`: апелляции на рассмотрении и диалоги «нужна проверка» как в отчёте для руководства, диалоги без отметки «проверен».

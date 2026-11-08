@@ -44,6 +44,19 @@ CREATE TRIGGER IF NOT EXISTS results_no_delete BEFORE DELETE ON results
   BEGIN SELECT RAISE(ABORT, 'результаты неизменяемы'); END;
 CREATE TRIGGER IF NOT EXISTS checklists_no_update BEFORE UPDATE ON checklists
   BEGIN SELECT RAISE(ABORT, 'версии чек-листа неизменяемы'); END;
+CREATE TABLE IF NOT EXISTS employees (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('operator', 'qa', 'reviewer', 'manager', 'admin')),
+  team TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor_id TEXT, actor_name TEXT NOT NULL,
+  role TEXT NOT NULL, action TEXT NOT NULL, target_type TEXT NOT NULL, target_id TEXT NOT NULL,
+  details_json TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS audit_at ON audit(at);
+CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit
+  BEGIN SELECT RAISE(ABORT, 'журнал действий только дополняется'); END;
+CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit
+  BEGIN SELECT RAISE(ABORT, 'журнал действий только дополняется'); END;
 """
 
 RunStatus = Literal["running", "done", "cancelled"]
@@ -79,6 +92,9 @@ def connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     conn.row_factory = sqlite3.Row
+    # миграция: сотрудник диалога появился после первых баз (data/demo.db, data/cqa.db)
+    if "operator" not in {row["name"] for row in conn.execute("PRAGMA table_info(dialogs)")}:
+        conn.execute("ALTER TABLE dialogs ADD COLUMN operator TEXT")
     return conn
 
 
@@ -91,21 +107,48 @@ class Store:
     # --- диалоги ---
 
     def add_dialogs(self, dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]:
-        """Сохранить новые диалоги, пропустить дубли по id. Возвращает (added, дубли)."""
+        """Сохранить новые диалоги, пропустить дубли по id. Возвращает (added, дубли).
+
+        У дубля дописывается только сотрудник, если его ещё нет: назначенного вручную повтор не меняет.
+        """
         added = duplicates = 0
         with self._conn:
             for dialog in dialogs:
                 exists = self._conn.execute("SELECT 1 FROM dialogs WHERE id = ?", (dialog.id,)).fetchone()
                 if exists is not None:
                     duplicates += 1
+                    self._conn.execute(
+                        "UPDATE dialogs SET operator = ? WHERE id = ? AND operator IS NULL",
+                        (dialog.operator, dialog.id),
+                    )
                     continue
-                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost"})
+                body = dialog.model_dump(mode="json", exclude={"res", "reviewed", "cost", "operator"})
                 self._conn.execute(
-                    "INSERT INTO dialogs (id, body, audio_url) VALUES (?, ?, ?)",
-                    (dialog.id, _dump(body), audio.get(dialog.id)),
+                    "INSERT INTO dialogs (id, body, audio_url, operator) VALUES (?, ?, ?, ?)",
+                    (dialog.id, _dump(body), audio.get(dialog.id), dialog.operator),
                 )
                 added += 1
         return added, duplicates
+
+    def set_operator(self, dialog_id: str, operator: str | None) -> None:
+        with self._conn:
+            cur = self._conn.execute("UPDATE dialogs SET operator = ? WHERE id = ?", (operator, dialog_id))
+            if cur.rowcount == 0:
+                raise KeyError(dialog_id)
+
+    def set_operators(self, pairs: Sequence[tuple[str, str | None]]) -> tuple[int, list[str]]:
+        """Назначить сотрудников одной транзакцией. Возвращает (обновлено, неизвестные id по порядку)."""
+        updated, unknown = 0, []
+        with self._conn:
+            for dialog_id, operator in pairs:
+                cur = self._conn.execute(
+                    "UPDATE dialogs SET operator = ? WHERE id = ?", (operator, dialog_id)
+                )
+                if cur.rowcount:
+                    updated += 1
+                else:
+                    unknown.append(dialog_id)
+        return updated, unknown
 
     def audio_url(self, dialog_id: str) -> str | None:
         row = self._conn.execute("SELECT audio_url FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
@@ -134,6 +177,7 @@ class Store:
         data = json.loads(row["body"])
         data["res"] = {}
         data["reviewed"] = bool(row["reviewed"])
+        data["operator"] = row["operator"]
         if row["cost"] is not None:
             data["cost"] = json.loads(row["cost"])
         else:
@@ -142,12 +186,14 @@ class Store:
 
     def get_dialog(self, dialog_id: str) -> Dialog | None:
         row = self._conn.execute(
-            "SELECT body, reviewed, cost FROM dialogs WHERE id = ?", (dialog_id,)
+            "SELECT body, reviewed, cost, operator FROM dialogs WHERE id = ?", (dialog_id,)
         ).fetchone()
         return self._dialog_from_row(row) if row is not None else None
 
     def list_dialogs(self) -> list[Dialog]:
-        rows = self._conn.execute("SELECT body, reviewed, cost FROM dialogs ORDER BY rowid").fetchall()
+        rows = self._conn.execute(
+            "SELECT body, reviewed, cost, operator FROM dialogs ORDER BY rowid"
+        ).fetchall()
         return [self._dialog_from_row(row) for row in rows]
 
     def set_reviewed(self, dialog_id: str, reviewed: bool) -> None:
@@ -364,3 +410,67 @@ class Store:
                     "ON CONFLICT(tag) DO UPDATE SET owner = excluded.owner",
                     (tag, owner),
                 )
+
+    # --- сотрудники и журнал действий ---
+
+    @staticmethod
+    def _employee(row: sqlite3.Row) -> dict[str, Any]:
+        return {**dict(row), "active": bool(row["active"])}
+
+    def employees(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute("SELECT * FROM employees ORDER BY name, id").fetchall()
+        return [self._employee(row) for row in rows]
+
+    def employee(self, employee_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute("SELECT * FROM employees WHERE id = ?", (employee_id,)).fetchone()
+        return self._employee(row) if row is not None else None
+
+    def put_employees(self, employees: Sequence[Mapping[str, Any]]) -> None:
+        """Добавить или заменить сотрудников одной транзакцией: `{id, name, role, team, active}`."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO employees (id, name, role, team, active) "
+                "VALUES (:id, :name, :role, :team, :active) "
+                "ON CONFLICT(id) DO UPDATE SET name = excluded.name, role = excluded.role, "
+                "team = excluded.team, active = excluded.active",
+                employees,
+            )
+
+    def add_audit(self, entry: Mapping[str, Any]) -> None:
+        """Строка журнала: at, actor_id, actor_name, role, action, target_type, target_id, details."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO audit (at, actor_id, actor_name, role, action, target_type, target_id, "
+                "details_json) VALUES (:at, :actor_id, :actor_name, :role, :action, :target_type, "
+                ":target_id, :details_json)",
+                {**entry, "details_json": _dump(entry["details"])},
+            )
+
+    def audit(
+        self,
+        *,
+        actor: str | None = None,
+        action: str | None = None,
+        since: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Новые первыми. `actor` — id сотрудника или подпись без входа, `since` — начало ISO-даты."""
+        rows = self._conn.execute(
+            "SELECT * FROM audit WHERE (:actor IS NULL OR actor_id = :actor OR actor_name = :actor) "
+            "AND (:action IS NULL OR action = :action) AND (:since IS NULL OR at >= :since) "
+            "ORDER BY id DESC LIMIT :limit",
+            {"actor": actor, "action": action, "since": since, "limit": -1 if limit is None else limit},
+        ).fetchall()
+        out = [dict(row) for row in rows]
+        for entry in out:
+            entry["details"] = json.loads(entry.pop("details_json"))
+        return out
+
+    def audit_counts(self, since: str | None = None) -> list[tuple[str | None, str, int]]:
+        """(actor_id, action, сколько) с `since`; actor_id None — действия без входа."""
+        rows = self._conn.execute(
+            "SELECT actor_id, action, COUNT(*) AS n FROM audit WHERE (:since IS NULL OR at >= :since) "
+            "GROUP BY actor_id, action",
+            {"since": since},
+        ).fetchall()
+        return [(row["actor_id"], row["action"], row["n"]) for row in rows]

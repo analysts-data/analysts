@@ -57,6 +57,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
 | `Runner.cancel` | там же | `cancel(run_id: int) -> dict` = `{"status": "cancelled"}`; `NotFound`; `Conflict`, если запуск уже завершён |
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
+| `Store.set_operator`, `Store.set_operators` | там же, eval-and-delivery | `set_operator(dialog_id, operator: str \| None)` — `KeyError` для неизвестного id; `set_operators(pairs: Sequence[tuple[str, str \| None]]) -> tuple[int, list[str]]` — `(обновлено, неизвестные id)` одной транзакцией |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
 
 `Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата.
@@ -145,10 +146,12 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 
 | Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
 | --- | --- | --- |
-| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается) | dialog-ingest через `Store.audio_url` |
+| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`, `operator`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается), `operator TEXT NULL` (сотрудник; старые базы получают колонку в `connect`) | dialog-ingest через `Store.audio_url` |
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
+| `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 
@@ -252,3 +255,14 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
+
+## Текущий сотрудник и журнал действий (eval-and-delivery, employees-audit)
+
+| Функция | Где | Что делает |
+| --- | --- | --- |
+| `actor_from(request, sign="") -> Actor` | `src/cqa/http/actor.py` | активный сотрудник из `X-CQA-User`; иначе `Actor(None, sign or "без входа")` |
+| `signed(actor, sign) -> str` | `src/cqa/http/actor.py` | подпись записи (`by`, `reviewer`): имя сотрудника, без входа — `sign` |
+| `Actor(id: str \| None, name: str, role: str = "")` | `src/cqa/services/audit.py` | frozen dataclass |
+| `record(store, actor, action, target_type, target_id, details=None) -> None` | `src/cqa/services/audit.py` | строка журнала; ключи с key/token/secret/password в `details` отбрасываются |
+
+Каждый новый изменяющий путь и выгрузка вызывает `record` после удачного действия; `action` — `<объект>.<глагол>`, выгрузка — `export`. Имена действий и `details` — таблица в разделе контракта «Сотрудники и журнал действий».
