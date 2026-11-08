@@ -79,16 +79,16 @@ def item(page: Page, cid: str) -> Locator:
 
 def test_weight_change_shows_sum_and_changed_mark_and_reset_restores(page: Page, web_url: str) -> None:
     open_checklist(page, web_url)
-    expect(page.get_by_text("Сумма весов 100")).to_be_visible()
+    expect(page.get_by_text("Сумма весов 100", exact=True)).to_be_visible()
     item(page, "04").click()
     page.locator("#cf-w").fill("25")
     page.locator("#cf-w").press("Tab")
-    expect(page.get_by_text("Сумма весов 105")).to_be_visible()
+    expect(page.get_by_text("Сумма весов 105", exact=True)).to_be_visible()
     expect(page.get_by_text("Итог всё равно приводится к 100")).to_be_visible()
     expect(item(page, "04")).to_contain_text("изменён")
     expect(item(page, "03")).not_to_contain_text("изменён")
     page.locator('[data-act="creset"]').click()
-    expect(page.get_by_text("Сумма весов 100")).to_be_visible()
+    expect(page.get_by_text("Сумма весов 100", exact=True)).to_be_visible()
     expect(item(page, "04")).not_to_contain_text("изменён")
 
 
@@ -115,10 +115,10 @@ def test_add_and_delete_criterion(page: Page, web_url: str) -> None:
     expect(page.locator("#cf-w")).to_have_value("5")
     expect(page.locator("#cf-na")).not_to_be_checked()
     expect(page.locator("#cf-ch")).to_have_value("all")
-    expect(page.get_by_text("Сумма весов 105")).to_be_visible()
+    expect(page.get_by_text("Сумма весов 105", exact=True)).to_be_visible()
     page.locator('[data-act="cdel"]').click()
     expect(item(page, "09")).to_have_count(0)
-    expect(page.get_by_text("Сумма весов 100")).to_be_visible()
+    expect(page.get_by_text("Сумма весов 100", exact=True)).to_be_visible()
 
 
 TEXT_04 = "Оцените ответ и названный срок по шкале."
@@ -237,6 +237,20 @@ def test_deleted_pending_criterion_leaves_the_banner(page: Page, web_url: str) -
     expect(page.locator('[data-view="checklist"] .sub')).to_contain_text("Версия 5 применяется")
     expect(page.locator('[data-act="crun"]')).to_have_count(0)
     expect(page.locator('[data-view="checklist"]')).not_to_contain_text("ждёт оценки")
+
+
+def test_unevaluated_criterion_banner_comes_from_data_not_from_save(page: Page, web_url: str) -> None:
+    """После перезагрузки баннер тот же: критерий без записи в диалогах ждёт оценки без сохранения."""
+    api = Api(page)
+    for d in api.state["dialogs"][:2]:
+        d["res"].pop("04")
+    page.goto(f"{web_url}/#/checklist")
+    expect(item(page, "04")).to_contain_text("ждёт оценки")
+    expect(item(page, "03")).not_to_contain_text("ждёт оценки")
+    expect(page.locator('[data-view="checklist"]')).to_contain_text("в 2 диалогах")
+    page.locator('[data-act="crun"]').click()
+    expect(page.locator("#toast")).to_have_text("Оценка запущена.")
+    assert api.runs == [{"dialogs": None, "criteria": ["04"]}]
 
 
 def test_stop_cancels_pending_run(page: Page, web_url: str) -> None:
@@ -359,7 +373,7 @@ def import_file(page: Page, body: bytes) -> None:
 
 
 def export_menu(page: Page) -> Locator:
-    page.locator('[data-view="checklist"] summary', has_text="Экспорт").click()
+    page.locator('[data-view="checklist"] summary', has_text="Файл").click()
     return page.locator('[data-view="checklist"] .menu-pop')
 
 

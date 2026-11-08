@@ -99,7 +99,7 @@ export function PageHead({ title, sub, children }: { title: ReactNode; sub?: Rea
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-md bg-hover', className)} aria-hidden="true" />;
+  return <div className={cn('rounded-md bg-hover', className)} aria-hidden="true" />;
 }
 
 export function Empty({ children, action }: { children: ReactNode; action?: ReactNode }) {
@@ -130,7 +130,7 @@ export function Modal({
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-[rgba(10,16,13,.45)] backdrop-blur-[1px]" />
+        <D.Overlay className="fixed inset-0 z-40 bg-[rgba(10,16,13,.45)]" />
         <D.Content
           className={cn(
             'fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-surface text-ink shadow-pop',

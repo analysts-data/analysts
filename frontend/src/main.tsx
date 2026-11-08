@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app';
 import { resolveBase } from './lib/api.js';
 import { api, init, reload, resumeRun } from './lib/state.js';
-import './i18n';
+import { langReady } from './i18n';
 import { homeOf, paintTheme, S, rerender } from './store';
 
 const root = document.querySelector('cqa-app') as HTMLElement;
@@ -14,7 +14,7 @@ paintTheme();
 
 if (!location.hash || location.hash === '#/' || location.hash === '#') history.replaceState(null, '', homeOf(S.role));
 
-createRoot(root).render(<App />);
+langReady.then(() => createRoot(root).render(<App />));
 reload();
 resumeRun(); // перезагрузка во время оценки: продолжаем опрос запомненного запуска
 // llm_mode задаёт .env и из интерфейса не меняется: хватит одного запроса
