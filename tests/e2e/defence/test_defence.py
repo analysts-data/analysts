@@ -32,6 +32,18 @@ def test_set_is_loaded_and_evaluated(defence_api: httpx.Client) -> None:
     assert {x["id"]: set(x["res"]) for x in state["dialogs"]} == {x["id"]: criteria for x in state["dialogs"]}
 
 
+def test_every_dialog_gets_a_topic_with_basis_from_recorded_answers(defence_api: httpx.Client) -> None:
+    """Темы демо-набора — из кассет: запуск оценки сразу определяет тему и маркеры риска каждого диалога."""
+    dialogs = defence_api.get("/api/state").raise_for_status().json()["dialogs"]
+    topics = {x["id"]: x.get("product") or {} for x in dialogs}
+    assert {i: t.get("status") for i, t in topics.items()} == {i: "done" for i in topics}, topics
+    known = {p["id"] for p in defence_api.get("/api/products").raise_for_status().json()}
+    assert all(t["id"] in known and t["basis"].get("why") for t in topics.values())
+    assert all(isinstance(x.get("risks"), list) for x in dialogs)
+    stats = defence_api.get("/api/products/stats").raise_for_status().json()
+    assert sum(s["dialogs"] for s in stats) == len(dialogs)
+
+
 def test_defence_4m30(defence: Defence) -> None:
     steps.mode_and_roles(defence)
     for step, _ in VERSION_4M30:
