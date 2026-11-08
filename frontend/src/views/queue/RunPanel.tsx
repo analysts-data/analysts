@@ -9,6 +9,7 @@ import { api, cancelRun, failedDialogs, reload, resumeRun, runNote, startRun, to
 import { S as STATE, save, useS } from '../../store';
 import { Button, Card, Modal } from '../../ui';
 import { DIALOGS, plural, type Row } from './order';
+import { InsufficientNote } from '../SufficiencyChip';
 
 /**
  * Диалог в идущем прогоне ещё оценивается. Состояние по диалогам из GET /api/runs/{id} (`dialogs`: {id: status}
@@ -150,6 +151,7 @@ export function RunPanel({ all, dialogs, pending }: { all: Row[]; dialogs: strin
               {eta}
               {run.errors.length ? t(', ошибок: {n}', { n: run.errors.length }) : ''}
             </span>
+            <InsufficientNote run={run} />
             {run.skipped > 0 && <span className="basis-full text-xs text-muted">{t('Не перезаписаны ручные ответы и ответы с апелляцией: {n}', { n: run.skipped })}</span>}
           </div>
           <Bar pct={run.total ? (100 * run.done) / run.total : 0} label={t('Прогресс оценки')} />
