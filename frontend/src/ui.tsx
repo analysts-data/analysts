@@ -89,7 +89,8 @@ export function Field({ label, hint, className, children }: { label: ReactNode; 
 export function PageHead({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
-      <div className="min-w-0">
+      {/* подзаголовок переносится, а не выталкивает действия на новую строку, пока заголовку хватает 16rem */}
+      <div className="min-w-0 flex-1 basis-64">
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         {sub && <p className="mt-0.5 text-muted">{sub}</p>}
       </div>
