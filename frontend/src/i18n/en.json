@@ -1792,5 +1792,13 @@
   "Если поднять «{name}» до максимума во всех {n} диалогах, где он применим, средний итог вырастет на {uplift} балла: с {base} до {after}.": "If «{name}» is raised to the maximum in all {n} dialogs where it applies, the average score rises by {uplift} points: from {base} to {after}.",
   "Казахский": "Kazakh",
   "Английский": "English",
-  "Причины: {list}": "Reasons: {list}"
+  "Причины: {list}": "Reasons: {list}",
+  "Вставить текст": "Paste text",
+  "Вставьте переписку из чата или расшифровку звонка: реплики и роли разберутся сами.": "Paste a chat transcript or a call transcription: turns and speakers are detected automatically.",
+  "Выбрать файл": "Choose file",
+  "Выгрузка диалогов в формате организаторов.": "A dialog export in the organisers’ format.",
+  "Диалогов пока нет. Добавьте их одним из способов:": "No dialogs yet. Add them in one of these ways:",
+  "По коду набора, например DEV. Со ссылкой API набор обновляется раз в 5 минут.": "By set code, e.g. DEV. With an API link the set refreshes every 5 minutes.",
+  "Файл JSON": "JSON file",
+  "Примеры хороших ответов появятся, когда модель даст полный балл с цитатой оператора.": "Examples of good answers appear once the model gives full marks with a quote from the agent."
 }
