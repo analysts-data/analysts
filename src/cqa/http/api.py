@@ -288,8 +288,9 @@ async def get_customer_cases(request: Request) -> list[dict[str, Any]]:
             reasons.append({"code": "risk", "label": "В диалоге отмечен риск; проверьте основание"})
         priority = min(100, 30 * (len(items) > 1) + 25 * bool(repeated_topic) + 35 * bool(unresolved_count) + 25 * any(d.risks for d in items))
 
+        actionable_items = [d for d in items if d.case_status in ("open", "in_progress")]
         client_lines = []
-        for d in items:
+        for d in actionable_items:
             for line in (d.lines or []):
                 if getattr(line, "who", None) == "client":
                     client_lines.append((d, line))
@@ -305,7 +306,7 @@ async def get_customer_cases(request: Request) -> list[dict[str, Any]]:
                     if len(normalized) >= 2 and normalized in phrase:
                         matched_keywords.add(keyword)
                         evidence.append({"dialog_id": d.id, "line": line.n, "text": line.text[:500], "match": keyword})
-            matched_topics = [d for d in items if d.product and d.product.id in offer.topic_ids]
+            matched_topics = [d for d in actionable_items if d.product and d.product.id in offer.topic_ids]
             for d in matched_topics:
                 ev_numbers = set(d.product.basis.ev if d.product else [])
                 for line in (d.lines or []):
