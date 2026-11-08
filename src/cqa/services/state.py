@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
+from cqa.domain.alerts import DEFAULT_RULES, AlertRule, DialogView, dialog_view
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.recommend import for_checklist, for_manager, for_operator, for_qa
 from cqa.domain.report import (
@@ -121,6 +122,25 @@ def recommendations(store: Store, audience: Audience, operator: str | None) -> d
     return for_checklist(checklist, dialogs, appeals)
 
 
+def alert_rules(store: Store) -> list[AlertRule]:
+    """Правила алертов из базы (`PUT /api/alerts/rules` сохраняет уже проверенные), иначе по умолчанию."""
+    raw = store.get_list("alert_rules")
+    return list(DEFAULT_RULES) if raw is None else [AlertRule.model_validate(r) for r in raw]
+
+
+def dialog_views(
+    store: Store, checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]
+) -> list[DialogView]:
+    """Итог и маркеры каждого диалога; пороги маркеров — из правил алертов."""
+    rules, manual, prosody = alert_rules(store), store.markers(), store.all_prosody()
+    return [
+        dialog_view(
+            checklist, d, appeals, prosody=prosody.get(d.id), manual=manual.get(d.id, []), rules=rules
+        )
+        for d in dialogs
+    ]
+
+
 def operator_rows(store: Store) -> dict[str, Any]:
     return {"definitions": DEFINITIONS, "min_n": MIN_SCORED, "operators": operators(*current_state(store))}
 
@@ -141,12 +161,14 @@ def scores_csv(store: Store, shape: Shape, *, lang: str | None, ch: str | None) 
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:
     checklist, dialogs, appeals = current_state(store)
+    markers = [v.markers for v in dialog_views(store, checklist, dialogs, appeals)]
     status = store.latest_dialog_status()  # eval_status: диалог в последнем запуске, где он был
     return {
         "checklist": checklist.model_dump(mode="json", exclude_none=True),
         "versions": store.list_versions(),
         "dialogs": [
-            {**d.model_dump(mode="json", exclude_none=True), "eval_status": status.get(d.id)} for d in dialogs
+            {**d.model_dump(mode="json", exclude_none=True), "eval_status": status.get(d.id), "markers": m}
+            for d, m in zip(dialogs, markers, strict=True)
         ],
         "appeals": [
             a.model_dump(mode="json", by_alias=True, exclude={"ask"} if a.kind == "review" else None)

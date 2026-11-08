@@ -2,6 +2,7 @@
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
 import json
+import logging
 import time
 from dataclasses import asdict
 from datetime import UTC, date, datetime
@@ -28,7 +29,7 @@ from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
-from cqa.services import reports
+from cqa.services import alerts, reports
 from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
@@ -77,6 +78,7 @@ from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 
 Owner = Literal["Не назначено", "Инструкция", "Сервис", "Продукт"]
 # ответ bool или scale; флаг — объект {"<k>": true | false}, строгие bool: 0 и "false" дают 422
@@ -429,6 +431,14 @@ def _appeal_out(appeal: Appeal) -> dict[str, Any]:
     return appeal.model_dump(mode="json", by_alias=True, exclude={"ask"} if appeal.kind == "review" else None)
 
 
+async def _after_change(request: Request) -> None:
+    """Проверка алертов после апелляций и маркеров; её сбой не отменяет уже сохранённое действие."""
+    try:
+        await request.app.state.alerts()
+    except Exception:
+        log.exception("проверка алертов")
+
+
 @router.get("/appeals/reasons", summary="Каталог кодов причин решений")
 async def get_reasons(request: Request) -> list[ReasonCode]:
     return reasons(request.app.state.store)
@@ -453,6 +463,7 @@ async def post_appeal(body: AppealIn, request: Request) -> dict[str, Any]:
     fields = {**body.model_dump(), "by": signed(actor, body.by)}
     appeal = file_appeal(request.app.state.store, **fields, now=datetime.now(ASTANA))
     _log(request, "appeal.file", "appeal", appeal.id, {"dlg": appeal.dlg, "cid": appeal.cid}, actor)
+    await _after_change(request)
     return _appeal_out(appeal)
 
 
@@ -463,6 +474,7 @@ async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> d
     appeal = decide(request.app.state.store, appeal_id, **fields, now=datetime.now(ASTANA))
     details = {"status": appeal.status} | ({"reason_code": appeal.reason_code} if appeal.reason_code else {})
     _log(request, "appeal.decide", "appeal", appeal.id, details, actor)
+    await _after_change(request)
     return _appeal_out(appeal)
 
 
@@ -472,7 +484,113 @@ async def post_review(body: ReviewIn, request: Request) -> dict[str, Any]:
     fields = {**body.model_dump(exclude={"from_"}), "reviewer": signed(actor, body.reviewer)}
     review = record_review(request.app.state.store, frm=body.from_, **fields, now=datetime.now(ASTANA))
     _log(request, "review.decide", "appeal", review.id, {"dlg": body.dlg, "cid": body.cid}, actor)
+    await _after_change(request)
     return _appeal_out(review)
+
+
+# --- маркеры и алерты ---
+
+ROLE = "Специалист КК"
+
+
+class MarkersIn(BaseModel):
+    add: list[str] = []
+    remove: list[str] = []
+    by: str = ROLE
+
+
+class ByIn(BaseModel):
+    by: str = ROLE
+
+
+class ResolveIn(ByIn):
+    note: str = ""
+
+
+class AssigneeIn(BaseModel):
+    assignee: str | None
+
+
+def _fields(result: tuple[object, list[dict[str, Any]]]) -> Response:
+    """Ошибки по полям — 422 в форме ошибок FastAPI: {detail: [{loc, msg}]}."""
+    ok, errors = result
+    return JSONResponse({"detail": errors}, status_code=422) if errors else JSONResponse(ok)
+
+
+@router.get("/markers/catalog", summary="Список ручных маркеров")
+async def get_catalog(request: Request) -> list[str]:
+    return alerts.catalog(request.app.state.store)
+
+
+@router.put("/markers/catalog", summary="Сохранить список ручных маркеров")
+async def put_catalog(raw: Annotated[Any, Body()], request: Request) -> Response:
+    errors = alerts.check_catalog(raw)
+    if errors:
+        return _fields(([], errors))
+    _log(request, "markers.catalog", "markers", "", {"labels": raw})
+    return _fields((alerts.put_catalog(request.app.state.store, raw), []))
+
+
+@router.put("/dialogs/{dialog_id}/markers", summary="Поставить и снять ручные маркеры диалога")
+async def put_markers(dialog_id: str, body: MarkersIn, request: Request) -> dict[str, Any]:
+    store, actor = request.app.state.store, actor_from(request, body.by)
+    by, now = signed(actor, body.by), datetime.now(ASTANA)
+    alerts.change_markers(store, dialog_id, add=body.add, remove=body.remove, by=by, now=now)
+    _log(request, "markers.change", "dialog", dialog_id, {"add": body.add, "remove": body.remove}, actor)
+    await _after_change(request)
+    return {"markers": alerts.markers_of(store, dialog_id)}
+
+
+@router.get("/alerts/rules", summary="Правила алертов")
+async def get_rules(request: Request) -> list[dict[str, Any]]:
+    return alerts.rules_out(request.app.state.store)
+
+
+@router.put("/alerts/rules", summary="Сохранить правила алертов")
+async def put_rules(raw: Annotated[Any, Body()], request: Request) -> Response:
+    saved, errors = alerts.put_rules(request.app.state.store, raw)
+    if not errors:
+        _log(request, "alerts.rules", "alert_rules", "", {"rules": [r["id"] for r in saved]})
+    return _fields((saved, errors))
+
+
+@router.post("/alerts/evaluate", summary="Проверить правила алертов сейчас")
+async def post_evaluate(request: Request) -> dict[str, Any]:
+    return {"created": await request.app.state.alerts()}
+
+
+@router.get("/alerts", summary="Алерты и счётчики колокольчика")
+async def get_alerts(
+    request: Request,
+    status: Literal["new", "ack", "resolved"] | None = None,
+    severity: Literal["info", "warning", "critical"] | None = None,
+) -> dict[str, Any]:
+    return alerts.list_alerts(request.app.state.store, status, severity)
+
+
+@router.post("/alerts/{alert_id}/ack", summary="Принять алерт")
+async def post_ack(alert_id: int, body: ByIn, request: Request) -> dict[str, Any]:
+    actor = actor_from(request, body.by)
+    store, by = request.app.state.store, signed(actor, body.by)
+    alert = alerts.move(store, alert_id, "ack", by=by, now=datetime.now(ASTANA))
+    _log(request, "alert.ack", "alert", alert_id, None, actor)
+    return alert
+
+
+@router.post("/alerts/{alert_id}/resolve", summary="Закрыть алерт с заметкой")
+async def post_resolve(alert_id: int, body: ResolveIn, request: Request) -> dict[str, Any]:
+    actor = actor_from(request, body.by)
+    store, by, now = request.app.state.store, signed(actor, body.by), datetime.now(ASTANA)
+    alert = alerts.move(store, alert_id, "resolved", by=by, note=body.note, now=now)
+    _log(request, "alert.resolve", "alert", alert_id, None, actor)
+    return alert
+
+
+@router.put("/alerts/{alert_id}/assignee", summary="Назначить ответственного за алерт")
+async def put_assignee(alert_id: int, body: AssigneeIn, request: Request) -> dict[str, Any]:
+    alert = alerts.assign(request.app.state.store, alert_id, body.assignee)
+    _log(request, "alert.assign", "alert", alert_id, {"assignee": alert["assignee"]})
+    return alert
 
 
 @router.put("/dialogs/{dialog_id}/answers/{cid}", summary="Ручной ответ по критерию")
