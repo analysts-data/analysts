@@ -10,9 +10,10 @@ import { api, cancelRun, failedDialogs, reload, runNote, startRun, toast } from 
 import { rerender, useS } from '../store';
 import { Button, Card, Chip, cn, PageHead } from '../ui';
 import { Dlg } from './checklist/Dlg';
-import { Editor, RulesEditor, setDraft, SIGNAL_CHIP, TIP } from './checklist/Editor';
+import { TERMS } from '../terms';
+import { Editor, RulesEditor, setDraft, SIGNAL_CHIP } from './checklist/Editor';
 
-const TYPE_NAME: Record<string, string> = { bool: 'Да/Нет', scale: 'Шкала', flag: 'Флаг' };
+const TYPE_NAME: Record<string, string> = { bool: 'Да/Нет', scale: 'Шкала', flag: 'Грубая ошибка' };
 const scored = (cs: any[]) => cs.filter(c => c.type !== 'flag');
 const wsum = (cs: any[]) => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -141,7 +142,7 @@ export function Checklist() {
       link.download = `questions-v${S.draft.version}.json`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      if (S.draft.criteria.some((x: any) => x.type === 'flag')) toast('Флаги экспортированы отдельными noul-вопросами с ID «критерий_подвопрос».');
+      if (S.draft.criteria.some((x: any) => x.type === 'flag')) toast('Грубые ошибки экспортированы отдельными noul-вопросами с ID «критерий_подвопрос».');
     } catch (err) {
       toast(`Экспорт не выполнен: ${err.message}`);
     }
@@ -152,7 +153,7 @@ export function Checklist() {
       <PageHead
         title="Чек-лист качества"
         sub={
-          <span className="sub" title={TIP.version}>
+          <span className="sub" title={TERMS.version}>
             {qa ? '' : 'Как оценивается ваша работа. '}Версия {cl.version} применяется к набору. Изменения сохраняются новой версией.
           </span>
         }
@@ -299,7 +300,7 @@ export function Checklist() {
             )}
           </div>
           <div className="flex flex-col gap-1 px-2.5 pb-1 pt-3 text-[13px]">
-            <span className="text-xs font-semibold text-muted" title={TIP.version}>
+            <span className="text-xs font-semibold text-muted" title={TERMS.version}>
               Версии
             </span>
             {S.versions
@@ -309,7 +310,7 @@ export function Checklist() {
                 <span key={v.v} className="flex flex-wrap items-center gap-1.5">
                   v{v.v}: {v.note}{' '}
                   {v.v === cl.version ? (
-                    <Chip tone="ok" title={TIP.version}>
+                    <Chip tone="ok" title={TERMS.version}>
                       применяется
                     </Chip>
                   ) : (
@@ -385,7 +386,7 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
   return (
     <Menu label="Экспорт" icon={<Download size={16} aria-hidden="true" />} pop="menu-pop">
       <label className="mb-1 flex flex-col gap-1.5 px-2.5 pt-1">
-        <span className="text-[13px] font-semibold text-ink2" title={TIP.version}>
+        <span className="text-[13px] font-semibold text-ink2" title={TERMS.version}>
           Сохранённая версия
         </span>
         <select className="fld" value={sel} onChange={e => setV(Number(e.currentTarget.value))}>

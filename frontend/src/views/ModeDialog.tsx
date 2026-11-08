@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { configBody, providerBody, risks, whereOf } from '../lib/config.js';
 import { api, reload, toast } from '../lib/state.js';
+import { useS } from '../store';
+import { Term, TERMS } from '../terms';
 import { Button, Chip, Field } from '../ui';
 import { Dlg } from './checklist/Dlg';
 
@@ -22,6 +24,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [edit, setEdit] = useState<any>(null); // модель в форме: объект провайдера или {} для новой
   const [checks, setChecks] = useState<Record<string, { ok: boolean; text: string }>>({});
   const close = () => onOpenChange(false);
+  const qa = useS().role === 'qa'; // режим меняет только специалист КК: плашку у других ролей шапка не делает кнопкой
 
   const load = async () => {
     try {
@@ -32,14 +35,14 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     }
   };
   useEffect(() => {
-    if (open) load();
+    if (open && qa) load();
     else {
       setCfg(null);
       setEdit(null);
       setChecks({});
     }
   }, [open]);
-  if (!open || !cfg) return null;
+  if (!open || !cfg || !qa) return null;
 
   const saveMode = async (form: HTMLFormElement) => {
     const fd = new FormData(form);
@@ -173,7 +176,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       key="mode"
       wide
       title="Режим оценки"
-      sub="Применяется сразу, без перезапуска сервера. Ключи хранятся на сервере и в браузер не возвращаются."
+      sub="Какая модель оценивает диалоги и куда уходят данные. Применяется сразу, без перезапуска сервера. Ключи хранятся на сервере и в браузер не возвращаются."
       onClose={close}
       onSubmit={saveMode}
       footer={
@@ -187,6 +190,11 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         </>
       }
     >
+      {cfg.llm_mode !== 'live' && (
+        <p className="box ev" title={TERMS.replay}>
+          Демо-режим: модель не вызывается, показаны записанные ответы. Настройки подключения ниже не используются.
+        </p>
+      )}
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1.5 text-[13px] font-semibold text-ink2">Оценщик</legend>
         {EVALUATORS.map(([v, t, hint]) => (
@@ -247,7 +255,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </Button>
         </div>
       </fieldset>
-      <Field label="Второе мнение" hint="Ещё один ответ на диалог; расхождения уходят в «Нужна проверка». В режиме «Только Jev» не используется.">
+      <Field label={<Term k="second">Второе мнение</Term>} hint="Ещё один ответ на диалог; расхождения уходят в «Нужна проверка человека». В режиме «Только Jev» не используется.">
         <select name="verifier" className={fld} defaultValue={cfg.verifier || ''}>
           {second.map(([v, t]) => (
             <option key={v} value={v}>
@@ -262,7 +270,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       <label className="flex items-baseline gap-2 text-sm">
         <input type="checkbox" name="anonymize" defaultChecked={cfg.anonymize} />
         <span>
-          Обезличивать транскрипты перед отправкой модели
+          <Term k="anon">Обезличивать транскрипты</Term> перед отправкой модели
           <span className="block text-xs text-muted">Имена, телефоны, почта, номера карт, IBAN и ИИН заменяются метками до запроса.</span>
         </span>
       </label>
@@ -273,7 +281,6 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           <span className="block text-xs text-muted">Без отметки реальные звонки модели не отправляются. Включение попросит подтверждение.</span>
         </span>
       </label>
-      {cfg.llm_mode !== 'live' && <p className="box ev">Сервер запущен в режиме {cfg.llm_mode}: модель отвечает записанными ответами, адрес и ключ не используются.</p>}
     </Dlg>
   );
 }

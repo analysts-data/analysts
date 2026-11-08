@@ -2,19 +2,22 @@
 // Ступени шкалы, подвопросы флага и уточнение для звонка — неуправляемые поля: их текст не равен тому,
 // что лежит в черновике (разбор строк, пустое = нет ключа), поэтому поле держит набранное как есть,
 // а пересоздаётся, когда черновик заменён целиком (S.cEpoch) или выбран другой критерий.
+import { useEffect, useRef } from 'react';
 import { syncJev } from '../../lib/checklist_json.js';
 import { rerender, S } from '../../store';
+import { Term } from '../../terms';
 import { Button, Card, Chip, Field } from '../../ui';
 
-export const SIGNALS = [
+const SIGNALS = [
   ['', 'Нет'],
-  ['resolution', 'Решение запроса'],
-  ['risk', 'Риск'],
+  ['resolution', 'Решение запроса (группа «Без следующего шага»)'],
+  ['risk', 'Грубая ошибка'],
 ];
+export const SIGNAL_CHIP: Record<string, string> = { resolution: 'Решение запроса', risk: 'Грубая ошибка' };
 const TYPES = [
   ['bool', 'Да / Нет'],
   ['scale', 'Шкала'],
-  ['flag', 'Флаг нарушения, без баллов'],
+  ['flag', 'Грубая ошибка, без баллов'],
 ];
 const CHANNELS = [
   ['all', 'Все каналы'],
@@ -79,16 +82,22 @@ function setField(c: any, k: string, t: HTMLInputElement | HTMLSelectElement | H
 export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
   const on = (k: string) => (e: { currentTarget: any }) => setField(c, k, e.currentTarget);
   const key = `${c.id}:${S.cEpoch || 0}`;
+  const name = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!S.cFocus) return; // только что добавленный критерий: сразу вводить название
+    S.cFocus = false;
+    name.current?.focus();
+  });
   return (
     <Card className="p-5" aria-label="Редактор критерия">
       <fieldset className="flex min-w-0 flex-col gap-4" disabled={readOnly}>
         <legend className="mb-3 flex w-full flex-wrap items-center justify-between gap-2">
           <span className="text-base font-semibold">Критерий {c.id}</span>
-          {readOnly && <Chip tone="na">Только просмотр: редактирует специалист КК</Chip>}
+          {readOnly && <Chip tone="na">Только просмотр</Chip>}
         </legend>
         <div className="grid gap-3.5 sm:grid-cols-2">
           <Field label="Название" hint="Видят оператор и проверяющий; модель название не получает.">
-            <input id="cf-name" className="fld" value={c.name} onChange={on('name')} />
+            <input id="cf-name" ref={name} className="fld" value={c.name} placeholder="Например: Назвал срок решения" onChange={on('name')} />
           </Field>
           <Field label="Секция">
             <select id="cf-sec" className="fld" value={String(c.sec)} onChange={on('sec')}>
@@ -96,14 +105,14 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
             </select>
           </Field>
         </div>
-        <Field label="Что проверяем" hint="Этот текст модель получает дословно. Названий критериев нет ни в коде, ни в промпте.">
-          <textarea id="cf-text" className="fld" value={c.text} onChange={on('text')} />
+        <Field label="Что проверяем" hint="Модель получает этот текст дословно.">
+          <textarea id="cf-text" className="fld" value={c.text} placeholder="Да: оператор … Нет: …" onChange={on('text')} />
         </Field>
-        <Field label="Уточнение для звонка" hint="Необязательно. Модель получает его только на звонках, запрос по чатам не меняется.">
+        <Field label={<Term k="call">Уточнение для звонка</Term>} hint="Необязательно. Модель получает его только на звонках, запрос по чатам не меняется.">
           <textarea key={key} id="cf-call" className="fld min-h-16" defaultValue={c.call || ''} onChange={on('call')} />
         </Field>
         <div className="grid gap-3.5 sm:grid-cols-2">
-          <Field label="Тип ответа" hint={c.type === 'flag' ? 'Флаг не даёт баллов: он помечает грубую ошибку.' : undefined}>
+          <Field label="Тип ответа" hint={c.type === 'flag' ? 'Не даёт баллов: помечает диалог и ставит его первым в очередь.' : undefined}>
             <select id="cf-type" className="fld" value={c.type} onChange={on('type')}>
               {opts(TYPES)}
             </select>
@@ -120,11 +129,11 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
           <div className="box na flex flex-col gap-2">
             <label className="flex flex-wrap items-center gap-x-2 font-semibold">
               <input id="cf-na" type="checkbox" checked={!!c.na} onChange={on('na')} />
-              N/A разрешён
+              Может быть <Term k="na">N/A</Term> (не применимо)
               <span className="basis-full text-xs font-normal text-muted">Если условие выполнено, критерий не оценивается, а его вес делят остальные.</span>
             </label>
             {c.na && (
-              <Field label="Условие N/A">
+              <Field label="Когда N/A">
                 <input id="cf-nac" className="fld" value={c.naCond || ''} onChange={on('naCond')} />
               </Field>
             )}
@@ -136,7 +145,7 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
           </Field>
         )}
         {c.type === 'flag' && (
-          <Field label="Подвопросы, по строке на вид нарушения" hint="Каждый подвопрос идёт к модели отдельно. Флаг ставится, если выполнен хотя бы один.">
+          <Field label="Подвопросы, по строке на вид нарушения" hint="Каждый подвопрос идёт к модели отдельно. Грубая ошибка отмечается, если найден хотя бы один вид.">
             <textarea key={key} id="cf-q" className="fld" defaultValue={(c.questions || []).map((q: any) => q.label).join('\n')} onChange={on('questions')} />
           </Field>
         )}
@@ -146,10 +155,7 @@ export function Editor({ c, readOnly }: { c: any; readOnly: boolean }) {
               {opts(CHANNELS)}
             </select>
           </Field>
-          <Field
-            label="Сигнал для списка и аналитики"
-            hint="Метка «Без следующего шага» и плитки аналитики строятся по сигналу, а не по номеру критерия, поэтому замена критерия их не ломает."
-          >
+          <Field label="Роль в отчётах" hint="Определяет, в какую группу очереди и плитку аналитики попадёт критерий.">
             <select id="cf-sig" className="fld" value={c.signal || ''} onChange={on('signal')}>
               {opts(SIGNALS)}
             </select>
