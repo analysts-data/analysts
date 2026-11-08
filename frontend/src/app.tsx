@@ -75,49 +75,23 @@ function Toast() {
   );
 }
 
-// Первый вход в роли: что здесь делать, тремя фразами. Закрывается кнопкой «Понятно» и больше не показывается.
-const HINTS: Record<string, string[]> = {
-  qa: [
-    'Очередь показывает, что проверить первым: грубые ошибки, расхождения двух моделей и разговоры без следующего шага.',
-    'В карточке у каждого критерия — балл, обоснование и реплика-основание; «Принять» или «Оставить» решает спор моделей.',
-    'Критерии и веса меняются на экране «Чек-лист», Ctrl K — быстрый переход к диалогу или экрану.',
-  ],
-  operator: [
-    'Здесь ваши оценки: откройте диалог, чтобы увидеть, за что снижен балл и как сказать лучше.',
-    'Не согласны с оценкой — нажмите «Оспорить оценку» у критерия и коротко объясните почему.',
-    'Экран «Обучение» собирает удачные примеры по критериям, где чаще всего теряются баллы.',
-  ],
-  reviewer: [
-    'На экране «Апелляции» — оспоренные оценки и спорные ответы моделей.',
-    'Сравните «было → стало», укажите причину и сохраните решение: итог диалога пересчитается.',
-    'Исходный ответ модели не меняется, решение видно в истории критерия.',
-  ],
+// Первый вход в роли: одна фраза о том, с чего начать. «Понятно» скрывает её навсегда для этой роли.
+const HINTS: Record<string, string> = {
+  qa: 'Начните с очереди: сверху диалоги, которые стоит проверить первым. В карточке у каждого критерия балл, обоснование и реплика, на которой он основан.',
+  operator: 'Здесь ваши оценки. Откройте диалог, чтобы увидеть, за что снижен балл. Не согласны с оценкой? Нажмите «Оспорить оценку» у критерия.',
+  reviewer: 'На экране «Апелляции» собраны оспоренные оценки. Укажите причину решения, и итог диалога пересчитается.',
 };
-
-const ROLE_AS: Record<string, string> = { qa: 'специалист КК', operator: 'оператор', reviewer: 'проверяющий' };
 
 function RoleHint({ role }: { role: string }) {
   const [, force] = useState(0);
   if (load(`cqa.hint.${role}`)) return null;
   return (
-    <motion.aside
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-wrap items-start gap-3 rounded-card border border-info-soft bg-info-soft px-4 py-3 text-[13px] text-ink2"
-      aria-label="Подсказка для роли"
-    >
-      <Info size={18} className="mt-0.5 flex-none text-info" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <b className="text-ink">Вы вошли как {ROLE_AS[role]}.</b>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4">
-          {HINTS[role].map(t => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-line bg-surface px-4 py-2.5 text-[13px] text-ink2" role="note">
+      <Info size={16} className="flex-none text-muted" aria-hidden="true" />
+      <p className="min-w-0 flex-1">{HINTS[role]}</p>
       <button
         type="button"
-        className="rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-hover"
+        className="text-[13px] font-semibold text-accent hover:text-accent-ink"
         onClick={() => {
           save(`cqa.hint.${role}`, '1');
           force(x => x + 1);
@@ -125,7 +99,7 @@ function RoleHint({ role }: { role: string }) {
       >
         Понятно
       </button>
-    </motion.aside>
+    </div>
   );
 }
 
@@ -241,7 +215,7 @@ export function App() {
           <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
             <span>{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
             <span>
-              <kbd className="rounded border border-line px-1">Ctrl K</kbd> — команды
+              Команды: <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
           </div>
         </aside>
