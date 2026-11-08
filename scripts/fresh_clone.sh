@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Свежий клон по шагам README: репозиторий должен запускаться без ручных правок.
 # Каталог клона не удаляется (rm -rf запрещён правилами), временную папку
-# чистит система; путь печатается в конце.
+# чистит система; путь печатается в конце. PORT=<порт> (умолчание 8000) — если
+# на 8000 уже работает сервер команды.
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
@@ -9,6 +10,13 @@ if [ $# -ne 1 ]; then
   exit 2
 fi
 repo_url=$1
+port=${PORT:-8000}
+base="http://127.0.0.1:$port"
+# иначе health ответит чужой сервер, а make run клона упадёт незаметно
+if curl -sf "$base/api/health" >/dev/null 2>&1; then
+  echo "ошибка: порт $port занят, остановите сервер или задайте PORT=<свободный порт>" >&2
+  exit 1
+fi
 
 server_pid=""
 stop_server() {
@@ -38,12 +46,12 @@ step "cp .env.example .env" cp .env.example .env
 step "make check" make check
 
 echo "шаг: make run"
-make run &
+make run PORT="$port" &
 server_pid=$!
 
 health=""
 for _ in $(seq 1 60); do
-  body=$(curl -sf http://127.0.0.1:8000/api/health) || { sleep 1; continue; }
+  body=$(curl -sf "$base/api/health") || { sleep 1; continue; }
   if printf '%s' "$body" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
     health=$body
     break
@@ -54,7 +62,7 @@ if [ -z "$health" ]; then
   echo "ошибка: шаг «curl /api/health» не пройден" >&2
   exit 1
 fi
-page=$(curl -sf http://127.0.0.1:8000/) || true
+page=$(curl -sf "$base/") || true
 case "$page" in
   *"<cqa-app"*) ;;
   *)
