@@ -34,14 +34,21 @@ def live_config(page: Page) -> None:
     """GET /api/config для плашки режима: у статического сервера нет API, а 404 — ошибка в консоли."""
     page.route(
         "**/api/config",
-        lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps({"llm_mode": "live", "features": FEATURES})),
+        lambda r: r.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"llm_mode": "live", "features": FEATURES}),
+        ),
     )
     # Сотрудники, алерты и метрики шапки: у статического сервера их нет, а 404 и 501 — ошибки в консоли.
     page.route(
         re.compile(r".*/api/(employees|alerts)(\?.*)?$"),
         lambda r: r.fulfill(status=200, content_type="application/json", body="[]"),
     )
-    page.route(re.compile(r".*/api/me$"), lambda r: r.fulfill(status=200, content_type="application/json", body="null"))
+    page.route(
+        re.compile(r".*/api/me$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body="null"),
+    )
     page.route("**/api/telemetry", lambda r: r.fulfill(status=204))
 
 

@@ -7,7 +7,9 @@ import pytest
 from playwright.sync_api import Page, Route, expect
 
 pytestmark = pytest.mark.e2e
-STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "analytics_state.json").read_text(encoding="utf-8")
+STATE = (Path(__file__).resolve().parents[2] / "fixtures" / "analytics_state.json").read_text(
+    encoding="utf-8"
+)
 
 EMPLOYEES = [
     {"id": "e1", "name": "Алия К.", "role": "operator", "team": "Поддержка RU", "active": True},
@@ -17,9 +19,39 @@ EMPLOYEES = [
 OVERVIEW = {
     "at": "2026-11-08T07:00:00+05:00",
     "employees": [
-        {**EMPLOYEES[0], "today": {"appeal.file": 2}, "week": {"appeal.file": 3, "dialog.reviewed": 1}, "appeals_filed": 3, "decisions": 0, "manual_answers": 0, "checklist_saves": 0, "dialogs_reviewed": 1, "median_decision_min": None},
-        {**EMPLOYEES[1], "today": {"appeal.decide": 1}, "week": {"appeal.decide": 4}, "appeals_filed": 0, "decisions": 4, "manual_answers": 2, "checklist_saves": 1, "dialogs_reviewed": 0, "median_decision_min": 95.0},
-        {**EMPLOYEES[2], "today": {}, "week": {}, "appeals_filed": 0, "decisions": 0, "manual_answers": 0, "checklist_saves": 0, "dialogs_reviewed": 0, "median_decision_min": None},
+        {
+            **EMPLOYEES[0],
+            "today": {"appeal.file": 2},
+            "week": {"appeal.file": 3, "dialog.reviewed": 1},
+            "appeals_filed": 3,
+            "decisions": 0,
+            "manual_answers": 0,
+            "checklist_saves": 0,
+            "dialogs_reviewed": 1,
+            "median_decision_min": None,
+        },
+        {
+            **EMPLOYEES[1],
+            "today": {"appeal.decide": 1},
+            "week": {"appeal.decide": 4},
+            "appeals_filed": 0,
+            "decisions": 4,
+            "manual_answers": 2,
+            "checklist_saves": 1,
+            "dialogs_reviewed": 0,
+            "median_decision_min": 95.0,
+        },
+        {
+            **EMPLOYEES[2],
+            "today": {},
+            "week": {},
+            "appeals_filed": 0,
+            "decisions": 0,
+            "manual_answers": 0,
+            "checklist_saves": 0,
+            "dialogs_reviewed": 0,
+            "median_decision_min": None,
+        },
     ],
     "teams": [
         {"team": "Контроль качества", "employees": 1, "today": 1, "week": 4},
@@ -41,35 +73,61 @@ ALIYA = {
     "needs_review": 2,
     "appeals_open": 1,
     "weakest": [{"cid": "07", "name": "Завершение", "share": 0.33}],
-    "trend": [{"day": "07.11", "avg_total": 70.0, "dialogs": 1}, {"day": "08.11", "avg_total": 73.75, "dialogs": 2}],
+    "trend": [
+        {"day": "07.11", "avg_total": 70.0, "dialogs": 1},
+        {"day": "08.11", "avg_total": 73.75, "dialogs": 2},
+    ],
     "dialog_ids": ["call-024", "p1-kz-015"],
     "reasons": [{"tag": "Не назван срок ответа", "dialogs": 2, "owner": "Сервис", "criteria": ["04"]}],
 }
 ROW = {k: v for k, v in ALIYA.items() if k not in ("dialog_ids", "reasons")}
-UNKNOWN = {**ROW, "operator": "Не указан", "n": 2, "sd": None, "ranked": False, "reason": "сотрудник не указан", "gross_errors": 0, "weakest": []}
-# новый контракт: {definitions, min_n, operators}; сервер ставит «кому нужна помощь» первыми, экран показывает по алфавиту
+UNKNOWN = {
+    **ROW,
+    "operator": "Не указан",
+    "n": 2,
+    "sd": None,
+    "ranked": False,
+    "reason": "сотрудник не указан",
+    "gross_errors": 0,
+    "weakest": [],
+}
+# новый контракт: {definitions, min_n, operators}; сервер ставит «кому нужна помощь» первыми,
+# экран показывает по алфавиту
 OPERATORS = {"definitions": {"sd": "стандартное отклонение итога"}, "min_n": 5, "operators": [UNKNOWN, ROW]}
 REPORT = {"operators": {"attention": [ROW], "strengths": []}}
 
 
 def stub(page: Page, path: str, body: Any) -> None:
-    page.route(re.compile(rf".*/api{re.escape(path)}(\?.*)?$"), lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(body)))
+    page.route(
+        re.compile(rf".*/api{re.escape(path)}(\?.*)?$"),
+        lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(body)),
+    )
 
 
 def open_people(page: Page, web_url: str, route: str) -> tuple[list[str], list[str]]:
-    """Ответы по контракту на пути «Сотрудников»; возвращает (ошибки консоли и ответы 4xx, запросы к /api/)."""
+    """Ответы по контракту на пути «Сотрудников».
+
+    Возвращает (ошибки консоли и ответы 4xx, запросы к /api/).
+    """
     problems: list[str] = []
     requests: list[str] = []
     page.on("console", lambda m: problems.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: problems.append(str(e)))
     page.on("response", lambda r: problems.append(f"{r.status} {r.url}") if r.status >= 400 else None)
-    page.on("request", lambda r: requests.append(f"{r.method} {r.url.split('/api', 1)[1]}") if "/api/" in r.url else None)
+    page.on(
+        "request",
+        lambda r: requests.append(f"{r.method} {r.url.split('/api', 1)[1]}") if "/api/" in r.url else None,
+    )
     page.route("**/api/state", lambda r: r.fulfill(status=200, content_type="application/json", body=STATE))
     stub(page, "/employees", EMPLOYEES)
     stub(page, "/overview", OVERVIEW)
     stub(page, "/operators", OPERATORS)
     stub(page, "/operators/%D0%90%D0%BB%D0%B8%D1%8F%20%D0%9A.", ALIYA)
-    stub(page, "/operators/%D0%9D%D0%B5%20%D1%83%D0%BA%D0%B0%D0%B7%D0%B0%D0%BD", {**UNKNOWN, "dialog_ids": [], "reasons": [], "min_n": 5})
+    stub(
+        page,
+        "/operators/%D0%9D%D0%B5%20%D1%83%D0%BA%D0%B0%D0%B7%D0%B0%D0%BD",
+        {**UNKNOWN, "dialog_ids": [], "reasons": [], "min_n": 5},
+    )
     stub(page, "/report", REPORT)
     page.goto(f"{web_url}/{route}")
     expect(page.locator('[data-view="people"] h1')).to_be_visible()
@@ -82,7 +140,9 @@ def test_overview_shows_open_workload_people_by_team_and_operator_scores(page: P
     expect(load.locator("strong")).to_have_text(["2", "3", "9"])
     expect(load.locator('a[href="#/appeals"]')).to_contain_text("апелляций ждут решения")
     work = page.locator('[aria-label="Работа сотрудников"]')
-    expect(work.locator("tr.grp")).to_have_text([re.compile("^Контроль качества"), re.compile("^Поддержка RU")])
+    expect(work.locator("tr.grp")).to_have_text(
+        [re.compile("^Контроль качества"), re.compile("^Поддержка RU")]
+    )
     row = work.locator('tr[data-id="e1"]')
     expect(row.locator("td")).to_have_text(["Алия К.", "Оператор", "2", "4", "3", "0", "—", "0", "0", "1"])
     expect(work.locator('tr[data-id="e2"] td').nth(6)).to_have_text("1,6 ч")
@@ -110,7 +170,9 @@ def test_employee_page_shows_total_gross_weak_criteria_trend_and_activity(page: 
     expect(page.locator('[aria-label="Оценки"] strong')).to_have_text(["72,50", "1", "2", "1"])
     expect(page.locator('[aria-label="Оценки"]')).to_contain_text("± 8,1, n=6 из 7 диалогов")
     expect(page.locator('[aria-label="Оценки"]')).to_contain_text("интервал 64–81")
-    expect(page.locator('[aria-label="Требуют внимания"] a[href="#/queue?lost=07"]')).to_contain_text("Завершение")
+    expect(page.locator('[aria-label="Требуют внимания"] a[href="#/queue?lost=07"]')).to_contain_text(
+        "Завершение"
+    )
     trend = page.locator('[aria-label="Тренд по дням"]')
     expect(trend.locator("li")).to_have_text(["07.11 (1): 70,00", "08.11 (2): 73,75"])
     expect(page.locator('[aria-label="Диалоги сотрудника"] a[href="#/d/call-024"]')).to_be_visible()
@@ -169,7 +231,9 @@ def test_operator_import_reports_unknown_dialogs(page: Page, web_url: str) -> No
     open_people(page, web_url, "#/people")
     page.route(
         "**/api/operators/import",
-        lambda r: r.fulfill(status=200, content_type="application/json", body='{"updated": 1, "unknown_ids": ["x-9"]}'),
+        lambda r: r.fulfill(
+            status=200, content_type="application/json", body='{"updated": 1, "unknown_ids": ["x-9"]}'
+        ),
     )
     page.click('[data-act="import"]')
     dialog = page.get_by_role("dialog")

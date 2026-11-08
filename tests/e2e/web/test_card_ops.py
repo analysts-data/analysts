@@ -16,7 +16,9 @@ from playwright.sync_api import Page, Request, Route, expect
 pytestmark = pytest.mark.e2e
 STATE = Path(__file__).resolve().parents[2] / "fixtures" / "state_prototype.json"
 CARD = "call-024"
-NEW_API = re.compile(r"/api/(dialogs/[^/]+/(history|markers|product|operator)|products|markers/|results/|runs)")
+NEW_API = re.compile(
+    r"/api/(dialogs/[^/]+/(history|markers|product|operator)|products|markers/|results/|runs)"
+)
 
 PRODUCT = {
     "status": "done",
@@ -24,7 +26,11 @@ PRODUCT = {
     "name": "Карты",
     "confidence": 0.82,
     "by": "jev",
-    "basis": {"why": "Клиент спрашивает о лимите по карте", "ev": [3], "probs": {"cards": 0.82, "deposits": 0.11}},
+    "basis": {
+        "why": "Клиент спрашивает о лимите по карте",
+        "ev": [3],
+        "probs": {"cards": 0.82, "deposits": 0.11},
+    },
 }
 MARKERS = [
     {
@@ -130,7 +136,9 @@ def test_why_shows_server_basis_for_product_marker_and_gross_error(page: Page, c
 
 def test_intonation_badge_why_compares_line_with_speaker_norm(page: Page, card: Card) -> None:
     prosody = {
-        "lines": [{"n": 3, "f0": 240, "range_st": 7.0, "db": 74.2, "wps": 2.1, "pause": 0.4, "flags": ["raised"]}],
+        "lines": [
+            {"n": 3, "f0": 240, "range_st": 7.0, "db": 74.2, "wps": 2.1, "pause": 0.4, "flags": ["raised"]}
+        ],
         "speakers": {"client": {"f0": 200.0, "db": 66.0, "wps": 2.5, "lines": 4}, "operator": None},
         "summary": ["Клиент повысил тон в реплике 3"],
     }
@@ -211,7 +219,13 @@ def test_product_is_corrected_from_catalog(page: Page, card: Card) -> None:
 
     def put(route: Route) -> None:
         sent.append(route.request.post_data_json)
-        card.dialog()["product"] = {"status": "done", "id": "deposits", "name": "Вклады", "confidence": None, "by": "вручную"}
+        card.dialog()["product"] = {
+            "status": "done",
+            "id": "deposits",
+            "name": "Вклады",
+            "confidence": None,
+            "by": "вручную",
+        }
         json_reply(route, card.dialog()["product"])
 
     page.route("**/api/products", lambda r: json_reply(r, products))
@@ -230,7 +244,8 @@ def test_product_is_corrected_from_catalog(page: Page, card: Card) -> None:
 
 def test_history_loads_on_click_and_older_answer_becomes_current(page: Page, card: Card) -> None:
     def row(rid: int, a: int, current: bool, stale: bool = False) -> dict[str, Any]:
-        return {"id": rid, "created": f"2026-11-0{rid % 9}T10:00:00", "run_id": rid, "version": 2, "model": "qwen3-6",
+        return {"id": rid, "created": f"2026-11-0{rid % 9}T10:00:00", "run_id": rid,
+                "version": 2, "model": "qwen3-6",
                 "a": a, "why": f"Оценка {rid}", "ev": [], "current": current, "stale": stale}  # fmt: skip
 
     history = {"06": [row(8, 7, True), row(5, 10, False), row(2, 4, False, stale=True)]}
@@ -276,7 +291,8 @@ def test_rerun_sends_force_and_shows_evaluating_status(page: Page, card: Card) -
         json_reply(route, {
             "done": 0 if running else 8, "total": 8, "cost": 0.0, "calls": 8, "eta_s": None, "errors": [],
             "status": "running" if running else "done", "skipped": 2,
-            "dialogs": [{"id": CARD, "status": "running" if running else "done", "error": None, "done": 0, "total": 8,
+            "dialogs": [{"id": CARD, "status": "running" if running else "done", "error": None,
+                         "done": 0, "total": 8,
                          "skipped": 2}],
         })  # fmt: skip
 
