@@ -149,6 +149,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `employees` | `id TEXT PK`, `name`, `role CHECK IN ('operator', 'qa', 'reviewer', 'manager', 'admin')`, `team`, `active INTEGER` | eval-and-delivery (employees-audit) |
+| `audit` | `id INTEGER PK`, `at` (ISO +05:00), `actor_id NULL`, `actor_name`, `role`, `action`, `target_type`, `target_id`, `details_json`; только `INSERT` (триггеры) | пишут все треки через `record` |
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 
@@ -266,3 +268,13 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `build_classifier(settings)` | `src/cqa/compose.py` | Jev при `jev_api_key`, иначе основная модель с `llm_reasoning="off"`; маркеры — `tests/fixtures/risks.json` |
 | `Runner(..., classifier=None)`, `Runner.use(evaluator, classifier=None)` | `src/cqa/services/runs.py` | `create_app(..., classifier=None)` собирает `build_classifier`, только если оценщик не подставлен (тесты с `FakeEvaluator` идут без тем) |
 | Таблицы `products`, `dialog_products` | `data/cqa.db` | `products(id = 1, body)` — справочник JSON; `dialog_products(dialog_id PK, key, body, risks)` — тема (`ProductTag`), маркеры, ключ кэша (`""` — спросить снова, `"вручную"`); `pending` удаляются в конце запуска и при старте |
+## Текущий сотрудник и журнал действий (eval-and-delivery, employees-audit)
+
+| Функция | Где | Что делает |
+| --- | --- | --- |
+| `actor_from(request, sign="") -> Actor` | `src/cqa/http/actor.py` | активный сотрудник из `X-CQA-User`; иначе `Actor(None, sign or "без входа")` |
+| `signed(actor, sign) -> str` | `src/cqa/http/actor.py` | подпись записи (`by`, `reviewer`): имя сотрудника, без входа — `sign` |
+| `Actor(id: str \| None, name: str, role: str = "")` | `src/cqa/services/audit.py` | frozen dataclass |
+| `record(store, actor, action, target_type, target_id, details=None) -> None` | `src/cqa/services/audit.py` | строка журнала; ключи с key/token/secret/password в `details` отбрасываются |
+
+Каждый новый изменяющий путь и выгрузка вызывает `record` после удачного действия; `action` — `<объект>.<глагол>`, выгрузка — `export`. Имена действий и `details` — таблица в разделе контракта «Сотрудники и журнал действий».
