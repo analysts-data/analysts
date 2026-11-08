@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS runs (
   cost REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, errors TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'cancelled')),
   started REAL NOT NULL, finished REAL);
+CREATE TABLE IF NOT EXISTS run_dialogs (
+  run_id INTEGER NOT NULL REFERENCES runs(id), dialog_id TEXT NOT NULL REFERENCES dialogs(id),
+  status TEXT NOT NULL
+    CHECK (status IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')),
+  total INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, error TEXT,
+  PRIMARY KEY (run_id, dialog_id));
 CREATE TABLE IF NOT EXISTS appeals (
   n INTEGER PRIMARY KEY AUTOINCREMENT, dlg TEXT NOT NULL REFERENCES dialogs(id), cid TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('appeal', 'review')), fp TEXT NOT NULL,
@@ -56,6 +62,7 @@ COLUMNS = [
 ]
 
 RunStatus = Literal["running", "done", "cancelled"]
+DialogStatus = Literal["queued", "evaluating", "done", "error", "skipped", "cancelled"]
 
 
 @dataclass(frozen=True)
@@ -307,10 +314,55 @@ class Store:
                 "UPDATE runs SET finished = ?, status = ? WHERE id = ?",
                 (finished, status, run_id),
             )
+            if status == "cancelled":
+                self._cancel_dialogs("run_id = ?", (run_id,))
 
     def cancel_stale_runs(self) -> None:
         with self._conn:
+            self._cancel_dialogs("run_id IN (SELECT id FROM runs WHERE status = 'running')", ())
             self._conn.execute("UPDATE runs SET status = 'cancelled' WHERE status = 'running'")
+
+    def _cancel_dialogs(self, where: str, args: tuple[object, ...]) -> None:
+        """Диалоги, которые так и не оценились, — cancelled. Вызывать внутри транзакции."""
+        self._conn.execute(
+            f"UPDATE run_dialogs SET status = 'cancelled' "  # noqa: S608 — where из кода, не от клиента
+            f"WHERE status IN ('queued', 'evaluating') AND {where}",
+            args,
+        )
+
+    # --- статусы диалогов запуска ---
+
+    def queue_dialogs(self, run_id: int, rows: Sequence[tuple[str, DialogStatus, int, int]]) -> None:
+        """Диалоги запуска в порядке очереди: (id, статус, критериев к оценке, пар держит человек)."""
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO run_dialogs (run_id, dialog_id, status, total, skipped) VALUES (?, ?, ?, ?, ?)",
+                [(run_id, *row) for row in rows],
+            )
+
+    def set_dialog_status(
+        self, run_id: int, dialog_id: str, status: DialogStatus, *, done: int = 0, error: str | None = None
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE run_dialogs SET status = ?, done = ?, error = ? WHERE run_id = ? AND dialog_id = ?",
+                (status, done, error, run_id, dialog_id),
+            )
+
+    @staticmethod
+    def _dialog_status(row: sqlite3.Row) -> dict[str, Any]:
+        return {k: row[k] for k in ("status", "error", "done", "total", "skipped")}
+
+    def run_dialogs(self, run_id: int) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM run_dialogs WHERE run_id = ? ORDER BY rowid", (run_id,)
+        ).fetchall()
+        return [{"id": row["dialog_id"], **self._dialog_status(row)} for row in rows]
+
+    def latest_dialog_status(self) -> dict[str, dict[str, Any]]:
+        """Диалог → статус в последнем запуске, где он был, с `run_id`."""
+        rows = self._conn.execute("SELECT * FROM run_dialogs ORDER BY run_id").fetchall()
+        return {row["dialog_id"]: {"run_id": row["run_id"], **self._dialog_status(row)} for row in rows}
 
     @staticmethod
     def _run_row(row: sqlite3.Row) -> RunRow:

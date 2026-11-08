@@ -92,6 +92,13 @@ def test_restore_of_an_answer_to_an_older_meaning_is_refused(store: Store) -> No
         restore(store, row["id"])
 
 
+def test_restore_of_the_current_answer_is_refused(store: Store) -> None:
+    _two_runs(store)
+    current = history(store, "p1-ru-003")[BOOL.id][0]
+    with pytest.raises(Conflict, match="уже текущая"):
+        restore(store, current["id"])
+
+
 def test_restore_of_an_unknown_result_is_not_found(store: Store) -> None:
     with pytest.raises(NotFound, match="999"):
         restore(store, 999)

@@ -54,5 +54,10 @@ def restore(store: Store, result_id: int) -> CriterionResult:
     )
     if pending is not None:
         raise Conflict(f"По критерию {row.cid} есть апелляция на рассмотрении: {pending.id}")
+    latest = max(
+        r.id for r in store.result_rows(dialog_id=row.dialog_id) if (r.cid, r.fp) == (row.cid, row.fp)
+    )
+    if latest == row.id:
+        raise Conflict(f"Оценка {result_id} уже текущая")
     store.add_result(row.dialog_id, row.cid, row.version, row.fp, row.result, run_id=row.run_id)
     return row.result

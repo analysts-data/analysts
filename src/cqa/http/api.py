@@ -86,6 +86,7 @@ class RunIn(BaseModel):
     dialogs: list[str] | None = None  # порядок очереди: диалоги для демо первыми
     criteria: list[str] | None = None
     force: bool = False  # повторная проверка: заново и пары с ответом, кроме ручных и с апелляцией
+    confirm: bool = False  # повторная проверка без списка dialogs больше CONFIRM_OVER диалогов
 
 
 def _runner(request: Request) -> Runner:
@@ -308,7 +309,10 @@ async def post_upload(request: Request) -> dict[str, int]:
 @router.post("/runs")
 async def post_run(body: RunIn, request: Request) -> dict[str, int]:
     model = request.app.state.mode.model
-    return {"run_id": _runner(request).start(body.dialogs, body.criteria, force=body.force, model=model)}
+    run_id = _runner(request).start(
+        body.dialogs, body.criteria, force=body.force, confirm=body.confirm, model=model
+    )
+    return {"run_id": run_id}
 
 
 @router.get("/runs")

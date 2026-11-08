@@ -64,10 +64,13 @@ def report(
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:
     checklist, dialogs, appeals = current_state(store)
+    status = store.latest_dialog_status()  # eval_status: диалог в последнем запуске, где он был
     return {
         "checklist": checklist.model_dump(mode="json", exclude_none=True),
         "versions": store.list_versions(),
-        "dialogs": [d.model_dump(mode="json", exclude_none=True) for d in dialogs],
+        "dialogs": [
+            {**d.model_dump(mode="json", exclude_none=True), "eval_status": status.get(d.id)} for d in dialogs
+        ],
         "appeals": [
             a.model_dump(mode="json", by_alias=True, exclude={"ask"} if a.kind == "review" else None)
             for a in appeals

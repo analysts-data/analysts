@@ -144,3 +144,39 @@ def test_restore_while_an_appeal_is_pending_is_409(api: TestClient) -> None:
 def test_unknown_dialog_history_and_unknown_result_are_404(api: TestClient) -> None:
     assert api.get("/api/dialogs/nope/history").status_code == 404
     assert api.post("/api/results/999/restore").status_code == 404
+
+
+def test_state_tells_each_dialog_status_in_its_latest_run(api: TestClient) -> None:
+    def statuses() -> dict[str, Any]:
+        return {d["id"]: d["eval_status"] for d in api.get("/api/state").json()["dialogs"]}
+
+    assert statuses() == {"call-024": None, "p1-ru-003": None}
+    run = _run(api, dialogs=["call-024"])
+    assert statuses() == {
+        "call-024": {
+            "run_id": run["id"],
+            "status": "done",
+            "error": None,
+            "done": 8,
+            "total": 8,
+            "skipped": 0,
+        },
+        "p1-ru-003": None,
+    }
+    assert [(d["id"], d["status"]) for d in run["dialogs"]] == [("call-024", "done")]
+
+
+def test_big_forced_run_without_a_list_asks_for_confirmation(
+    settings: Settings, store: Store, conn: sqlite3.Connection
+) -> None:
+    store.add_dialogs([d for d in prototype_dialogs() if d.id not in ("call-024", "p1-ru-003")], {})
+    with TestClient(
+        create_app(settings, source=FakeSource(), evaluator=FakeEvaluator(), conn=conn)
+    ) as client:
+        refused = client.post("/api/runs", json={"force": True, "criteria": ["01"]})
+        assert (refused.status_code, refused.json()) == (
+            422,
+            {"detail": "Подтвердите перезапуск 10 диалогов"},
+        )
+        assert client.get("/api/runs").json() == []
+        assert _run(client, force=True, confirm=True, criteria=["01"])["total"] == 10

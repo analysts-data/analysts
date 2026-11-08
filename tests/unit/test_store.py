@@ -508,3 +508,26 @@ def test_runs_remember_model_version_and_force_newest_first():
         2,
     )
     assert (runs[1].force, runs[1].skipped) == (False, 0)
+
+
+def test_run_dialog_statuses_follow_the_run_and_the_latest_run_wins():
+    store = Store(connect(":memory:"))
+    store.add_dialogs([_by_id(_dialogs_fixture(), i) for i in ("call-024", "p1-ru-003")], {})
+    first = store.add_run(16, 1.0)
+    store.queue_dialogs(first, [("call-024", "queued", 8, 0), ("p1-ru-003", "queued", 8, 0)])
+    store.set_dialog_status(first, "call-024", "error", error="timeout")
+    store.finish_run(first, 2.0, "cancelled")
+    second = store.add_run(8, 3.0)
+    store.queue_dialogs(second, [("call-024", "queued", 8, 0)])
+    store.set_dialog_status(second, "call-024", "evaluating")
+
+    assert store.run_dialogs(first) == [
+        {"id": "call-024", "status": "error", "error": "timeout", "done": 0, "total": 8, "skipped": 0},
+        {"id": "p1-ru-003", "status": "cancelled", "error": None, "done": 0, "total": 8, "skipped": 0},
+    ]
+    latest = store.latest_dialog_status()
+    assert (latest["call-024"]["run_id"], latest["call-024"]["status"]) == (second, "evaluating")
+    assert (latest["p1-ru-003"]["run_id"], latest["p1-ru-003"]["status"]) == (first, "cancelled")
+
+    store.cancel_stale_runs()  # restart: the evaluating dialog of the dead run is cancelled too
+    assert store.latest_dialog_status()["call-024"]["status"] == "cancelled"

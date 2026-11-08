@@ -50,8 +50,11 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `build_evaluator` | `src/cqa/compose.py`, llm-evaluation | `build_evaluator(settings: Settings) -> LlmEvaluator`, не бросает; `ConfigError` — при `evaluate` |
 | `parse_payload`, `ingest_records` | `src/cqa/domain/ingest.py`, dialog-ingest | чистая пара для снимка: `ingest_records(records, *, group_id, now, shift_s, shift_paused_s) -> IngestResult` |
 | `Runner` | `src/cqa/services/runs.py`, review-workflow | `Runner(store: Store, evaluator: Evaluator, *, parallel: int, clock: Callable[[], float] = time.time)` |
-| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None) -> int`; `NotFound`, `Conflict` при активном запуске |
-| `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status}`; `NotFound` |
+| `Runner.start` | там же | `start(dialogs: list[str] \| None, criteria: list[str] \| None, *, force: bool = False, confirm: bool = False, model: str \| None = None) -> int`; `NotFound`, `Conflict` при активном запуске, `Invalid` — `force` без списка больше `CONFIRM_OVER = 5` диалогов без `confirm` |
+| `Runner.progress` | там же | `progress(run_id: int) -> dict` = `{done, total, cost, calls, eta_s, errors, status, skipped, dialogs}`; `NotFound` |
+| `plan_run`, `plan_rerun` | там же | `plan_run(store, checklist, dialogs, criteria) -> Plan` — пары без текущего результата; `plan_rerun(...) -> tuple[Plan, dict[str, int]]` — все выбранные пары, кроме тех, что держит человек (ручной ответ, апелляция или решение текущего смысла), и диалог → число таких пар |
+| `list_runs`, `compare_runs` | там же | `GET /api/runs`, `GET /api/runs/compare`; чистое сравнение — `compare_answers(a, b, checklist)` в `src/cqa/domain/agreement.py` |
+| `history`, `restore` | `src/cqa/services/history.py`, review-workflow | `GET /api/dialogs/{id}/history`, `POST /api/results/{id}/restore`; `NotFound`, `Conflict` |
 | `Runner.use` | там же | `use(evaluator: Evaluator) -> None`: оценщик для следующих запусков (`PUT /api/config`); `Conflict` при активном запуске |
 | `set_answer` | `src/cqa/services/answers.py`, review-workflow | `set_answer(store, *, dlg, cid, a, reason, by) -> CriterionResult`, `model = MANUAL = "вручную"`; `NotFound`, `Invalid`, `Conflict` |
 | `configure`, `effective`, `view`, `config_error` | `src/cqa/services/llm_config.py`, llm-evaluation | режим оценки из интерфейса: `Store.overrides()` поверх `Settings`; `create_app` применяет их при старте |
@@ -59,7 +62,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Store.add_dialogs` | `src/cqa/adapters/store.py`, review-workflow | `add_dialogs(dialogs: Sequence[Dialog], audio: Mapping[str, str]) -> tuple[int, int]` — `(added, дубли по id)` |
 | `Store.audio_url` | там же | `audio_url(dialog_id: str) -> str \| None`; `None` для чата и неизвестного id. Читает роутер `/audio` |
 
-`Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата.
+`Runner`: диалоги идут в переданном порядке (`null` — порядок добавления), не больше `parallel = settings.llm_max_parallel` диалогов одновременно, следующий берётся только после освобождения места. `cancel`: новые диалоги не берутся, диалоги в полёте завершаются и сохраняются. Возобновление — новый `POST /api/runs`: план берёт только пары без текущего результата. Повторная проверка — `force: true` (`plan_rerun`). Каждый результат запуска пишется с `run_id`; статус диалога (`run_dialogs`) — `queued` при старте, `evaluating` перед `evaluate`, `done` или `error` после, `cancelled` при отмене и `cancel_stale_runs`.
 
 ## Правила, которые держат несколько треков
 
@@ -145,9 +148,12 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
 | --- | --- | --- |
 | `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается) | dialog-ingest через `Store.audio_url` |
-| `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
-| `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
+| `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`, `run_id INTEGER NULL`; только `INSERT` (триггеры) | — |
+| `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished`, `model TEXT NULL`, `checklist_version INTEGER NULL`, `force INTEGER`, `skipped INTEGER` | — |
+| `run_dialogs` | `run_id`, `dialog_id` (PK вместе), `status CHECK IN ('queued', 'evaluating', 'done', 'error', 'skipped', 'cancelled')`, `total`, `done`, `skipped`, `error`; статус меняется (`Runner`) | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+
+Колонки, появившиеся после первых баз, перечислены в `COLUMNS` (`src/cqa/adapters/store.py`): `connect` досоздаёт их в старой базе через `ALTER TABLE ... ADD COLUMN`, прежние строки получают `NULL` или умолчание. Новая колонка — строка в `COLUMNS`, схему `CREATE TABLE` не трогать.
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 

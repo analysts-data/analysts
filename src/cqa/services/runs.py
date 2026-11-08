@@ -7,12 +7,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from cqa.adapters.store import RunRow, Store
+from cqa.adapters.store import DialogStatus, RunRow, Store
 from cqa.domain.agreement import compare_answers
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog
 from cqa.domain.review import fingerprints
 from cqa.services.answers import MANUAL
-from cqa.services.errors import Conflict, NotFound
+from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
 
@@ -26,6 +26,7 @@ def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
 
 
 Plan = list[tuple[Dialog, list[Criterion]]]
+CONFIRM_OVER = 5  # повторная проверка без списка диалогов больше стольких диалогов ждёт confirm: true
 
 
 def _select(
@@ -58,9 +59,10 @@ def plan_run(
 
 def plan_rerun(
     store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
-) -> tuple[Plan, int]:
+) -> tuple[Plan, dict[str, int]]:
     """Повторная проверка: все выбранные пары, кроме тех, что держит человек, — текущий ответ ручной
-    или по паре текущего смысла есть апелляция на рассмотрении или решение. Второе — число таких пар."""
+    или по паре текущего смысла есть апелляция на рассмотрении или решение.
+    Второе — диалог → число таких пар (только диалоги, где они есть)."""
     items, chosen = _select(store, checklist, dialogs, criteria)
     fps = fingerprints(checklist)
     current = current_results(store, checklist, items)
@@ -70,12 +72,8 @@ def plan_rerun(
         result = current.get(d.id, {}).get(c.id)
         return (result is not None and result.model == MANUAL) or (d.id, c.id, fps[d.ch][c.id]) in held
 
-    plan = _plan(items, chosen, skip)
-    return plan, len(items) * len(chosen) - sum(len(cs) for _, cs in plan)
-
-
-def _created(started: float) -> str:
-    return datetime.fromtimestamp(started, UTC).isoformat()
+    held_by = {d.id: n for d in items if (n := sum(skip(d, c) for c in chosen))}
+    return _plan(items, chosen, skip), held_by
 
 
 def list_runs(store: Store) -> list[dict[str, Any]]:
@@ -83,7 +81,7 @@ def list_runs(store: Store) -> list[dict[str, Any]]:
     return [
         {
             "id": r.id,
-            "created": _created(r.started),
+            "created": datetime.fromtimestamp(r.started, UTC).isoformat(),
             "status": r.status,
             "model": r.model,
             "checklist_version": r.checklist_version,
@@ -137,11 +135,13 @@ class Runner:
         criteria: list[str] | None,
         *,
         force: bool = False,
+        confirm: bool = False,
         model: str | None = None,
     ) -> int:
         """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
 
-        `force` — повторная проверка (`plan_rerun`), `model` — подпись модели в списке запусков.
+        `force` — повторная проверка (`plan_rerun`); без списка `dialogs` больше `CONFIRM_OVER` диалогов
+        нужен `confirm`. `model` — подпись модели в списке запусков.
         """
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт")
@@ -156,19 +156,27 @@ class Runner:
             unknown = [i for i in dict.fromkeys(criteria) if i not in known]
             if unknown:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
-        plan, skipped = (
+        plan, held = (
             plan_rerun(self._store, checklist, dialogs, criteria)
             if force
-            else (plan_run(self._store, checklist, dialogs, criteria), 0)
+            else (plan_run(self._store, checklist, dialogs, criteria), {})
         )
+        if force and dialogs is None and not confirm and len(plan) > CONFIRM_OVER:
+            raise Invalid(f"Подтвердите перезапуск {len(plan)} диалогов")
         run_id = self._store.add_run(
             sum(len(cs) for _, cs in plan),
             self._clock(),
             model=model,
             checklist_version=checklist.version,
             force=force,
-            skipped=skipped,
+            skipped=sum(held.values()),
         )
+        planned = {d.id for d, _ in plan}
+        rows: list[tuple[str, DialogStatus, int, int]] = [
+            (d.id, "queued", len(cs), held.get(d.id, 0)) for d, cs in plan
+        ]
+        rows += [(i, "skipped", 0, n) for i, n in held.items() if i not in planned]
+        self._store.queue_dialogs(run_id, rows)
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
             return run_id
@@ -197,6 +205,7 @@ class Runner:
             "errors": row.errors,
             "status": row.status,
             "skipped": row.skipped,
+            "dialogs": self._store.run_dialogs(run_id),
         }
 
     def cancel(self, run_id: int) -> dict[str, str]:
@@ -241,13 +250,14 @@ class Runner:
         criteria: list[Criterion],
     ) -> None:
         started = self._clock()
+        self._store.set_dialog_status(run_id, dialog.id, "evaluating")
         try:
             out = await self._evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
             self._failed += len(criteria)
-            self._store.record_progress(
-                run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {str(exc) or type(exc).__name__}"]
-            )
+            error = str(exc) or type(exc).__name__
+            self._store.set_dialog_status(run_id, dialog.id, "error", error=error)
+            self._store.record_progress(run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {error}"])
             return
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
@@ -258,7 +268,13 @@ class Runner:
         usd = sum(e.result.cost for e in out.results) + out.verifier_usd
         self._store.set_cost(dialog.id, Cost(calls=calls, verifier_calls=out.verifier_calls, usd=usd, ms=ms))
         answered = {e.cid for e in out.results}
-        missing = [
-            f"{dialog.id}/{c.id}: нет ответа модели, ждёт оценки" for c in criteria if c.id not in answered
-        ]
-        self._store.record_progress(run_id, len(criteria), usd, calls, missing)
+        missing = [c.id for c in criteria if c.id not in answered]
+        note = f"нет ответа модели, ждёт оценки: {', '.join(missing)}" if missing else None
+        self._store.set_dialog_status(run_id, dialog.id, "done", done=len(answered), error=note)
+        self._store.record_progress(
+            run_id,
+            len(criteria),
+            usd,
+            calls,
+            [f"{dialog.id}/{cid}: нет ответа модели, ждёт оценки" for cid in missing],
+        )

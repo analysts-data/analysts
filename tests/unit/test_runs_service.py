@@ -12,7 +12,7 @@ from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
 from cqa.domain.review import fingerprint
 from cqa.services.answers import MANUAL
-from cqa.services.errors import Conflict, NotFound
+from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.runs import Runner, compare_runs, eta_seconds, list_runs, plan_rerun, plan_run
 from cqa.services.state import current_results
 from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
@@ -314,6 +314,7 @@ def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store)
         "errors": ["p1-ru-003: timeout"],
         "status": "running",
         "skipped": 0,
+        "dialogs": [],
     }
 
 
@@ -330,6 +331,10 @@ async def test_progress_of_a_finished_run(store: Store) -> None:
         "errors": [],
         "status": "done",
         "skipped": 0,
+        "dialogs": [
+            {"id": "call-024", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
+            {"id": "p1-ru-003", "status": "done", "error": None, "done": 8, "total": 8, "skipped": 0},
+        ],
     }
 
 
@@ -389,8 +394,8 @@ def _appeal(store: Store, dlg: str, cid: str, status: str, fp: str | None = None
 def test_rerun_plans_pairs_that_already_have_a_current_result(store: Store) -> None:
     _answer_all(store)
     assert plan_run(store, CHECKLIST, None, None) == []
-    plan, skipped = plan_rerun(store, CHECKLIST, None, ["01", "04"])
-    assert (_ids(plan), skipped) == ([("call-024", ["01", "04"]), ("p1-ru-003", ["01", "04"])], 0)
+    plan, held = plan_rerun(store, CHECKLIST, None, ["01", "04"])
+    assert (_ids(plan), held) == ([("call-024", ["01", "04"]), ("p1-ru-003", ["01", "04"])], {})
 
 
 def test_rerun_skips_manual_answers_and_pairs_with_an_open_or_decided_appeal(store: Store) -> None:
@@ -402,10 +407,10 @@ def test_rerun_skips_manual_answers_and_pairs_with_an_open_or_decided_appeal(sto
     _appeal(store, "p1-ru-003", "01", "closed")  # closed and other meanings do not hold the pair
     _appeal(store, "p1-ru-003", "05", "confirmed", fp="0000000000000000")
 
-    plan, skipped = plan_rerun(store, CHECKLIST, None, ["01", "04", "05"])
+    plan, held = plan_rerun(store, CHECKLIST, None, ["01", "04", "05"])
 
     assert _ids(plan) == [("call-024", ["05"]), ("p1-ru-003", ["01", "05"])]
-    assert skipped == 3
+    assert held == {"call-024": 2, "p1-ru-003": 1}  # dialog -> pairs a human holds
 
 
 async def test_execute_saves_the_run_id_with_every_result(store: Store) -> None:
@@ -474,3 +479,71 @@ def test_compare_with_an_unknown_run_is_not_found(store: Store) -> None:
     a = store.add_run(0, 0.0)
     with pytest.raises(NotFound, match="^Запуск 999 не найден$"):
         compare_runs(store, a, 999)
+
+
+# --- статусы диалогов запуска, подтверждение большого перезапуска ---
+
+
+def _statuses(runner: Runner, run_id: int) -> list[tuple[str, str, int, int]]:
+    return [(d["id"], d["status"], d["done"], d["total"]) for d in runner.progress(run_id)["dialogs"]]
+
+
+async def test_progress_tells_each_dialog_status_while_the_run_goes(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    assert _statuses(runner, run_id) == [("call-024", "evaluating", 0, 8), ("p1-ru-003", "queued", 0, 8)]
+    gate.set()
+    await _drain(runner)
+    assert _statuses(runner, run_id) == [("call-024", "done", 8, 8), ("p1-ru-003", "done", 8, 8)]
+    assert {d["error"] for d in runner.progress(run_id)["dialogs"]} == {None}
+
+
+async def test_dialog_status_carries_the_error_and_missing_answers(store: Store) -> None:
+    runner = Runner(store, FakeEvaluator(fail_on={"p1-ru-003"}, skip={"04"}), parallel=1)
+    run_id = runner.start(None, None)
+    await _drain(runner)
+    call, chat = runner.progress(run_id)["dialogs"]
+    assert (call["status"], call["done"], call["total"], call["error"]) == (
+        "done", 7, 8, "нет ответа модели, ждёт оценки: 04",
+    )  # fmt: skip
+    assert (chat["status"], chat["done"], chat["error"]) == ("error", 0, "timeout")
+
+
+async def test_cancelled_run_marks_dialogs_that_never_started(store: Store) -> None:
+    gate = asyncio.Event()
+    evaluator = FakeEvaluator(gate=gate)
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    runner.cancel(run_id)
+    gate.set()
+    await _drain(runner)
+    assert [d["status"] for d in runner.progress(run_id)["dialogs"]] == ["done", "cancelled"]
+
+
+async def test_forced_run_lists_a_dialog_a_human_holds_entirely_as_skipped(store: Store) -> None:
+    _answer_all(store)
+    _appeal(store, "p1-ru-003", "04", "pending")
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    run_id = runner.start(None, ["04"], force=True)
+    await _drain(runner)
+    dialogs = runner.progress(run_id)["dialogs"]
+    assert [(d["id"], d["status"], d["skipped"]) for d in dialogs] == [
+        ("call-024", "done", 0), ("p1-ru-003", "skipped", 1),
+    ]  # fmt: skip
+
+
+async def test_forced_run_of_many_dialogs_without_a_list_needs_confirmation(store: Store) -> None:
+    store.add_dialogs([d for d in DIALOGS.values() if d.id not in ("call-024", "p1-ru-003")], {})
+    runner = Runner(store, FakeEvaluator(), parallel=1)
+    with pytest.raises(Invalid, match="^Подтвердите перезапуск 10 диалогов$"):
+        runner.start(None, ["01"], force=True)
+    assert store.list_runs() == []
+    listed = runner.start(list(DIALOGS), ["01"], force=True)  # an explicit list is the confirmation
+    await _drain(runner)
+    confirmed = runner.start(None, ["01"], force=True, confirm=True)
+    await _drain(runner)
+    assert [store.get_run(i).total for i in (listed, confirmed)] == [10, 10]  # type: ignore[union-attr]
