@@ -350,9 +350,9 @@ FEATURES = {
 
 
 def features(app: Any) -> list[str]:
-    """Ключи разделов, чьи пути есть среди маршрутов приложения."""
-    paths = {getattr(r, "path", "") for r in app.routes}
-    return [k for k, p in FEATURES.items() if p in paths or p.rstrip("/") in paths]
+    """Ключи разделов, чьи пути есть в приложении: API — по схеме OpenAPI (роутеры FastAPI вложены), страницы — по маршрутам."""
+    paths = set(app.openapi()["paths"]) | {getattr(r, "path", "") for r in app.routes}
+    return [k for k, p in FEATURES.items() if p in paths]
 
 
 @router.get("/config")
