@@ -32,9 +32,11 @@ def serve(page: Page, edit: Any = None) -> list[str]:
     return errors
 
 
-def row(rid: int, a: Any, model: str, *, run: int, shadow: bool = False, current: bool = False) -> dict[str, Any]:
+def row(
+    rid: int, a: Any, model: str, *, run: int, shadow: bool = False, current: bool = False
+) -> dict[str, Any]:
     return {"id": rid, "created": "2026-11-08T07:00:00", "run_id": run, "version": 2, "model": model, "a": a,
-            "why": f"Обоснование {rid}", "ev": [], "current": current, "stale": False, "shadow": shadow}  # fmt: skip
+            "why": f"Обоснование {rid}", "ev": [], "current": current, "stale": False, "shadow": shadow}  # fmt: skip  # noqa: E501
 
 
 def test_recheck_compare_then_restore_one_and_adopt_all(page: Page, web_url: str) -> None:
@@ -51,12 +53,14 @@ def test_recheck_compare_then_restore_one_and_adopt_all(page: Page, web_url: str
 
     page.route(re.compile(r".*/api/runs$"), post_run)
     page.route("**/api/runs/7", lambda r: json_reply(r, {
-        "done": 2, "total": 2, "cost": 0.0, "calls": 2, "eta_s": None, "errors": [], "status": "done", "skipped": 1,
+        "done": 2, "total": 2, "cost": 0.0, "calls": 2, "eta_s": None, "errors": [], "status": "done", "skipped": 1,  # noqa: E501
         "dialogs": [{"id": CARD, "status": "done"}],
     }))  # fmt: skip
     page.route(f"**/api/dialogs/{CARD}/history", lambda r: json_reply(r, history))
-    page.route("**/api/results/92/restore", lambda r: (sent["restore"].append(r.request.url), json_reply(r, {}))[1])
-    page.route("**/api/runs/7/adopt", lambda r: (sent["adopt"].append(r.request.post_data_json), json_reply(r, {"adopted": 1, "skipped": 0}))[1])  # fmt: skip
+    page.route(
+        "**/api/results/92/restore", lambda r: (sent["restore"].append(r.request.url), json_reply(r, {}))[1]
+    )
+    page.route("**/api/runs/7/adopt", lambda r: (sent["adopt"].append(r.request.post_data_json), json_reply(r, {"adopted": 1, "skipped": 0}))[1])  # fmt: skip  # noqa: E501
 
     page.goto(f"{web_url}/#/d/{CARD}")
     page.locator('[data-act="recheck"]:not([data-cid])').click()
@@ -82,12 +86,17 @@ def test_recheck_compare_then_restore_one_and_adopt_all(page: Page, web_url: str
 
 
 def test_sufficiency_chips_in_queue_and_card_open_reasons(page: Page, web_url: str) -> None:
-    reason = {"id": "no_operator", "text": "Нет реплик оператора", "basis": "Оценивать нечего", "outcome": "block"}
+    reason = {
+        "id": "no_operator",
+        "text": "Нет реплик оператора",
+        "basis": "Оценивать нечего",
+        "outcome": "block",
+    }
 
     def edit(state: dict[str, Any]) -> None:
         ds = {d["id"]: d for d in state["dialogs"]}
         ds[CARD]["sufficiency"] = {"status": "block", "reasons": [reason]}
-        ds["p1-ru-022"]["sufficiency"] = {"status": "flag", "reasons": [{**reason, "id": "too_short", "text": "Слишком короткий диалог", "outcome": "flag"}]}  # fmt: skip
+        ds["p1-ru-022"]["sufficiency"] = {"status": "flag", "reasons": [{**reason, "id": "too_short", "text": "Слишком короткий диалог", "outcome": "flag"}]}  # fmt: skip  # noqa: E501
         ds["p1-ru-025"]["sufficiency"] = {"status": "ok", "reasons": []}
 
     errors = serve(page, edit)
