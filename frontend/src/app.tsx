@@ -5,6 +5,7 @@ import { MotionConfig, motion } from 'framer-motion';
 import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Sun } from 'lucide-react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
+import { reload } from './lib/state.js';
 import { groupOf } from './lib/queue.js';
 import { applyTheme, currentTheme, load, ROLES, save, setRole, useRoute, useS, type Role } from './store';
 import { cn, Skeleton } from './ui';
@@ -178,6 +179,14 @@ export function App() {
   const [modeOpen, setModeOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   S.r = r;
+
+  // Живая оценка: пока идёт запуск, состояние подтягивается раз в 3 с — новые ответы появляются без перезагрузки.
+  const running = S.run?.status === 'running';
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => reload(), 3000);
+    return () => clearInterval(t);
+  }, [running]);
 
   // Смена экрана: фокус на область содержимого, прокрутка вверх (как в прежнем интерфейсе).
   useEffect(() => {
