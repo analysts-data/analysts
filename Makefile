@@ -1,4 +1,4 @@
-.PHONY: web check e2e eval eval-holdout record run share fmt backup demo results docker-build docker-run
+.PHONY: web check e2e eval eval-holdout record run share fmt backup demo showcase results docker-build docker-run
 
 PORT ?= 8000
 
@@ -52,6 +52,10 @@ docker-run:
 demo:
 	# без ключа: replay, база data/demo.db, набор tests/e2e/fixtures/defence_set.json
 	uv run python scripts/demo.py serve
+
+showcase:
+	# витрина для экранов аналитики: replay, свежая data/showcase.db, набор защиты + tests/fixtures/showcase_set.json
+	uv run python scripts/demo.py showcase --port $(PORT)
 
 fmt:
 	uv run ruff format src tests

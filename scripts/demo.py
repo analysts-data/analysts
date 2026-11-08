@@ -4,6 +4,7 @@
     scripts/demo.py pick  [--base URL]                > pick.json
     scripts/demo.py check [--base URL] --pick pick.json [--run ID ...] [--call ID] [--draft FILE]
     scripts/demo.py serve                             # make demo: replay, data/demo.db, набор защиты
+    scripts/demo.py showcase [--port N]               # make showcase: replay, data/showcase.db, + витрина
 
 pick берёт только поля GET /api/state и снимок DEV (CQA_EVAL_DATASET), итог не считает: он только в scoring.js.
 """
@@ -18,12 +19,15 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 from pydantic import ValidationError
 
+from cqa.adapters.store import Store, connect
+from cqa.domain.ingest import ingest_records
 from cqa.domain.models import Criterion
 from cqa.settings import Settings
 
@@ -31,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CASSETTES = ROOT / "tests" / "cassettes" / "llm"
 DEMO_SET = ROOT / "tests" / "e2e" / "fixtures" / "defence_set.json"
 DEMO_EMPLOYEES = ROOT / "tests" / "e2e" / "fixtures" / "employees.csv"  # вымышленные сотрудники
+SHOWCASE_SET = ROOT / "tests" / "fixtures" / "showcase_set.json"  # 40 синтетических диалогов, 5 операторов
 BASE = "http://127.0.0.1:8000"
 
 # Таблица «Защита»: диалог DEV на случай, если в контрольном наборе нет подходящего.
@@ -257,6 +262,69 @@ def serve(port: int = 8000) -> int:
         proc.wait(10)
 
 
+def preload_showcase(db: Path) -> list[str]:
+    """Витрина в базу до старта сервера; у чата `at` — время загрузки, поэтому `now` — `started_at` записи."""
+    settings = Settings()
+    records = json.loads(SHOWCASE_SET.read_text(encoding="utf-8"))["data"]["records"]
+    conn = connect(str(db))
+    try:
+        store = Store(conn)
+        for r in records:
+            result, _ = ingest_records(
+                [r],
+                group_id="SHOWCASE",
+                now=datetime.fromisoformat(r["started_at"]),
+                shift_s=settings.audio_shift_s,
+                shift_paused_s=settings.audio_shift_paused_s,
+            )
+            store.add_dialogs(result.dialogs, result.audio)
+    finally:
+        conn.close()
+    return sorted({r["operator"] for r in records})
+
+
+def showcase(port: int = 8000) -> int:
+    """make showcase: свежая data/showcase.db, набор защиты и витрина за 5 дней, оценка в replay."""
+    if message := missing_cassettes():
+        print(message, file=sys.stderr)
+        return 1
+    db = ROOT / "data" / "showcase.db"
+    for p in (db, db.with_name("showcase.db-wal"), db.with_name("showcase.db-shm")):
+        p.unlink(missing_ok=True)
+    operators = preload_showcase(db)
+    env = {**os.environ, "CQA_LLM_MODE": "replay", "CQA_DB_PATH": str(db)}
+    cmd = [sys.executable, "-m", "uvicorn", "cqa.http.app:create_app", "--factory"]
+    cmd += ["--app-dir", str(ROOT / "src"), "--host", "127.0.0.1", "--port", str(port)]
+    proc = subprocess.Popen(cmd, cwd=ROOT, env=env)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        with httpx.Client(base_url=base, timeout=30) as api:
+            _wait_health(api, proc)
+            json_body = {"Content-Type": "application/json"}
+            added = api.post("/api/datasets/upload", content=DEMO_SET.read_bytes(), headers=json_body)
+            print(f"набор защиты: {added.raise_for_status().json()}, витрина: операторы {', '.join(operators)}")
+            staff = DEMO_EMPLOYEES.read_text(encoding="utf-8").rstrip("\n").splitlines()
+            staff += [f"sc-op-{i};{name};operator;Линия 3" for i, name in enumerate(operators, 1)]
+            api.post("/api/employees/import", content="\n".join(staff).encode()).raise_for_status()
+            started = api.post("/api/runs", json={"dialogs": None, "criteria": None}).raise_for_status()
+            url = f"/api/runs/{started.json()['run_id']}"
+            while (run := api.get(url).raise_for_status().json())["status"] == "running":
+                time.sleep(0.5)
+            print(f"оценено {run['done']}/{run['total']}, ошибок {len(run['errors'])}")
+            if run["errors"]:
+                print(f"первая ошибка: {run['errors'][0]}; не хватает записей: make record", file=sys.stderr)
+            alerts = api.post("/api/alerts/evaluate")  # оповещения, если они уже есть в сборке
+            if alerts.status_code == 200:
+                print(f"оповещения: {alerts.json()}")
+        print(f"Готово: {base}/#/analytics  (Ctrl+C — остановить)")
+        return proc.wait()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        proc.terminate()
+        proc.wait(10)
+
+
 def _wait_health(api: httpx.Client, proc: subprocess.Popen[bytes], limit_s: float = 30) -> None:
     deadline = time.monotonic() + limit_s
     while time.monotonic() < deadline:
@@ -279,6 +347,8 @@ def main(argv: list[str] | None = None) -> int:
     p_pick = sub.add_parser("pick", help="подобрать диалоги для шагов защиты")
     p_check = sub.add_parser("check", help="проверка готовности за 15 минут")
     sub.add_parser("serve", help="make demo")
+    p_show = sub.add_parser("showcase", help="make showcase: витрина для экранов аналитики")
+    p_show.add_argument("--port", type=int, default=8000)
     for p in (p_pick, p_check):
         p.add_argument("--base", default=BASE)
     p_check.add_argument("--pick", type=Path, required=True)
@@ -292,6 +362,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.cmd == "serve":
         return serve()
+    if args.cmd == "showcase":
+        return showcase(args.port)
     settings = Settings()
     with httpx.Client(base_url=args.base, timeout=30) as api:
         if args.cmd == "pick":
