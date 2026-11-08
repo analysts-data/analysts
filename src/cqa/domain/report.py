@@ -50,9 +50,15 @@ def _groups(rows: Sequence[tuple[str, float]], label: Mapping[str, str]) -> list
 Row = tuple[Dialog, dict[str, Answer], float]  # оценённый диалог: ответы с учётом решений, итог
 
 
+def _status(d: Dialog) -> str:
+    return d.sufficiency.status if d.sufficiency else "ok"
+
+
 def _scored(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]) -> list[Row]:
     rows: list[Row] = []
     for d in dialogs:
+        if _status(d) == "block":  # «Недостаточно данных»: вне средних даже с прежними ответами, виден счёт
+            continue
         answers = {
             cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
             for cid, r in d.res.items()
@@ -122,6 +128,8 @@ def _summary(
             },
             "no_next_step": {"dialogs": no_next, "share": _share(no_next, n)},
             "needs_review": review,
+            "insufficient": sum(_status(d) == "block" for d in picked),
+            "low_data": sum(_status(d) == "flag" for d, _, _ in rows),
             "open_appeals": sum(a.status == "pending" for a in appeals),
             "cost": {
                 "dialogs": len(costs),
@@ -448,11 +456,22 @@ def _scope(rep: dict[str, Any]) -> str:
     return f"Сформирован {rep['at']}" + (f" · {scope}" if scope else "")
 
 
+def _short(s: dict[str, Any]) -> str:
+    """Видимый счёт диалогов при неполных данных (docs/insufficient-data.md); нет таких — пусто."""
+    parts = [f"недостаточно данных — {s['insufficient']}"] if s["insufficient"] else []
+    parts += [f"мало данных — {s['low_data']}"] if s["low_data"] else []
+    return "; " + ", ".join(parts) if parts else ""
+
+
 def _tiles(rep: dict[str, Any]) -> list[tuple[str, str, str]]:
     s = rep["summary"]
     cost = s["cost"]
     return [
-        ("Средний итог", _d(s["avg_total"]), f"из 100; оценено {s['scored']} из {_of(s['dialogs'])}"),
+        (
+            "Средний итог",
+            _d(s["avg_total"]),
+            f"из 100; оценено {s['scored']} из {_of(s['dialogs'])}{_short(s)}",
+        ),
         ("Грубые нарушения", _pct(s["risk"]["share"]), _dialogs(s["risk"]["dialogs"])),
         ("Без следующего шага", _pct(s["no_next_step"]["share"]), _dialogs(s["no_next_step"]["dialogs"])),
         ("Нужна проверка", str(s["needs_review"]), "диалогов с расхождением моделей или без основания"),
