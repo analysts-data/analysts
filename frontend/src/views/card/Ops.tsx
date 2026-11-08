@@ -204,10 +204,11 @@ export function OpsBar({ d, onLine }: { d: any; onLine: (n: number) => void }) {
             {t('определяется…')}
           </span>
         ) : p.status === 'error' || !p.name ? (
-          <span className="text-muted">
-            {t('не определён')}
-            {p.error ? `: ${p.error}` : ''}
-          </span>
+          <Tip content={p.error ? String(p.error).replace(/\s*\(make record[^)]*\)/, '') : null}>
+            <span className="text-muted" tabIndex={p.error ? 0 : undefined}>
+              {t('не определён')}
+            </span>
+          </Tip>
         ) : (
           <>
             <b data-ops="product">{p.name}</b>
