@@ -17,8 +17,8 @@ from cqa.domain.tuning import Bands
 from cqa.http.actor import actor_from, signed
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
-from cqa.services.bands import bands_view, save_bands
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
+from cqa.services.bands import bands_view, save_bands
 from cqa.services.checklists import (
     DiffFormat,
     ExportFormat,
@@ -33,13 +33,21 @@ from cqa.services.checklists import (
     trial_draft,
 )
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import paste_text, save_owners, set_reviewed
+from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
 from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
+from cqa.services.state import (
+    ReportFormat,
+    build_state,
+    mode_from_settings,
+    operator_page,
+    operator_rows,
+    report,
+    scores_csv,
+)
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -52,6 +60,10 @@ AppealValue = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class OperatorIn(BaseModel):
+    operator: str | None = Field(max_length=200)  # обязательное: null снимает назначение
 
 
 class PasteIn(BaseModel):
@@ -144,10 +156,12 @@ async def get_report(
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
+    store = request.app.state.store
+    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
@@ -178,6 +192,27 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     _log(request, "dialog.reviewed" if body.reviewed else "dialog.unreviewed", "dialog", dialog_id)
     return {"ok": True}
+
+
+@router.put("/dialogs/{dialog_id}/operator")
+async def put_operator(dialog_id: str, body: OperatorIn, request: Request) -> dict[str, str | None]:
+    return {"operator": set_operator(request.app.state.store, dialog_id, body.operator)}
+
+
+@router.post("/operators/import")
+async def post_operators_import(request: Request) -> dict[str, object]:
+    """Сырое тело CSV, как у `/datasets/upload`: файл или вставленный текст."""
+    return import_operators(request.app.state.store, await request.body())
+
+
+@router.get("/operators")
+async def get_operators(request: Request) -> dict[str, Any]:
+    return operator_rows(request.app.state.store)
+
+
+@router.get("/operators/{name:path}")
+async def get_operator(name: str, request: Request) -> dict[str, Any]:
+    return operator_page(request.app.state.store, name)
 
 
 @router.put("/checklist")
@@ -237,7 +272,15 @@ class TrialIn(BaseModel):
 @router.post("/checklist/trial")
 async def post_checklist_trial(body: TrialIn, request: Request) -> dict[str, Any]:
     """Песочница: изменённые критерии черновика на выбранных диалогах; ход — GET /api/runs/{id}."""
-    return trial_draft(request.app.state.store, _runner(request), body.checklist, body.dialogs)
+    out = trial_draft(request.app.state.store, _runner(request), body.checklist, body.dialogs)
+    _log(
+        request,
+        "run.trial",
+        "run",
+        out["run_id"],
+        {"dialogs": len(out["dialogs"]), "criteria": out["criteria"]},
+    )
+    return out
 
 
 @router.post("/checklist/normalize")
@@ -262,7 +305,9 @@ async def get_bands(request: Request) -> dict[str, Any]:
 
 @router.put("/bands")
 async def put_bands(body: Bands, request: Request) -> dict[str, Any]:
-    return save_bands(request.app.state.store, body)
+    saved = save_bands(request.app.state.store, body)
+    _log(request, "bands.save", "bands", "", body.model_dump(mode="json"))
+    return saved
 
 
 @router.put("/owners")

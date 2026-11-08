@@ -282,3 +282,23 @@ def test_trial_refuses_a_draft_that_would_not_save(sandbox: tuple[TestClient, Fa
 
     assert response.status_code == 422
     assert response.json()["fields"] == {"criteria.3.na": "Критерий 04: для канала chat нужен na: true"}
+
+
+def test_bands_save_and_trial_land_in_the_audit(
+    sandbox: tuple[TestClient, FakeEvaluator], store: Store, dialogs: list[Dialog]
+) -> None:
+    client, _ = sandbox
+    draft = with_criterion(current(client), "04", text="Новый текст")
+    assert client.put("/api/bands", json=BANDS).status_code == 200
+    run_id = client.post("/api/checklist/trial", json={"checklist": draft, "dialogs": ["call-024"]}).json()[
+        "run_id"
+    ]
+    wait(client, run_id)
+
+    log = client.get("/api/audit").json()
+
+    assert [(e["action"], e["target_type"], e["target_id"]) for e in log[:2]] == [
+        ("run.trial", "run", str(run_id)),
+        ("bands.save", "bands", ""),
+    ]
+    assert log[0]["details"] == {"dialogs": 1, "criteria": ["04"]}

@@ -7,12 +7,20 @@ from typing import Any, Literal
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
-from cqa.domain.report import build_report, to_html, to_markdown
+from cqa.domain.report import (
+    DEFINITIONS,
+    MIN_SCORED,
+    build_report,
+    operator_card,
+    operators,
+    to_html,
+    to_markdown,
+)
 from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
 from cqa.services.bands import current_bands
-from cqa.services.errors import Unavailable
+from cqa.services.errors import NotFound, Unavailable
 from cqa.settings import Settings
 
 
@@ -63,15 +71,33 @@ ReportFormat = Literal["html", "json", "md"]
 
 
 def report(
-    store: Store, fmt: ReportFormat, *, lang: str | None, ch: str | None, now: datetime
+    store: Store,
+    fmt: ReportFormat,
+    *,
+    lang: str | None,
+    ch: str | None,
+    now: datetime,
+    operator: str | None = None,
 ) -> dict[str, Any] | str:
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
     rep = build_report(
         checklist, dialogs, appeals, store.get_owners(),
-        at=stamp(now), lang=lang, ch=ch, bands=current_bands(store),
+        at=stamp(now), lang=lang, ch=ch, operator=operator, bands=current_bands(store),
     )  # fmt: skip
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
+
+
+def operator_rows(store: Store) -> dict[str, Any]:
+    return {"definitions": DEFINITIONS, "min_n": MIN_SCORED, "operators": operators(*current_state(store))}
+
+
+def operator_page(store: Store, name: str) -> dict[str, Any]:
+    checklist, dialogs, appeals = current_state(store)
+    card = operator_card(checklist, dialogs, appeals, store.get_owners(), name)
+    if card is None:
+        raise NotFound(f"Сотрудник {name} не найден")
+    return {**card, "definitions": DEFINITIONS, "min_n": MIN_SCORED}
 
 
 def scores_csv(store: Store, shape: Shape, *, lang: str | None, ch: str | None) -> tuple[int, str]:

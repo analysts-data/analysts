@@ -11,11 +11,6 @@ ROOT = Path(__file__).resolve().parents[2]
 HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
-EXEMPT = {"/health", "/login"} | {
-    # UI в работе: шкала оценок, «что если», нормировка, шаблоны и готовые чек-листы (PR checklist-flex)
-    "/bands", "/checklist/simulate", "/checklist/normalize", "/checklist/presets", "/criteria/templates",
-    "/checklist/trial",
-}  # fmt: skip
 EXEMPT = {
     "/health",
     "/login",
@@ -27,6 +22,13 @@ EXEMPT = {
     "/me",
     "/overview",
 }
+# UI в работе: оценки по сотрудникам (PR #80)
+EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# UI в работе: шкала оценок, «что если», песочница, нормировка, шаблоны, готовые чек-листы (PR #91)
+EXEMPT |= {
+    "/bands", "/checklist/simulate", "/checklist/trial", "/checklist/normalize", "/checklist/presets",
+    "/criteria/templates",
+}  # fmt: skip
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
