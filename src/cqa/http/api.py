@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import (
     AwareDatetime,
@@ -24,7 +24,7 @@ from pydantic import (
 
 from cqa.compose import build_classifier, build_evaluator, build_routed, check_provider
 from cqa.domain.analytics import Filters
-from cqa.domain.models import Answer, Appeal, Checklist, Product, ReasonCode
+from cqa.domain.models import Answer, Appeal, Checklist, ClientOffer, Product, ReasonCode
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
 from cqa.domain.tuning import Bands
@@ -97,6 +97,10 @@ AppealValue = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class CaseStatusIn(BaseModel):
+    status: Literal["unknown", "open", "in_progress", "resolved"]
 
 
 class OperatorIn(BaseModel):
@@ -216,43 +220,132 @@ async def get_state(request: Request) -> dict[str, Any]:
 
 
 
-@router.get("/customer-cases", summary="Связанные обращения и прозрачная очередь приоритета")
+@router.get("/customer-offers", summary="Каталог одобренных решений для клиентских случаев")
+async def get_customer_offers(request: Request) -> list[dict[str, Any]]:
+    saved = request.app.state.store.get_list("customer_offers") or []
+    return [ClientOffer.model_validate(item).model_dump() for item in saved]
+
+
+@router.put("/customer-offers", summary="Заменить каталог решений и правила подбора")
+async def put_customer_offers(body: list[ClientOffer], request: Request) -> list[dict[str, Any]]:
+    ids = [offer.id for offer in body]
+    if len(ids) != len(set(ids)):
+        raise Invalid("Коды предложений должны быть уникальными")
+    topic_ids = {topic.id for topic in taxonomy(request.app.state.store)}
+    for offer in body:
+        unknown = set(offer.topic_ids) - topic_ids
+        if unknown:
+            raise Invalid(f"У предложения {offer.id} неизвестные темы: {', '.join(sorted(unknown))}")
+        if offer.approved and not (offer.topic_ids or offer.keywords):
+            raise Invalid(f"Для одобрения предложения {offer.id} задайте темы или ключевые фразы")
+    saved = [offer.model_dump() for offer in body]
+    request.app.state.store.set_list("customer_offers", saved)
+    _log(request, "customer_offers.save", "customer_offers", "", {"ids": ids})
+    return saved
+
+
+@router.put("/dialogs/{dialog_id}/case-status", summary="Обновить статус решения по обращению")
+async def put_case_status(dialog_id: str, body: CaseStatusIn, request: Request) -> dict[str, Any]:
+    store = request.app.state.store
+    conn = store._conn
+    row = conn.execute("SELECT body FROM dialogs WHERE id = ?", (dialog_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Диалог не найден")
+    data = json.loads(row["body"])
+    data["case_status"] = body.status
+    with conn:
+        conn.execute("UPDATE dialogs SET body = ? WHERE id = ?", (json.dumps(data, ensure_ascii=False), dialog_id))
+    _log(request, "customer_case.status", "dialog", dialog_id, {"status": body.status})
+    return {"dialog_id": dialog_id, "status": body.status}
+
+
+@router.get("/customer-cases", summary="Связанные обращения, клиентские потребности и прозрачные предложения")
 async def get_customer_cases(request: Request) -> list[dict[str, Any]]:
-    """Группирует только по переданному интеграцией псевдониму. Не связывает по имени/телефону."""
-    dialogs = [d for d in request.app.state.store.list_dialogs() if d.client_ref]
+    """Связывает только по переданному псевдониму; предложения требуют одобренного каталога и явного сигнала."""
+    store = request.app.state.store
+    dialogs = [d for d in store.list_dialogs() if d.client_ref]
     groups: dict[str, list[Any]] = {}
     for dialog in dialogs:
         groups.setdefault(dialog.client_ref, []).append(dialog)
+    offers = [ClientOffer.model_validate(o) for o in (store.get_list("customer_offers") or [])]
+    approved_offers = [offer for offer in offers if offer.approved]
     rows = []
     for client_ref, items in groups.items():
-        items.sort(key=lambda d: d.at)
-        topics = [d.product.label if d.product else None for d in items]
+        items.sort(key=lambda d: (d.at, d.id))
+        topics = [d.product.name if d.product else None for d in items]
         topic_counts = {topic: topics.count(topic) for topic in set(topics) if topic}
         repeated_topic = next((topic for topic, count in topic_counts.items() if count > 1), None)
+        unresolved_count = sum(d.case_status in ("open", "in_progress") for d in items)
+        resolved_count = sum(d.case_status == "resolved" for d in items)
         reasons = []
         if len(items) > 1:
             reasons.append({"code": "repeat_contact", "label": f"Повторные обращения: {len(items)}"})
         if repeated_topic:
             reasons.append({"code": "repeat_topic", "label": f"Повторяется тема: {repeated_topic}"})
-        if any(d.case_status in ("open", "in_progress") for d in items):
-            reasons.append({"code": "unresolved", "label": "Есть обращение со статусом «не решено» или «в работе»"})
+        if unresolved_count:
+            reasons.append({"code": "unresolved", "label": f"Нерешённых обращений: {unresolved_count}"})
         if any(d.risks for d in items):
-            reasons.append({"code": "risk", "label": "В диалоге отмечен риск; требуется проверить основание"})
-        priority = min(100, 30 * (len(items) > 1) + 25 * bool(repeated_topic) + 35 * any(d.case_status in ("open", "in_progress") for d in items) + 25 * any(d.risks for d in items))
-        expanded = []
+            reasons.append({"code": "risk", "label": "В диалоге отмечен риск; проверьте основание"})
+        priority = min(100, 30 * (len(items) > 1) + 25 * bool(repeated_topic) + 35 * bool(unresolved_count) + 25 * any(d.risks for d in items))
+
+        client_lines = []
         for d in items:
-            conn = request.app.state.store._conn
+            for line in (d.lines or []):
+                if getattr(line, "who", None) == "client":
+                    client_lines.append((d, line))
+        request_signals: list[dict[str, Any]] = []
+        suggestion_rows = []
+        for offer in approved_offers:
+            evidence: list[dict[str, Any]] = []
+            matched_keywords: set[str] = set()
+            for d, line in client_lines:
+                phrase = " ".join(line.text.casefold().split())
+                for keyword in offer.keywords:
+                    normalized = " ".join(keyword.casefold().split())
+                    if len(normalized) >= 2 and normalized in phrase:
+                        matched_keywords.add(keyword)
+                        evidence.append({"dialog_id": d.id, "line": line.n, "text": line.text[:500], "match": keyword})
+            matched_topics = [d for d in items if d.product and d.product.id in offer.topic_ids]
+            for d in matched_topics:
+                ev_numbers = set(d.product.basis.ev if d.product else [])
+                for line in (d.lines or []):
+                    if getattr(line, "n", None) in ev_numbers:
+                        evidence.append({"dialog_id": d.id, "line": line.n, "text": line.text[:500], "match": "основание темы"})
+            for keyword in sorted(matched_keywords):
+                request_signals.append({"phrase": keyword, "offer_id": offer.id})
+            if matched_keywords or matched_topics:
+                suggestion_rows.append({
+                    "offer": offer.model_dump(),
+                    "basis": (["Совпадение с фразой клиента: " + ", ".join(sorted(matched_keywords))] if matched_keywords else [])
+                        + (["Тема обращения сопоставлена с предложением банком"] if matched_topics else []),
+                    "matched_topics": sorted({d.product.name for d in matched_topics if d.product}),
+                    "evidence": evidence,
+                })
+        suggestion_rows.sort(key=lambda item: (
+            -int(any(reason.startswith("Совпадение") for reason in item["basis"])),
+            -len(item["evidence"]),
+            item["offer"]["name"].casefold(),
+        ))
+
+        expanded = []
+        conn = store._conn
+        for d in items:
             evaluations = [{"criterion": r["cid"], **json.loads(r["body"])} for r in conn.execute(
                 "SELECT cid, body FROM results WHERE dialog_id = ? ORDER BY id DESC", (d.id,)).fetchall()]
             decisions = [json.loads(r["body"]) for r in conn.execute(
                 "SELECT body FROM appeals WHERE dlg = ? ORDER BY n DESC", (d.id,)).fetchall()]
-            expanded.append({"id": d.id, "at": d.at, "title": d.title,
-                "topic": d.product.name if d.product else None, "status": d.case_status,
+            expanded.append({
+                "id": d.id, "at": d.at, "title": d.title, "topic": d.product.name if d.product else None,
+                "topic_id": d.product.id if d.product else None, "status": d.case_status,
                 "risks": [r.model_dump(mode="json") for r in (d.risks or [])],
-                "evaluations": evaluations, "reviewer_decisions": decisions})
-        rows.append({"client_ref": client_ref, "contact_count": len(items), "repeated_topic": repeated_topic,
-            "status": items[-1].case_status, "priority": priority, "priority_reasons": reasons,
-            "dialogs": expanded})
+                "evaluations": evaluations, "reviewer_decisions": decisions,
+            })
+        rows.append({
+            "client_ref": client_ref, "contact_count": len(items), "repeated_topic": repeated_topic,
+            "unresolved_count": unresolved_count, "resolved_count": resolved_count,
+            "client_request_signals": request_signals[:30], "suggestions": suggestion_rows[:5],
+            "status": items[-1].case_status, "priority": priority, "priority_reasons": reasons, "dialogs": expanded,
+        })
     return sorted(rows, key=lambda row: (-row["priority"], row["client_ref"]))
 
 
