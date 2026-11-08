@@ -44,6 +44,8 @@ EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 EXEMPT |= {"/routing", "/routing/explain"}
 # UI в работе: выбор «Причина решения» в форме решения, плитка «Изменено людьми» в аналитике (PR #92)
 EXEMPT |= {"/appeals/reasons", "/appeals/stats"}
+# UI в работе: темы обращений (PR #95)
+EXEMPT |= {"/products", "/products/stats", "/dialogs/{dialog_id}/product"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

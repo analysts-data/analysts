@@ -15,6 +15,7 @@ from cqa.domain.report import (
     build_report,
     operator_card,
     operators,
+    product_stats,
     to_csv,
     to_html,
     to_markdown,
@@ -103,9 +104,15 @@ def report(
     names = {s["id"]: s["name"] for s in store.sources()}
     rep = build_report(
         checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, operator=operator,
-        source=source, source_names=names, bands=current_bands(store),
+        source=source, source_names=names, bands=current_bands(store), products=store.products() or [],
     )  # fmt: skip
     return rep if fmt == "json" else {"html": to_html, "md": to_markdown, "csv": to_csv}[fmt](rep)
+
+
+def product_stats_of(store: Store) -> list[dict[str, Any]]:
+    """`GET /api/products/stats` из того же состояния, что GET /api/state и отчёт."""
+    checklist, dialogs, appeals = current_state(store)
+    return product_stats(checklist, dialogs, appeals, store.get_owners(), store.products() or [])
 
 
 Audience = Literal["operator", "qa", "manager", "checklist"]

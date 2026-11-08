@@ -291,6 +291,20 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
 
+## Темы обращений и маркеры риска (llm-evaluation, products)
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `Product`, `ProductTag`, `ProductBasis`, `RiskKind`, `RiskMark` | `src/cqa/domain/models.py` | форма раздела «Темы обращений» в `contract.md`; `Dialog.product: ProductTag \| None`, `Dialog.risks: list[RiskMark] \| None` |
+| `product_messages`, `model_tag`, `model_risks`, `jev_tag`, `jev_risks`, `product_key` | `src/cqa/domain/products.py` | чистые функции запроса, разбора ответа и ключа кэша; `PRODUCT_SURE = 0.6`, `RISK_SURE = 0.5`, `MANUAL = "вручную"` |
+| `product_stats` | `src/cqa/domain/report.py` | `product_stats(checklist, dialogs, appeals, owners, products) -> list[dict]`; `build_report(..., products=())` добавляет `products` |
+| `Classifier` | `src/cqa/services/products.py` | `_Gate`: `classify(dialog, products) -> (ProductTag, list[RiskMark])`, `risks` — список маркеров; Jev (`Picker.pick(text, options, flags) -> Pick`) или `ChatModel` |
+| `save_products`, `set_manual`, `classify_plan`, `taxonomy` | там же | `PUT /api/products`, `PUT /api/dialogs/{id}/product`, план диалогов для темы с ключом |
+| `JevVerifier.pick` | `src/cqa/adapters/jev.py` | один POST: choice `q0` и noul `r{i}` |
+| `build_classifier(settings)` | `src/cqa/compose.py` | Jev при `jev_api_key`, иначе основная модель с `llm_reasoning="off"`; маркеры — `tests/fixtures/risks.json` |
+| `Runner(..., classifier=None)`, `Runner.use(evaluator, classifier=None)` | `src/cqa/services/runs.py` | `create_app(..., classifier=None)` собирает `build_classifier`, только если оценщик не подставлен (тесты с `FakeEvaluator` идут без тем) |
+| Таблицы `products`, `dialog_products` | `data/cqa.db` | `products(id = 1, body)` — справочник JSON; `dialog_products(dialog_id PK, key, body, risks)` — тема (`ProductTag`), маркеры, ключ кэша (`""` — спросить снова, `"вручную"`); `pending` удаляются в конце запуска и при старте |
+
 ## Настройка чек-листа (eval-and-delivery, checklist-flex)
 
 | Имя | Модуль | Сигнатура и смысл |

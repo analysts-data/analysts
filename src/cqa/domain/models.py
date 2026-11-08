@@ -143,6 +143,46 @@ class Cost(BaseModel):  # Dialog.cost
     ms: int
 
 
+class Product(BaseModel):  # тема обращения: справочник GET/PUT /api/products — данные, как чек-лист
+    id: str = Field(pattern=r"^[a-z0-9-]{1,32}$")
+    name: str = Field(min_length=1)
+    description: str = ""
+
+
+class ProductBasis(BaseModel):
+    why: str | None = None  # обоснование: причина от модели с номерами реплик, вывод Jev или причина вручную
+    ev: list[int] = []  # реплики-основания (модель)
+    probs: dict[str, float] | None = None  # Jev: вероятность каждой темы по id
+    threshold: float | None = None  # Jev: ниже порога — needs_review
+    threshold_why: str | None = None
+
+
+class ProductTag(BaseModel):  # Dialog.product
+    status: Literal["pending", "done", "error"]
+    id: str | None = None
+    name: str | None = None
+    confidence: float | None = None
+    by: str | None = None  # "jev", имя модели или "вручную"
+    needs_review: bool = False
+    basis: ProductBasis = ProductBasis()
+    error: str | None = None
+    cost: float = 0.0
+
+
+class RiskKind(BaseModel):  # маркер риска брокера: данные (tests/fixtures/risks.json), как чек-лист
+    k: str
+    label: str
+    text: str
+
+
+class RiskMark(BaseModel):  # Dialog.risks: найденный маркер с основанием
+    k: str
+    label: str
+    lines: list[int] = []  # реплики-основания; Jev их не возвращает
+    basis: str  # причина от модели или вероятность Jev с порогом
+    p: float | None = None  # Jev: вероятность
+
+
 class Dialog(BaseModel):
     id: str
     title: str | None = None
@@ -154,6 +194,8 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    product: ProductTag | None = None
+    risks: list[RiskMark] | None = None  # None — ещё не определены, [] — не найдены
     operator: str | None = None  # сотрудник: колонка dialogs.operator, в запрос модели не уходит
     source_id: str | None = None  # источник из реестра (GET /api/sources); колонка dialogs.source_id
     external_id: str | None = None  # id записи в источнике; дубли по (source_id, external_id)

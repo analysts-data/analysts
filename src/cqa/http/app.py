@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 import sqlite3
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -19,8 +20,8 @@ from cqa.adapters.batches import BatchStore
 from cqa.adapters.http_source import HttpSource
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
-from cqa.compose import build_routed, build_source
-from cqa.domain.models import Checklist
+from cqa.compose import build_classifier, build_routed, build_source
+from cqa.domain.models import Checklist, Product
 from cqa.domain.review import ASTANA
 from cqa.http import api, batches, docs, sources
 from cqa.http.access import protect
@@ -33,7 +34,7 @@ from cqa.services.errors import Conflict, Invalid, NotFound, Unauthorized, Unava
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
 from cqa.services.prosody import dialog_prosody
-from cqa.services.runs import Runner
+from cqa.services.runs import Classifier, Runner
 from cqa.services.state import mode_from_settings
 from cqa.services.sync import Syncer
 from cqa.services.telemetry import TokenBucket, purge
@@ -41,6 +42,7 @@ from cqa.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
 WEB_DIR = ROOT / "web"
+SEED_PRODUCTS = ROOT / "tests" / "fixtures" / "products.json"  # справочник тем — данные, как чек-лист
 STATUS: dict[type[Exception], int] = {
     NotFound: 404,
     Invalid: 422,
@@ -83,12 +85,20 @@ def seed_checklist(store: Store) -> None:
         )
 
 
+def seed_products(store: Store) -> None:
+    """Начальный справочник тем обращений на пустой базе."""
+    if store.products() is None:
+        raw = json.loads(SEED_PRODUCTS.read_text(encoding="utf-8"))
+        store.set_products([Product.model_validate(p) for p in raw])
+
+
 def create_app(
     settings: Settings | None = None,
     *,
     source: DialogSource | None = None,
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
+    classifier: Classifier | None = None,
 ) -> FastAPI:
     # свой /docs/ без CDN вместо Swagger и ReDoc; схема OpenAPI рядом с остальным API
     app = FastAPI(
@@ -117,8 +127,10 @@ def create_app(
     store = Store(conn)
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
+    store.clear_pending_products()
     purge(store, settings.telemetry_retention_days, datetime.now(UTC))
     seed_checklist(store)
+    seed_products(store)
     app.state.store = store
     app.state.source = source if source is not None else build_source(settings)
     store.fail_stale_syncs()
@@ -144,10 +156,12 @@ def create_app(
         return created
 
     app.state.alerts = alerts
-    evaluator = (
-        evaluator if evaluator is not None else build_routed(settings, prosody, store)
-    )  # llm-evaluation
-    app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts)
+    if evaluator is None:  # llm-evaluation; подставленный оценщик (тесты) — без своего классификатора тем
+        evaluator = build_routed(settings, prosody, store)
+        classifier = classifier if classifier is not None else build_classifier(settings)
+    app.state.runner = Runner(
+        store, evaluator, parallel=settings.llm_max_parallel, on_finish=alerts, classifier=classifier
+    )
     app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)

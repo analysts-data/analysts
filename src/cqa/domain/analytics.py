@@ -12,6 +12,7 @@ from statistics import StatisticsError, correlation, fmean, median
 from typing import Any
 
 from cqa.domain.models import Answer, Appeal, Checklist, Criterion, Dialog
+from cqa.domain.products import topic_name
 from cqa.domain.report import CHANNEL
 from cqa.domain.review import allowed_answers, effective_answer, needs_review
 from cqa.domain.scoring import frac, r2, total
@@ -228,8 +229,7 @@ def _avg(xs: Sequence[float]) -> float | None:
 
 
 def _field(d: Dialog, name: str) -> str | None:
-    # ponytail: product добавляет соседняя ветка; без поля — None, как у диалога без значения
-    value = getattr(d, name, None)
+    value = topic_name(d) if name == "product" else getattr(d, name, None)
     return None if value is None else str(value)
 
 
