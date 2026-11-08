@@ -47,3 +47,7 @@ def test_every_showcase_dialog_is_evaluated_on_every_criterion(tmp_path: Path) -
     missing = {d["id"]: [c for c in cids if c not in d["res"]] for d in state["dialogs"]}
     assert len(missing) == 40
     assert not {k: v for k, v in missing.items() if v}
+    assert run["products"]["errors"] == 0, run["products"]  # тема и маркеры риска — тоже из записей
+    assert {d["id"]: d.get("product", {}).get("status") for d in state["dialogs"]} == {
+        d["id"]: "done" for d in state["dialogs"]
+    }
