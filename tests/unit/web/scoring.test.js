@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { r2, frac, ans, calc, flagsOf } from '../../../web/js/scoring.js';
+import { r2, frac, ans, calc, flagsOf } from '../../../frontend/src/lib/scoring.js';
 
 const fixture = name => new URL(`../../fixtures/${name}`, import.meta.url);
 const state = JSON.parse(readFileSync(fixture('state_prototype.json'), 'utf8'));

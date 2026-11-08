@@ -55,3 +55,4 @@ class Settings(BaseSettings):
     holdout_dir: Path | None = None
     webhook_url: str | None = None  # события alert.created; пусто — не отправляются
     webhook_secret: SecretStr | None = None  # ключ подписи X-CQA-Signature
+    access_token: SecretStr | None = None  # show over the LAN: cookie from /login?token=, empty — open

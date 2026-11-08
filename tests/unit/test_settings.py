@@ -37,6 +37,7 @@ DEFAULTS = {
     "holdout_dir": None,
     "webhook_url": None,
     "webhook_secret": None,
+    "access_token": None,
 }
 
 
