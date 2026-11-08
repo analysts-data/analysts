@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 COOKIE = "cqa_access"
+INGEST = re.compile(r"/api/sources/[^/]+/ingest")
 PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>CQA</title></head>
 <body style="font:16px system-ui,sans-serif;margin:3rem"><h1>Доступ по ссылке с токеном</h1>
 <p>Откройте полную ссылку для входа, её показывает <code>make share</code>.</p></body></html>"""
@@ -43,9 +44,9 @@ def protect(app: FastAPI, token: str) -> None:
             return response
         if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
             return await call_next(request)
-        if path == "/api/health" or (
-            path != "/login" and (valid(request.cookies.get(COOKIE)) or valid(bearer))
-        ):
+        # webhook источника проверяет свой токен сам (services/sources.py): у внешнего сервиса нет cookie
+        open_path = path == "/api/health" or INGEST.fullmatch(path) is not None
+        if open_path or (path != "/login" and (valid(request.cookies.get(COOKIE)) or valid(bearer))):
             return await call_next(request)
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Нужен вход по ссылке с токеном"}, status_code=401)
