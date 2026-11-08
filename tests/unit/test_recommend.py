@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from cqa.domain.models import Answer, Appeal, Checklist, CriterionResult, Dialog, Line
+from cqa.domain.models import Answer, Appeal, Checklist, CriterionResult, Dialog, Line, ProductTag
 from cqa.domain.recommend import for_checklist, for_manager, for_operator, for_qa
 
 CL = Checklist.model_validate(
@@ -35,7 +35,10 @@ def dlg(id: str, op: str | None = None, product: str | None = None, lang: str = 
     base.update({k: v if isinstance(v, CriterionResult) else R(v) for k, v in res.items()})
     lines = [Line(n=n, t=float(n), who="client" if n % 2 else "operator", text="…") for n in range(1, 7)]
     d = Dialog(id=id, ch=ch, lang=lang, at="", lines=lines, res=base, reviewed=reviewed)
-    return d.model_copy(update={"operator": op, "product": product})
+    tag = (
+        ProductTag(status="done", id=product.lower(), name=product) if product else None
+    )  # тема — Dialog.product
+    return d.model_copy(update={"operator": op, "product": tag})
 
 
 def world() -> list[Dialog]:
