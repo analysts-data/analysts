@@ -4,6 +4,8 @@
 import { ArrowLeft, History, Pencil } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { f2, fn, titleOf } from '../../lib/format.js';
+import { Recommendations } from '../Recommendations';
+import { TalkNorms } from '../card/TalkStats';
 import { t } from '../../lib/i18n.js';
 import { href } from '../../lib/router.js';
 import { calc } from '../../lib/scoring.js';
@@ -149,6 +151,11 @@ export function Employee({ id }: { id: string }) {
             ) : (
               <Card className="p-4 text-[13px] text-muted">{t('Тренд появится после оценки диалогов хотя бы за один день.')}</Card>
             )}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Recommendations kind="operator" id={name} title={t('Рекомендации для сотрудника')} />
+            <TalkNorms operator={name} />
           </div>
 
           {r.dialog_ids?.length > 0 && (

@@ -1,6 +1,7 @@
 // Окно режима оценки по клику на плашку #mode: оценщик, модели OpenAI-формата со своими ключами, основная модель,
 // второе мнение, обезличивание, реальные звонки. GET и PUT /api/config, PUT и DELETE /api/providers/{id}, POST …/check.
 // Пояснения здесь строкой, не Tip: подсказка Radix рисуется в body, под верхним слоем модального <dialog>.
+// По той же причине id модели — в системном title.
 import { useEffect, useState } from 'react';
 import { configBody, providerBody, risks, whereOf } from '../lib/config.js';
 import { t } from '../lib/i18n.js';
@@ -16,6 +17,8 @@ const evaluators = () => [
   ['jev', t('Только Jev (быстро, без обоснований)'), t('Один запрос на диалог: ответы с вероятностью, без цитат; неуверенные уходят на проверку. Нужен ключ Jev.')],
 ];
 const ENV = 'env'; // модель из .env: меняется только там
+// название с сервера у модели из .env — слово разработчика, пользователю показываем смысл
+const nameOf = (p: any) => (p.id === ENV ? t('Модель по умолчанию (задана на сервере)') : p.label);
 // встроенная модель (PR #73): правятся только модель и ключ, DELETE сбрасывает её к исходным настройкам
 const BUILTIN = 'openrouter-jev';
 const keyHint = (has: boolean) => (has ? t('сохранён; оставьте пустым, чтобы не менять') : t('не задан'));
@@ -87,7 +90,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   };
 
   const check = async (p: any) => {
-    toast(t('Проверяем «{label}»…', { label: p.label }));
+    toast(t('Проверяем «{label}»…', { label: nameOf(p) }));
     setChecks(c => ({ ...c, [p.id]: { ok: true, text: t('проверяем…') } }));
     let res: { ok: boolean; text: string };
     try {
@@ -97,7 +100,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       res = { ok: false, text: t('проверка не удалась: {error}', { error: e.message }) };
     }
     setChecks(c => ({ ...c, [p.id]: res }));
-    toast(t('«{label}» {result}.', { label: p.label, result: res.text }));
+    toast(t('«{label}» {result}.', { label: nameOf(p), result: res.text }));
   };
 
   if (edit) {
@@ -172,7 +175,7 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
     );
   }
 
-  const second = [['', t('нет')], ['jev', 'Jev'], ...cfg.providers.map((p: any) => [p.id, p.label])];
+  const second = [['', t('Выключено')], ['jev', 'Jev'], ...cfg.providers.map((p: any) => [p.id, nameOf(p)])];
   return (
     <Dlg
       key="mode"
@@ -210,16 +213,15 @@ export function ModeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         ))}
       </fieldset>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1.5 text-[13px] font-semibold text-ink2">{t('Модели OpenAI-формата · отметьте основную')}</legend>
+        <legend className="mb-1.5 text-[13px] font-semibold text-ink2">{t('Подключённые модели: выберите основную')}</legend>
         {cfg.providers.map((p: any) => (
           <div key={p.id} data-provider={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line px-3 py-2 text-sm">
             <label className="flex min-w-0 flex-[1_1_260px] items-baseline gap-2">
               <input type="radio" name="llm_provider" value={p.id} defaultChecked={p.id === cfg.llm_provider} />
               <span className="min-w-0">
-                <b>{p.label}</b>{' '}
+                <b title={p.model}>{nameOf(p)}</b>{' '}
                 <span className="text-muted">
-                  {p.model} · {where()[p.where] || p.where} · {p.has_key ? t('ключ есть') : t('ключ не задан')}
-                  {p.id === ENV && ` · ${t('из .env, меняется только там')}`}
+                  {where()[p.where] || p.where} · {!p.has_key ? t('ключ не задан') : p.id === ENV ? t('ключ задан администратором') : t('ключ сохранён')}
                 </span>
                 {p.id === BUILTIN && !p.has_key && (
                   <Chip tone="ev" className="ml-1.5">

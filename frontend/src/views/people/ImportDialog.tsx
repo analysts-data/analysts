@@ -41,7 +41,7 @@ export function ImportDialog({ open, onOpenChange, onDone }: { open: boolean; on
     setBusy(true);
     setError(null);
     try {
-      const r = await postRaw(`/${kind}/import`, text);
+      const r = await postRaw(kind === 'employees' ? '/employees/import' : '/operators/import', text);
       toast(
         kind === 'employees'
           ? t('Сотрудники импортированы: добавлено {added}, обновлено {updated}.', { added: r?.added ?? 0, updated: r?.updated ?? 0 })

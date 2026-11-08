@@ -72,6 +72,19 @@ export function Appeals({ id }: { id: string | null }) {
     );
   };
 
+  // пусто: одна карточка вместо очереди, «ждут решения 0» и пустой истории
+  if (!list.length)
+    return (
+      <>
+        <PageHead title={t('Апелляции')} sub={sub(S.role)} />
+        <Card>
+          <Empty action={<LinkButton href={href('queue')}>{t('Перейти к диалогам')}</LinkButton>}>
+            {S.role === 'operator' ? t('Апелляций нет. Не согласны с оценкой: откройте диалог и нажмите «Оспорить».') : t('Апелляций нет. Они появятся, когда оператор оспорит оценку.')}
+          </Empty>
+        </Card>
+      </>
+    );
+
   return (
     <>
       <PageHead title={S.role === 'reviewer' ? t('Апелляции: ждут решения {n}', { n: pend.length }) : t('Апелляции')} sub={sub(S.role)} />
@@ -84,15 +97,7 @@ export function Appeals({ id }: { id: string | null }) {
           {done.map(item)}
         </Card>
         <div className="flex min-w-0 flex-col gap-4">
-          {a ? (
-            <Detail key={a.id} a={a} d={dlg(a.dlg)} c={crit(a.cid)} />
-          ) : (
-            <Card>
-              <Empty action={<LinkButton href={href('queue')}>{t('Перейти к диалогам')}</LinkButton>}>
-                {S.role === 'reviewer' ? t('Апелляций нет. Новые появятся здесь, когда оператор оспорит оценку.') : t('Апелляций нет. Не согласны с оценкой: откройте диалог и нажмите «Оспорить».')}
-              </Empty>
-            </Card>
-          )}
+          <Detail key={a.id} a={a} d={dlg(a.dlg)} c={crit(a.cid)} />
           <Card className="p-5" aria-label={t('История решений')}>
             <h2 className="mb-2 text-base font-semibold">{t('История решений')}</h2>
             {decided.length ? (

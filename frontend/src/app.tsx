@@ -108,7 +108,7 @@ const HINTS: Record<string, { page: string; title: string; steps: string[] }> = 
     page: 'appeals',
     title: msg('Как решать апелляции'),
     steps: [
-      msg('Здесь оценки, которые оспорили операторы. Первая ожидающая уже открыта.'),
+      msg('Здесь оценки, которые оспорили операторы. Первая ожидающая открывается сама.'),
       msg('Сравните: слева текущая оценка с обоснованием, справа довод оператора, ниже фрагмент диалога с отмеченными репликами.'),
       msg('Выберите «Подтвердить» или «Изменить», напишите причину и сохраните. Итог диалога пересчитается, оператор увидит решение в карточке.'),
     ],
@@ -186,8 +186,9 @@ function View({ page, id }: { page: string; id: string | null }) {
   if (S.error)
     return (
       <div className="flex flex-col items-start gap-3">
-        <div className="box risk" role="alert">
-          {t('Не удалось загрузить данные: {error}', { error: S.error })}
+        <div className="box risk flex flex-col gap-1" role="alert">
+          <span className="font-semibold">{t('Не удалось загрузить данные. Сервер ответил ошибкой, ваши данные не потеряны.')}</span>
+          <span className="text-xs opacity-80">{S.error}</span>
         </div>
         <Button
           disabled={busy}
@@ -445,7 +446,7 @@ export function App() {
           <TabBar role={S.role} current={navPage} features={S.features} queueBadge={queueBadge} appealsBadge={appealsBadge} onMore={() => setPalette(true)} />
         )}
         <div className="min-w-0">
-          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap md:flex-nowrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
+          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap md:flex-nowrap items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2.5 md:px-7">
             <div className="order-1 min-w-0 flex-1 truncate text-[13px] text-muted" id="crumb">
               {NAME} / <b className="font-semibold text-ink">{t(NAMES[r.page])}</b>
             </div>
@@ -459,7 +460,7 @@ export function App() {
                 <Search size={15} /> <span className="hidden 2xl:inline">{t('Поиск')}</span> <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
               {!S.mode ? (
-                <span className="h-[22px] w-64 max-w-full animate-pulse rounded-full bg-hover" aria-hidden="true" />
+                <span className="h-[22px] w-64 max-w-full rounded-full bg-hover" aria-hidden="true" />
               ) :
                 (S.role === 'qa' ? (
                   <Tip content={`${modeText(S.mode, S.llmMode)}. ${t(TERMS.mode)} ${t('Нажмите, чтобы сменить.')}`}>

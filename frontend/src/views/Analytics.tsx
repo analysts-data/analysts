@@ -13,6 +13,7 @@ import { api, toast } from '../lib/state.js';
 import { currentTheme, go, rerender, useRoute, useS } from '../store';
 import { Term, TERMS } from '../terms';
 import { Button, Card, Chip, cn, Empty, LinkButton, PageHead, Tip } from '../ui';
+import { Recommendations } from './Recommendations';
 import { Chart, type Bar } from './analytics/Chart';
 import { Products } from './analytics/Products';
 import { Runs } from './analytics/Runs';
@@ -556,6 +557,7 @@ export function Analytics() {
         </Card>
         </div>
       </details>
+      {S.role !== 'operator' && <Recommendations kind="manager" title={t('Рекомендации руководителю')} />}
       </>
       )}
     </>
