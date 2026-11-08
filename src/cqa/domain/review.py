@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from cqa.domain.models import Answer as ResultAnswer
-from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult
+from cqa.domain.models import Appeal, Checklist, Criterion, CriterionResult, Dialog
 
 ASTANA = timezone(timedelta(hours=5))
 Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true | false}
@@ -94,6 +94,15 @@ def effective_answer(result: CriterionResult, decided: Sequence[Appeal]) -> Resu
 
 def needs_review(c: Criterion, r: CriterionResult) -> bool:
     return c.type in ("bool", "scale") and (r.evFail or (r.alt is not None and r.alt != r.a))
+
+
+def awaits_review(criteria: Sequence[Criterion], d: Dialog, decided: set[tuple[str, str]]) -> bool:
+    """Диалог не отмечен проверенным, и есть расхождение или проваленное основание без решения.
+    `decided` — пары (диалог, критерий) с решением confirmed или changed."""
+    return not d.reviewed and any(
+        (r := d.res.get(c.id)) is not None and needs_review(c, r) and (d.id, c.id) not in decided
+        for c in criteria
+    )
 
 
 def stamp(dt: datetime) -> str:
