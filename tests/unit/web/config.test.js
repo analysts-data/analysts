@@ -1,25 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { configBody, modeText, presetOf, risks } from '../../../web/js/config.js';
+import { configBody, modeText, providerBody, risks, whereOf } from '../../../web/js/config.js';
 
 const CFG = { data_where: 'kz', anonymize: true, allow_real_data: false };
-const FIELDS = { llm_base_url: ' https://kz.test/v1 ', llm_model: ' qwen ', llm_profile: 'plain', llm_api_key: '', evaluator: 'llm', jev: false, jev_api_key: '', allow_real_data: false };
+const FORM = { llm_provider: 'ds', verifier: '', evaluator: 'llm', anonymize: true, jev_api_key: ' j ', allow_real_data: false };
 
-test('presetOf names the mode of a config', () => {
-  assert.equal(presetOf({ data_where: 'local', anonymize: false }), 'local');
-  assert.equal(presetOf({ data_where: 'kz', anonymize: true }), 'anon');
-  assert.equal(presetOf({ data_where: 'external', anonymize: false }), 'raw');
+test('configBody maps the mode form to the PUT /api/config body', () => {
+  assert.deepEqual(configBody(FORM), {
+    llm_provider: 'ds', verifier: null, evaluator: 'llm', anonymize: true, jev_api_key: 'j', allow_real_data: false,
+  });
+  assert.equal(configBody({ ...FORM, verifier: 'jev' }).verifier, 'jev');
+  assert.equal(configBody({ ...FORM, evaluator: 'jev' }).evaluator, 'jev');
+  assert.equal(configBody({ ...FORM, verifier: 'env', anonymize: false }).anonymize, false);
 });
 
-test('configBody maps a preset and the form to the PUT /api/config body', () => {
-  assert.deepEqual(configBody('local', 'external', FIELDS), {
-    llm_base_url: 'https://kz.test/v1', llm_model: 'qwen', llm_profile: 'plain', llm_api_key: '',
-    data_where: 'local', anonymize: false, verifier: null, evaluator: 'llm', jev_api_key: '', allow_real_data: false,
+test('providerBody trims the provider form and keeps an empty key empty', () => {
+  const form = { id: 'ds', label: ' DeepSeek ', base_url: ' https://ds.test ', model: ' m ', profile: 'deepseek', where: 'external', key: ' ' };
+  assert.deepEqual(providerBody(form), {
+    label: 'DeepSeek', base_url: 'https://ds.test', model: 'm', profile: 'deepseek', where: 'external', key: '',
   });
-  assert.equal(configBody('anon', 'kz', { ...FIELDS, evaluator: 'jev' }).evaluator, 'jev');
-  const anon = configBody('anon', 'kz', { ...FIELDS, jev: true, jev_api_key: ' j ' });
-  assert.deepEqual([anon.data_where, anon.anonymize, anon.verifier, anon.jev_api_key], ['kz', true, 'jev', 'j']);
-  assert.equal(configBody('raw', 'external', FIELDS).anonymize, false);
+});
+
+test('whereOf finds where the chosen provider processes data', () => {
+  const cfg = { providers: [{ id: 'env', where: 'kz' }, { id: 'loc', where: 'local' }] };
+  assert.equal(whereOf(cfg, 'loc'), 'local');
+  assert.equal(whereOf(cfg, 'nope'), undefined);
 });
 
 test('risks asks to confirm raw text abroad and real calls, but not a local model', () => {
