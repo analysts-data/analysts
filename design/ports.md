@@ -83,6 +83,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `Invalid` | там же | 422 | недопустимый ответ, пустая причина, плохой `group_id`, файл не в формате организаторов |
 | `Conflict` | там же | 409 | второй активный запуск, отмена завершённого, устаревший черновик, повторная апелляция |
 | `Upstream` | там же | 502 | API организаторов не ответил или вернул ошибку; ссылку на запись получить не удалось |
+| `Unauthorized` | там же | 401 | неверный токен источника (`POST /api/sources/{id}/ingest`) |
 | `Unavailable` | там же | 503 | источник или оценщик не подключён (`app.state.source is None`, `app.state.runner is None`) |
 | `ConfigError` | там же | — | нет ключа или неизвестный профиль; бросает `evaluate`, попадает строкой в `errors` запуска |
 
@@ -103,7 +104,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `source` | `DialogSource \| None` | review-workflow кладёт аргумент; dialog-ingest заменяет `None` на `build_source(settings)` |
 | `runner` | `Runner \| None` | review-workflow; `None`, пока оценщика нет. llm-evaluation заменяет `evaluator=None` на `build_evaluator(settings)` |
 | `mode` | `Mode` | review-workflow (`mode_from_settings`) |
-| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `PUT /api/source`, `source` в состоянии; lifespan приложения запускает `Syncer.run()` |
+| `syncer` | `Syncer` | dialog-ingest (`src/cqa/services/sync.py`): `Syncer(store, source, http: HttpSource \| None, settings)` — синхронизация и проверка источников (`org_api` через `source`, `http_json` через `HttpSource` с SSRF-защитой), `PUT /api/source`, `source` в состоянии; lifespan запускает `Syncer.run()` по `schedule_min` источников |
 
 | Строка в `create_app` | Трек |
 | --- | --- |
@@ -137,6 +138,7 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_ALLOW_PRIVATE_SOURCES` | `allow_private_sources` | `bool` | `False` | dialog-ingest (`src/cqa/adapters/http_source.py`): `http_json` во внутренней сети |
 | `CQA_ACCESS_TOKEN` | `access_token` | `SecretStr \| None` | `None` (пусто — без входа) | eval-and-delivery (`make share`, `src/cqa/http/access.py`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
@@ -145,7 +147,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 
 | Таблица | Колонки, которые видят другие треки | Кто ещё трогает |
 | --- | --- | --- |
-| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается) | dialog-ingest через `Store.audio_url` |
+| `dialogs` | `id TEXT PK`, `body TEXT` (Dialog без `res`, `reviewed`, `cost`, `source_id`, `external_id`), `reviewed INTEGER`, `audio_url TEXT NULL` (не отдаётся ни в одном ответе), `cost TEXT NULL` (JSON `Cost`, перезаписывается), `source_id`, `external_id` (уникальны вместе), `added` (ISO UTC; старые базы получают колонки в `connect`) | dialog-ingest через `Store.audio_url` |
+| `sources` | `id TEXT PK`, `name`, `kind CHECK IN ('org_api', 'http_json', 'webhook', 'file', 'paste', 'api')`, `service`, `channel_default`, `product_default`, `config` (JSON, не секрет), `secret` (не отдаётся), `enabled`, `schedule_min`, `created`, `archived`; встроенные `org`, `file`, `paste`, `api` создаёт схема, прежняя `org_source` переносится в `org` | dialog-ingest |
+| `source_syncs` | `id`, `source_id`, `started`, `finished`, `status CHECK IN ('running', 'ok', 'partial', 'error')`, `added`, `skipped`, `errors` (JSON), `duration_ms` | dialog-ingest (`logged` в `services/datasets.py`) |
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
