@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApi, resolveBase } from '../../../web/js/api.js';
+import { createApi, resolveBase } from '../../../frontend/src/lib/api.js';
 
 test('resolveBase prefers the data parameter, then the attribute, then /api', () => {
   assert.equal(resolveBase('?data=https://host/api', 'https://other/api'), 'https://host/api');

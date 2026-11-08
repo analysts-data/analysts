@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApi } from '../../../web/js/api.js';
-import { canSave } from '../../../web/js/views/paste.js';
+import { createApi } from '../../../frontend/src/lib/api.js';
+import { canSave } from '../../../frontend/src/lib/paste.js';
 
 test('postPaste posts the contract body to /api/dialogs/text', async () => {
   const calls = [];
