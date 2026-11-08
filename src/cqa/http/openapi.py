@@ -655,6 +655,20 @@ DOCS: dict[str, dict[str, Any]] = {
     "GET /api/talkstats/norms": op(
         REPORTS, "Нормы разговора", "Медиана, квартили и границы Тьюки по звонкам с разбором и по чатам.", 401
     ),
+    "POST /api/telemetry": op(
+        REPORTS,
+        "Метрики использования: пакет событий интерфейса",
+        "События экранов без данных диалогов; при `CQA_TELEMETRY=off` не сохраняются. Ответ 204.",
+        401,
+        422,
+    ),
+    "GET /api/usage": op(
+        REPORTS,
+        "Сводка использования системы",
+        "Сколько и чем пользуются за срок хранения `CQA_TELEMETRY_RETENTION_DAYS`: json или csv.",
+        401,
+        422,
+    ),
     "GET /api/config": op(
         MODE,
         "Режим оценки",

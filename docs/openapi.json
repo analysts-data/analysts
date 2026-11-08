@@ -5444,6 +5444,268 @@
         ]
       }
     },
+    "/api/telemetry": {
+      "post": {
+        "summary": "Метрики использования: пакет событий интерфейса",
+        "description": "События экранов без данных диалогов; при `CQA_TELEMETRY=off` не сохраняются. Ответ 204.",
+        "operationId": "post_telemetry_api_telemetry_post",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\w[\\w.:/#-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
+    "/api/usage": {
+      "get": {
+        "summary": "Сводка использования системы",
+        "description": "Сколько и чем пользуются за срок хранения `CQA_TELEMETRY_RETENTION_DAYS`: json или csv.",
+        "operationId": "get_usage_api_usage_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Тело или параметры не прошли проверку: путь поля, сообщение и ожидаемый формат",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "expected": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "field": {
+                    "value": {
+                      "detail": "Запрос не прошёл проверку: language — обязательное поле",
+                      "errors": [
+                        {
+                          "path": "language",
+                          "message": "обязательное поле",
+                          "expected": "\"ru\", \"kz\" или \"en\""
+                        }
+                      ]
+                    }
+                  },
+                  "rule": {
+                    "value": {
+                      "detail": "Idempotency-Key crm-42 уже использован с другим телом запроса"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нужен токен: `Authorization: Bearer <токен>` или cookie `cqa_access` (только при CQA_ACCESS_TOKEN)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "detail"
+                  ]
+                },
+                "examples": {
+                  "token": {
+                    "value": {
+                      "detail": "Нужен вход по ссылке с токеном"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Отчёты"
+        ]
+      }
+    },
     "/api/runs": {
       "get": {
         "summary": "Список запусков",
