@@ -32,7 +32,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
-from cqa.adapters.jev import _JEV_MODEL
+from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store, connect
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.ingest import PayloadError, parse_payload
@@ -58,8 +58,8 @@ def model_names(dialogs: Iterable[Dialog]) -> str:
     """Модели из поля model ответов в порядке появления; второе мнение, если есть alt. Ручной ответ — не модель."""
     rs = [r for d in dialogs for r in d.res.values()]
     names = list(dict.fromkeys(r.model for r in rs if r.model and r.model != MANUAL))
-    if any(r.alt is not None for r in rs):
-        names.append(_JEV_MODEL)
+    if any(r.alt is not None for r in rs) and JEV_MODEL not in names:
+        names.append(JEV_MODEL)
     return ", ".join(names)
 
 

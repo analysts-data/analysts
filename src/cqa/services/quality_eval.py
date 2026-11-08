@@ -376,6 +376,7 @@ def _eval_main(settings: Settings, checklist: Checklist, accept: bool) -> int:
                 "profile": settings.llm_profile,
                 "reasoning": settings.llm_reasoning,
                 "verifier": settings.verifier,
+                "evaluator": settings.evaluator,
                 "anonymize": settings.anonymize,
             },
             "prompt_version": PROMPT_VERSION,

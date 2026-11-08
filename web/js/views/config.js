@@ -4,6 +4,7 @@ import { PRESETS, configBody, presetOf, risks } from '../config.js';
 import { esc } from '../format.js';
 
 const WHERE = [['kz', 'в Казахстане'], ['external', 'за рубежом']];
+const EVALUATORS = [['llm', 'Языковая модель'], ['jev', 'Только Jev (быстро, без обоснований)']];
 const keyHint = has => (has ? 'сохранён; оставьте пустым, чтобы не менять' : 'не задан');
 
 export async function openConfig() {
@@ -16,6 +17,8 @@ export async function openConfig() {
   }
   const dlg = document.getElementById('dlg'), form = document.getElementById('dlgForm'), preset = presetOf(cfg);
   form.innerHTML = `<header><h2 class="h2" id="dlgTitle">Режим оценки</h2><p class="muted small">Применяется сразу, без перезапуска сервера. Ключи хранятся на сервере и в браузер не возвращаются.</p></header>
+    <fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Оценщик</legend>
+      ${EVALUATORS.map(([v, t]) => `<label class="row small"><input type="radio" name="evaluator" value="${v}"${v === (cfg.evaluator || 'llm') ? ' checked' : ''}> ${t}</label>`).join('')}</fieldset>
     <fieldset class="stack" style="border:0;padding:0;margin:0;gap:6px"><legend class="label">Где работает модель</legend>
       ${Object.entries(PRESETS).map(([k, label]) => `<label class="row small"><input type="radio" name="preset" value="${k}"${k === preset ? ' checked' : ''}> ${esc(label)}</label>`).join('')}</fieldset>
     <label class="field"><span>Провайдер внешнего API находится</span><select name="where" class="fld">${WHERE.map(([v, t]) => `<option value="${v}"${cfg.data_where === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
