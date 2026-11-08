@@ -2,11 +2,13 @@
 // Id и классы, на которые опираются тесты: .brand, #crumb, #mode, #bQueue, #bAppeals, #view, #toast,
 // [data-act="role"][data-role], [data-view] h1.
 import { MotionConfig, motion } from 'framer-motion';
-import { BarChart3, BookOpen, ListChecks, MessageSquare, Moon, Scale, Search, Sun } from 'lucide-react';
+import { BarChart3, BookOpen, Info, ListChecks, MessageSquare, Moon, Scale, Search, Settings2, Sun } from 'lucide-react';
+import { TERMS } from './terms';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { modeText } from './lib/config.js';
+import { reload } from './lib/state.js';
 import { groupOf } from './lib/queue.js';
-import { applyTheme, currentTheme, ROLES, setRole, useRoute, useS, type Role } from './store';
+import { applyTheme, currentTheme, load, ROLES, save, setRole, useRoute, useS, type Role } from './store';
 import { cn, Skeleton } from './ui';
 import { Queue } from './views/Queue';
 import { CardView } from './views/Card';
@@ -15,6 +17,7 @@ import { Checklist } from './views/Checklist';
 import { Coaching } from './views/Coaching';
 import { ModeDialog } from './views/ModeDialog';
 import { Palette } from './palette';
+import { PasteHost } from './views/PasteDialog';
 
 // Аналитика тянет ECharts: отдельный кусок сборки, грузится при первом открытии экрана.
 const Analytics = lazy(() => import('./views/Analytics').then(m => ({ default: m.Analytics })));
@@ -74,6 +77,34 @@ function Toast() {
   );
 }
 
+// Первый вход в роли: одна фраза о том, с чего начать. «Понятно» скрывает её навсегда для этой роли.
+const HINTS: Record<string, string> = {
+  qa: 'Начните с очереди: сверху диалоги, которые стоит проверить первым. В карточке у каждого критерия балл, обоснование и реплика, на которой он основан.',
+  operator: 'Здесь оценки диалогов и примеры для обучения. Откройте диалог, чтобы увидеть, за что снижен балл. Не согласны с оценкой? Нажмите «Оспорить оценку» у критерия.',
+  reviewer: 'На экране «Апелляции» собраны оспоренные оценки. Укажите причину решения, и итог диалога пересчитается.',
+};
+
+function RoleHint({ role }: { role: string }) {
+  const [, force] = useState(0);
+  if (load(`cqa.hint.${role}`)) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-line bg-surface px-4 py-2.5 text-[13px] text-ink2" role="note">
+      <Info size={16} className="flex-none text-muted" aria-hidden="true" />
+      <p className="min-w-0 flex-1">{HINTS[role]}</p>
+      <button
+        type="button"
+        className="text-[13px] font-semibold text-accent hover:text-accent-ink"
+        onClick={() => {
+          save(`cqa.hint.${role}`, '1');
+          force(x => x + 1);
+        }}
+      >
+        Понятно
+      </button>
+    </div>
+  );
+}
+
 function View({ page, id }: { page: string; id: string | null }) {
   const S = useS();
   if (S.error)
@@ -125,6 +156,14 @@ export function App() {
   const [palette, setPalette] = useState(false);
   S.r = r;
 
+  // Живая оценка: пока идёт запуск, состояние подтягивается раз в 3 с — новые ответы появляются без перезагрузки.
+  const running = S.run?.status === 'running';
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => reload(), 3000);
+    return () => clearInterval(t);
+  }, [running]);
+
   // Смена экрана: фокус на область содержимого, прокрутка вверх (как в прежнем интерфейсе).
   useEffect(() => {
     if (first.current) {
@@ -144,7 +183,7 @@ export function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="grid min-h-screen grid-cols-1 md:grid-cols-[232px_minmax(0,1fr)]" data-role={S.role}>
-        <aside className="sticky top-0 z-10 flex items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
+        <aside className="z-10 flex md:sticky md:top-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-2 py-1.5 md:h-screen md:flex-col md:items-stretch md:overflow-visible md:border-b-0 md:border-r md:px-3 md:py-[18px]">
           <div className="brand hidden items-center gap-2.5 px-2.5 pb-4 pt-0.5 md:flex">
             <i className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-accent not-italic text-on-accent">
               <Logo />
@@ -176,14 +215,14 @@ export function App() {
             </NavLink>
           </nav>
           <div className="mt-auto hidden gap-0.5 border-t border-line px-3 pt-3 text-xs text-muted md:grid">
-            <span>{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
+            <span id="clVer">{S.checklist ? `Чек-лист v${S.checklist.version}` : ''}</span>
             <span>
-              <kbd className="rounded border border-line px-1">Ctrl K</kbd> — команды
+              Команды: <kbd className="rounded border border-line px-1">Ctrl K</kbd>
             </span>
           </div>
         </aside>
         <div className="min-w-0">
-          <header className="no-print sticky top-0 z-20 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
+          <header className="no-print z-20 md:sticky md:top-0 flex min-h-[58px] flex-wrap items-center justify-between gap-3 border-b border-line bg-[var(--top)] px-4 py-2.5 backdrop-blur md:px-7">
             <div className="text-[13px] text-muted" id="crumb">
               {NAME} / <b className="font-semibold text-ink">{NAMES[r.page]}</b>
             </div>
@@ -194,22 +233,29 @@ export function App() {
                 className="hidden min-h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] text-muted hover:bg-hover sm:inline-flex"
                 aria-label="Команды и поиск (Ctrl+K)"
               >
-                <Search size={15} /> Поиск и команды <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
+                <Search size={15} /> Поиск <kbd className="rounded border border-line px-1 text-[11px]">Ctrl K</kbd>
               </button>
-              {S.mode && (
-                <button
-                  type="button"
-                  id="mode"
-                  data-act="cfg"
-                  onClick={() => setModeOpen(true)}
-                  title="Сменить режим оценки: модель, ключи, обезличивание, второе мнение"
-                  className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
-                >
-                  {modeText(S.mode, S.llmMode)}
-                </button>
-              )}
-              <span className="sr" id="roleLbl">
-                Роль
+              {S.mode &&
+                (S.role === 'qa' ? (
+                  <button
+                    type="button"
+                    id="mode"
+                    data-act="cfg"
+                    onClick={() => setModeOpen(true)}
+                    aria-label={`Сменить режим оценки. ${modeText(S.mode, S.llmMode)}`}
+                    title={`${TERMS.mode} Нажмите, чтобы сменить.`}
+                    className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold hover:underline', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}
+                  >
+                    {modeText(S.mode, S.llmMode)}
+                    <Settings2 size={14} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span id="mode" title={TERMS.mode} className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold', warn ? 'bg-ev-soft text-ev' : 'bg-accent-soft text-accent-ink')}>
+                    {modeText(S.mode, S.llmMode)}
+                  </span>
+                ))}
+              <span className="hidden text-[13px] text-muted lg:inline" id="roleLbl">
+                Смотреть как:
               </span>
               <div className="inline-flex overflow-hidden rounded-lg border border-line-strong bg-surface" role="group" aria-labelledby="roleLbl">
                 {(Object.keys(ROLES) as Role[]).map((k, i) => (
@@ -239,6 +285,7 @@ export function App() {
             </div>
           </header>
           <main id="view" ref={main} data-view={r.page} tabIndex={-1} className="mx-auto flex w-full max-w-[1480px] flex-col gap-4 px-3.5 pb-14 pt-4 outline-none md:px-7 md:pt-[22px]">
+            {!S.loading && !S.error && <RoleHint key={S.role} role={S.role} />}
             <motion.div key={r.page + (r.id ?? '')} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.16 }} className="flex flex-col gap-4">
               <View page={r.page} id={r.id} />
             </motion.div>
@@ -247,6 +294,7 @@ export function App() {
       </div>
       <ModeDialog open={modeOpen} onOpenChange={setModeOpen} />
       <Palette open={palette} onOpenChange={setPalette} />
+      <PasteHost />
       <Toast />
     </MotionConfig>
   );

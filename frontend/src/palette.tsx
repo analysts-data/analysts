@@ -5,6 +5,7 @@ import { titleOf } from './lib/format.js';
 import { startRun } from './lib/state.js';
 import { applyTheme, currentTheme, go, ROLES, setRole, useS, type Role } from './store';
 import { Modal } from './ui';
+import { openPaste } from './views/PasteDialog';
 
 const SCREENS: [string, string][] = [
   ['#/queue', 'Диалоги'],
@@ -64,6 +65,11 @@ export function Palette({ open, onOpenChange }: { open: boolean; onOpenChange: (
             {S.role === 'qa' && !S.run?.status?.startsWith('running') && (
               <Command.Item value="Оценить набор запуск" onSelect={() => run(() => startRun({ dialogs: null, criteria: null }))} className={item}>
                 Оценить весь набор
+              </Command.Item>
+            )}
+            {S.role === 'qa' && (
+              <Command.Item value="Вставить диалог текст новый" onSelect={() => run(openPaste)} className={item}>
+                Вставить диалог
               </Command.Item>
             )}
             <Command.Item value="тема тёмная светлая" onSelect={() => run(() => applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true))} className={item}>
