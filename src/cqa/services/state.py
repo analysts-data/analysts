@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
+from cqa.domain.alerts import DEFAULT_RULES, AlertRule, DialogView, dialog_view
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.report import build_report, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
@@ -62,12 +63,34 @@ def report(
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
 
 
+def alert_rules(store: Store) -> list[AlertRule]:
+    """Правила алертов из базы (`PUT /api/alerts/rules` сохраняет уже проверенные), иначе по умолчанию."""
+    raw = store.get_list("alert_rules")
+    return list(DEFAULT_RULES) if raw is None else [AlertRule.model_validate(r) for r in raw]
+
+
+def dialog_views(
+    store: Store, checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]
+) -> list[DialogView]:
+    """Итог и маркеры каждого диалога; порог «Низкого итога» — у первого включённого правила low_total."""
+    low = next((r for r in alert_rules(store) if r.kind == "low_total" and r.enabled), None)
+    manual, prosody = store.markers(), store.all_prosody()
+    return [
+        dialog_view(checklist, d, appeals, prosody=prosody.get(d.id), manual=manual.get(d.id, []), low=low)
+        for d in dialogs
+    ]
+
+
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:
     checklist, dialogs, appeals = current_state(store)
+    markers = [v.markers for v in dialog_views(store, checklist, dialogs, appeals)]
     return {
         "checklist": checklist.model_dump(mode="json", exclude_none=True),
         "versions": store.list_versions(),
-        "dialogs": [d.model_dump(mode="json", exclude_none=True) for d in dialogs],
+        "dialogs": [
+            {**d.model_dump(mode="json", exclude_none=True), "markers": m}
+            for d, m in zip(dialogs, markers, strict=True)
+        ],
         "appeals": [
             a.model_dump(mode="json", by_alias=True, exclude={"ask"} if a.kind == "review" else None)
             for a in appeals

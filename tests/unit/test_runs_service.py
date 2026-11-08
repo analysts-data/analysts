@@ -374,3 +374,18 @@ async def test_use_during_a_run_is_a_conflict(store: Store) -> None:
     with pytest.raises(Conflict, match="идёт"):
         runner.use(FakeEvaluator())
     runner.cancel(runner._active or 0)
+
+
+async def test_finished_run_calls_alert_hook_and_survives_its_failure(store: Store) -> None:
+    calls: list[int] = []
+
+    async def hook() -> None:
+        calls.append(1)
+        raise RuntimeError("alerts down")
+
+    plan = plan_run(store, CHECKLIST, None, None)
+    run_id = store.add_run(sum(len(cs) for _, cs in plan), 100.0)
+    await Runner(store, FakeEvaluator(), parallel=1, on_finish=hook).execute(run_id, CHECKLIST, plan)
+
+    run = store.get_run(run_id)
+    assert calls == [1] and run is not None and run.status == "done"
