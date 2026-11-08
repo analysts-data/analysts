@@ -1,0 +1,64 @@
+:root{
+  --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --bg:#F0F2F5;--surface:#fff;--hover:#F5F7FA;
+  --line:#E3E6EB;--line2:#EDEFF2;--line-strong:#CDD2D9;
+  --ink:#232427;--ink2:#323335;--muted:#5C6878;
+  --accent:#007D36;--accent-ink:#00632B;--accent-soft:#E8F7EC;
+  --ev:#A35F00;--ev-line:#FFA700;--ev-soft:#FFF4DE;
+  --risk:#C4271B;--risk-soft:#FDECEA;
+  --info:#1A64C0;--info-line:#3586EA;--info-soft:#EAF2FD;
+  --na:#5C6878;--na-soft:#EEF1F4;
+  --r:10px;--shadow:0 1px 2px rgba(35,36,39,.06);
+}
+/* Палитра группы Freedom (ffin.kz: brand-primary #00B323, brand-accent #FFA700, #323335, #F0F2F5).
+   Фирменный зелёный — знак продукта и полосы прогресса; для кнопок и текста он темнее, иначе контраст ниже AA. */
+html{--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B323}
+[data-theme=dark]{
+  --bg:#101214;--surface:#171A1D;--hover:#1F2327;--sunken:#14171A;--top:rgba(23,26,29,.9);
+  --line:#272B30;--line2:#202428;--line-strong:#383E45;
+  --ink:#ECEEF1;--ink2:#C9CED6;--muted:#9AA5B3;
+  --accent:#2BC45A;--accent-ink:#7FE0A0;--accent-soft:#13301E;--on-accent:#06150B;--brand:#2BC45A;
+  --ev:#FFB733;--ev-line:#FFA700;--ev-soft:#33260C;
+  --risk:#FF8A7A;--risk-soft:#3A1C18;
+  --info:#7FB0F5;--info-line:#3586EA;--info-soft:#16243A;
+  --na:#A8B2BF;--na-soft:#22272C;
+  --shadow:0 1px 2px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base{
+  cqa-app{display:block}
+  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  a:hover{color:var(--accent-ink)}
+  :focus-visible{outline:3px solid var(--info-line);outline-offset:2px}
+  [hidden]{display:none!important}
+}
+@layer components{
+  .fld{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background:var(--surface);color:var(--ink)}
+  textarea.fld{padding:8px 10px;min-height:88px;width:100%;resize:vertical;line-height:1.5}
+  select.fld{padding-right:28px}
+  .fld:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  .num{text-align:right;white-space:nowrap}
+  .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .tbl{width:100%;border-collapse:collapse}
+  .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .tbl td{padding:11px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+  .tbl tr.click{cursor:pointer}
+  .tbl tr.click:hover td{background:var(--hover)}
+  .tbl tr.grp td{background:var(--sunken);font-weight:600;font-size:13px;padding:9px 12px}
+  .tbl tr.sel td{background:var(--accent-soft)}
+  .box{border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5}
+  .box.info{background:var(--info-soft);color:var(--info)}
+  .box.good{background:var(--accent-soft);color:var(--accent-ink)}
+  .box.ev{background:var(--ev-soft);color:var(--ink)}
+  .box.na{background:var(--na-soft);color:var(--ink2)}
+  .box.risk{background:var(--risk-soft);color:var(--risk)}
+  .flash{animation:flash 1.4s ease-out}
+}
+@keyframes flash{0%{box-shadow:0 0 0 8px rgba(227,155,58,.55)}100%{box-shadow:0 0 0 2px var(--ev-line)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{.no-print{display:none!important}body{background:#fff}}

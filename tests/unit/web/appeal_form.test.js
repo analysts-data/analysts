@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allowed, signOf } from '../../../web/js/appeal_form.js';
+import { allowed, signOf } from '../../../frontend/src/lib/appeal.js';
 
 test('allowed answers follow the criterion type and its N/A permission', () => {
   assert.deepEqual(allowed({ type: 'bool', na: false }), ['yes', 'no']);
