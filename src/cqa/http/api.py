@@ -27,7 +27,14 @@ from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report
+from cqa.services.state import (
+    Audience,
+    ReportFormat,
+    build_state,
+    mode_from_settings,
+    recommendations,
+    report,
+)
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -124,6 +131,16 @@ async def get_report(
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
+
+
+@router.get("/recommendations")
+async def get_recommendations(
+    request: Request,
+    audience: Annotated[Audience, Query(alias="for")],
+    operator: Annotated[str | None, Query(alias="id")] = None,
+) -> dict[str, Any]:
+    """Рекомендации оператору (id — имя), проверяющему, руководителю и автору чек-листа; без модели."""
+    return recommendations(request.app.state.store, audience, operator)
 
 
 @router.post("/dialogs/text")

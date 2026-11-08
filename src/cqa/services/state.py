@@ -7,9 +7,10 @@ from typing import Any, Literal
 from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
+from cqa.domain.recommend import for_checklist, for_manager, for_operator, for_qa
 from cqa.domain.report import build_report, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
-from cqa.services.errors import Unavailable
+from cqa.services.errors import Invalid, NotFound, Unavailable
 from cqa.settings import Settings
 
 
@@ -60,6 +61,27 @@ def report(
     checklist, dialogs, appeals = current_state(store)
     rep = build_report(checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch)
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
+
+
+Audience = Literal["operator", "qa", "manager", "checklist"]
+
+
+def recommendations(store: Store, audience: Audience, operator: str | None) -> dict[str, Any]:
+    """Рекомендации из того же состояния, что GET /api/state; очереди — сохранённая интонация звонков."""
+    checklist, dialogs, appeals = current_state(store)
+    if audience == "operator":
+        if not operator:
+            raise Invalid("Укажите сотрудника: for=operator&id=<имя>")
+        rec = for_operator(checklist, dialogs, appeals, operator)
+        if rec is None:
+            raise NotFound(f"Нет диалогов сотрудника {operator}")
+        return rec
+    if audience == "qa":
+        sound = {d.id: p for d in dialogs if d.ch == "call" and (p := store.prosody(d.id)) is not None}
+        return for_qa(checklist, dialogs, appeals, sound)
+    if audience == "manager":
+        return for_manager(checklist, dialogs, appeals, store.get_owners())
+    return for_checklist(checklist, dialogs, appeals)
 
 
 def build_state(store: Store, mode: Mode) -> dict[str, Any]:

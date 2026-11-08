@@ -528,7 +528,8 @@ def for_manager(
             _item(
                 f"{VERB.get(owner, owner)}: {_dialogs(len(hits))} теряют баллы по причине „{tag}“{where}, "
                 f"потенциальный рост среднего итога +{_d(up)}",
-                f"Причина „{tag}“ снижала ответ по критериям {', '.join(f'«{x}»' for x in names)} "
+                f"Причина „{tag}“ снижала ответ по {'критерию' if len(names) == 1 else 'критериям'} "
+                f"{', '.join(f'«{x}»' for x in names)} "
                 f"в {len(hits)} из {n_all} оценённых диалогов; если бы там они были на максимуме, "
                 f"средний итог вырос бы с {_d(avg)} до {_d(r2(avg + up))}.",
                 ACTION_RULE,
