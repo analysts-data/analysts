@@ -118,6 +118,7 @@
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
 | `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/analytics/<name>?by=…&lang=RU&ch=chat\|call&operator=…&product=…&since=ГГГГ-ММ-ДД&until=ГГГГ-ММ-ДД` | — | расширенная аналитика (раздел «Аналитика»): `name` — `trend`, `heatmap`, `drivers`, `distribution`, `crosstab`, `appeals`, `model`; фильтры необязательны; неизвестное имя, `by` не к этому имени, канал или дата — 422 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -207,6 +208,20 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Аналитика (eval-and-delivery)
+
+Из того же состояния, что `GET /api/state`: ответы с учётом последнего решения, итог как в «Итог», числа совпадают с отчётом для руководства. Фильтры: `lang` без учёта регистра, `ch`, `operator` и `product` — точное совпадение поля диалога (нет поля — нет совпадений), `since`/`until` — дата диалога включительно; дата — день из `at`, года в `at` нет: текущий год, дата позже сегодняшней — прошлого года. Апелляции — только по выбранным диалогам.
+
+Общая часть каждого ответа: `{name, filters: {lang, ch, operator, product, since, until}, by, n, min_n: 5, definitions: {<метрика>: "<формула по-русски>"}}`. `n` — оценённые диалоги выборки. У каждой точки и ячейки есть своё `n` и `low_n: n < min_n` (выводы по ней не делаются). Счётчик — `{k, n, share: k/n, low_n}`, ячейка доли — `{n, share, low_n}`; `share` — 4 знака, итоги — 2.
+
+- `trend?by=day|week` (без `by` — `day`): `criteria: [{id, name}]`, `points: [{period, start (только week), n, low_n, avg_total, gross, no_next_step, needs_review, criteria: {<id>: ячейка}}]`; `period` — `ГГГГ-ММ-ДД` или ISO-неделя `ГГГГ-Wнн`, по возрастанию.
+- `heatmap?by=operator|product|lang|ch` (без `by` — `operator`): `columns: [{id, name, n, share}]`, `rows: [{key, label, n, low_n, avg_total, cells: {<id>: ячейка}}]`, больше диалогов — выше; без значения поля — `key: null`, `label: "Не указан"`.
+- `drivers`: `base` — средний итог, `drivers: [{id, name, n, at_max: {n, avg_total, gross}, below_max: {…}, gap, low_n, r, lowest: счётчик, uplift, avg_total_if_max, what_if}]` по убыванию `uplift`, затем `gap`. `gap` — разница средних итогов при доле 1 и ниже 1; `r` — корреляция Пирсона доли с итогом (`statistics.correlation`, null при n < 2 или постоянной величине); `lowest` — диалоги, где доля критерия минимальна и меньше 1; `uplift` — прирост среднего итога, если ответ критерия поднять до верхнего везде, где он применим (формула «Итог»); `what_if` — фраза по-русски.
+- `distribution`: `totals: [{lo, hi, n, share}]` — корзины по 10, последняя `[90; 100]`; `criteria: [{id, name, type, n, answers: [{a, n, share}]}]` — ответы в порядке допустимых, у флага `[{a: k, label, n, share}]`.
+- `crosstab`: `cells: [{ch, lang, product, n, low_n, avg_total, gross}]`, больше диалогов — выше.
+- `appeals`: `summary: {filed, reviews, pending, closed, decided, changed, confirmed, changed_share, low_n, median_hours, timed}`, `criteria: [{id, name, filed, reviews, decided, changed, confirmed, changed_share, low_n}]` по убыванию `changed_share`, `reviewers: [{reviewer, decided, changed, changed_share, low_n, median_hours, timed}]`. `median_hours` — медиана часов от `at` до `decidedAt` решённых апелляций (`kind: "appeal"`).
+- `model?by=day|week`: по сырым результатам, без решений: `criteria: [{id, name, results, second_opinion, ev_fail, jev_unsure, manual}]` — счётчики: `alt = a` среди результатов с `alt`; `evFail` основной модели; `evFail` у результатов Jev; ручные ответы. `cost: [{period, n, avg_usd, avg_s, low_n}]` — по диалогам с `cost`.
 
 ## Доступ по токену (eval-and-delivery)
 

@@ -1,7 +1,7 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
@@ -9,8 +9,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool
 
 from cqa.compose import build_evaluator, check_provider
+from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
+from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.checklists import (
@@ -124,6 +126,27 @@ async def get_report(
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
+
+
+AnalyticsName = Literal["trend", "heatmap", "drivers", "distribution", "crosstab", "appeals", "model"]
+AnalyticsBy = Literal["day", "week", "operator", "product", "lang", "ch"]
+
+
+@router.get("/analytics/{name}")
+async def get_analytics(
+    name: AnalyticsName,
+    request: Request,
+    by: AnalyticsBy | None = None,
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
+    product: str | None = None,
+    since: date | None = None,
+    until: date | None = None,
+) -> dict[str, Any]:
+    """Расширенная аналитика (design/contract.md, «Аналитика»): n, low_n и формулы в каждом ответе."""
+    filters = Filters(lang=lang, ch=ch, operator=operator, product=product, since=since, until=until)
+    return analytics(request.app.state.store, name, filters, by, datetime.now(ASTANA))
 
 
 @router.post("/dialogs/text")
