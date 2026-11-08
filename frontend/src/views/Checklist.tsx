@@ -25,6 +25,32 @@ function avgTotal(S: any, cl: any) {
   const ts = S.dialogs.map((d: any) => calc(d, cl, S.appeals).total).filter((t: any) => Number.isFinite(t));
   return ts.length ? ts.reduce((a: number, b: number) => a + b, 0) / ts.length : null;
 }
+// Короткая сводка черновика у кнопки сохранения; полную разницу считает сервер («Что изменится»).
+// Правило контракта: вес, название, секция и роль в отчётах новой оценки не требуют.
+const NO_REEVAL = new Set(['w', 'name', 'sec', 'signal']);
+function summary(cl: any, dr: any) {
+  const old = new Map(cl.criteria.map((x: any) => [x.id, x]));
+  const parts: string[] = [];
+  let reeval = dr.rules !== cl.rules;
+  for (const n of dr.criteria) {
+    const o: any = old.get(n.id);
+    if (!o) {
+      parts.push(`добавлен ${n.id}`);
+      reeval = true;
+      continue;
+    }
+    const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter(k => !same(o[k], n[k]));
+    if (!keys.length) continue;
+    if (keys.some(k => !NO_REEVAL.has(k))) reeval = true;
+    parts.push(keys.length === 1 && keys[0] === 'w' ? `вес ${n.id}: ${o.w} → ${n.w}` : `изменён ${n.id}`);
+  }
+  for (const o of cl.criteria) if (!dr.criteria.some((x: any) => x.id === o.id)) parts.push(`удалён ${o.id}`);
+  if (!same(cl.sections, dr.sections)) parts.push('секции');
+  if (dr.rules !== cl.rules) parts.push('общие правила');
+  if (!parts.length) return null;
+  const head = parts.length > 4 ? `${parts.slice(0, 4).join(', ')} и ещё ${parts.length - 4}` : parts.join(', ');
+  return `${head[0].toUpperCase()}${head.slice(1)}. ${reeval ? 'Изменённые критерии после сохранения нужно оценить заново.' : 'Итоги пересчитаются без новой оценки.'}`;
+}
 const item = 'flex min-h-8 w-full cursor-pointer items-center rounded-lg px-2.5 text-left text-[13px] font-semibold text-ink no-underline hover:bg-hover hover:text-ink';
 const closeMenu = (e: { currentTarget: HTMLElement }) => {
   const d = e.currentTarget.closest('details');
@@ -70,6 +96,7 @@ export function Checklist() {
     after = dirty ? avgTotal(S, dr) : null;
   // правила входят в смысл каждого критерия: сервер вернёт в pending весь чек-лист
   const changed = (id: string) => dr.rules !== cl.rules || !same(cl.criteria.find((x: any) => x.id === id), dr.criteria.find((x: any) => x.id === id));
+  const note = dirty ? summary(cl, dr) : null;
   const nameOf = (id: string) => cl.criteria.find((x: any) => x.id === id)?.name;
   const unscored = S.dialogs.filter((d: any) => pend.some(cid => !d.res[cid])).length;
 
@@ -153,20 +180,27 @@ export function Checklist() {
       <PageHead
         title="Чек-лист качества"
         sub={
-          <span className="sub">
-            {qa ? '' : 'Как оценивается ваша работа. '}
-            <Term k="version">Версия {cl.version}</Term> применяется к набору. Изменения сохраняются новой версией.
-          </span>
+          <>
+            <span className="sub">
+              {qa ? '' : 'Как оценивается ваша работа. '}
+              <Term k="version">Версия {cl.version}</Term> применяется к набору. Изменения сохраняются новой версией.
+            </span>
+            {qa && dirty && (
+              <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                <Chip tone="ev">Есть несохранённые изменения</Chip>
+                {note && <span className="text-ink2">{note}</span>}
+                {before != null && after != null && f2(before) !== f2(after) && (
+                  <Tip content="Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам">
+                    <span tabIndex={0}>
+                      Средний итог {f2(before)} → <b className="text-ink">{f2(after)}</b>
+                    </span>
+                  </Tip>
+                )}
+              </span>
+            )}
+          </>
         }
       >
-        {dirty && qa && <Chip tone="ev">Есть несохранённые изменения</Chip>}
-        {qa && before != null && after != null && f2(before) !== f2(after) && (
-          <Tip content="Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам">
-            <span tabIndex={0} className="text-[13px] text-muted">
-              Средний итог {f2(before)} → <b className="text-ink">{f2(after)}</b>
-            </span>
-          </Tip>
-        )}
         {qa && (
           <Menu label="Импорт" icon={<Upload size={16} aria-hidden="true" />}>
             <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')}>
