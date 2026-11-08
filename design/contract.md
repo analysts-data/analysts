@@ -49,9 +49,12 @@
   ],
   "res": {"<criterion id>": "CriterionResult"},
   "reviewed": false,
-  "cost": {"calls": 10, "verifier_calls": 1, "usd": 0.0121, "ms": 41000}
+  "cost": {"calls": 10, "verifier_calls": 1, "usd": 0.0121, "ms": 41000},
+  "operator": "Алия К."
 }
 ```
+
+- `operator` — сотрудник, необязательное поле (нет поля — не указан). В записях организаторов его нет; источники по порядку: поле записи при загрузке (`POST /api/datasets`, `/upload`, автосинхронизация) — первое непустое из `operator`, `operator_id`, `agent`, `agent_id`, `agent_name`, `employee` (число — строкой); `PUT /api/dialogs/{id}/operator`; `POST /api/operators/import`. Повторная загрузка дописывает сотрудника только диалогу без него. Хранится в колонке `dialogs.operator`. Имя — данные пользователя: интерфейс и отчёты экранируют его, в запрос модели (и второго мнения, и Jev) оно не входит, обезличивание текста реплик прежнее.
 
 - `cost` — сумма по последней оценке диалога: вызовы основной модели, запросы второго мнения, цена в долларах и время. Это «стоимость одной оценки с учётом всех вызовов» из задания; интерфейс показывает её как есть. Цена второго мнения входит только сюда, по критериям она не делится: `CriterionResult.cost` — только основная модель.
 
@@ -117,7 +120,11 @@
 | `PUT /api/checklist` | черновик Checklist | `{version, pending: [ids]}` |
 | `GET /api/checklist/export?v=<n>&format=json\|csv\|md\|html` | — | файл версии `v` (без `v` — текущей, без `format` — `json`), `Content-Disposition: attachment; filename="checklist-v<n>.<ext>"`, у `html` — `inline`; неизвестная версия — 404, формат — 422 |
 | `GET /api/checklist/diff?from=<a>&to=<b>&format=json\|md`; `POST` с черновиком Checklist | — или черновик | разница версий `a` → `b` (без `to` — текущая); `POST` — текущая версия → черновик, ничего не сохраняет. `md` — `text/markdown` по-русски; 404, 422 как у экспорта |
-| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang` и `ch` необязательны; без `format` — `html`; неизвестный формат или канал — 422 |
+| `GET /api/report?format=html\|json\|md&lang=RU&ch=chat\|call&operator=<имя>` | — | отчёт для руководства (раздел «Отчёт для руководства»), `lang`, `ch` и `operator` необязательны (`operator=Не указан` — диалоги без сотрудника); без `format` — `html`; неизвестный формат или канал — 422 |
+| `PUT /api/dialogs/{id}/operator` | `{"operator": "…" \| null}` | `{operator}` после обрезки пробелов; `null` или пустая строка снимает назначение; неизвестный id — 404, длиннее 200 знаков — 422 |
+| `POST /api/operators/import` | CSV-текст или файл сырым телом: `conversation_id;operator` (UTF-8, разделитель `;` или `,`, строка заголовка `conversation_id` необязательна, пустой сотрудник снимает назначение) | `{updated, unknown_ids: [..]}`; не UTF-8 или нет ни одной строки — 422 |
+| `GET /api/operators` | — | `[OperatorRow]` (раздел «По сотрудникам»), худший `avg_total` первым, без оценённых — в конце |
+| `GET /api/operators/{name}` | — | OperatorRow и `dialog_ids: [..]`, `reasons` (как в отчёте); `Не указан` — диалоги без сотрудника; неизвестное имя — 404 |
 | `POST /api/appeals` | `{dlg, cid, ask, ev, comment, by}` | Appeal |
 | `POST /api/appeals/{id}/decision` | `{to, reason, reviewer}` | Appeal |
 | `POST /api/decisions` | `{dlg, cid, from, to, reason, reviewer}` | Appeal с `kind: "review"`: решение по расхождению моделей или проваленному основанию без апелляции |
@@ -206,4 +213,13 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 ## Отчёт для руководства (eval-and-delivery)
 
-JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+JSON: `{at, filters: {lang, ch, operator}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], operators: {attention: [OperatorRow], best: [OperatorRow]}, findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## По сотрудникам (eval-and-delivery)
+
+OperatorRow: `{operator, dialogs, scored, avg_total, gross_errors, needs_review, appeals_open, weakest: [{cid, name, share}], trend: [{day, avg_total, dialogs}]}`.
+
+- Считается из того же текущего состояния, что `GET /api/state` и отчёт: ответы с учётом последнего решения, итог как в «Итог». Диалоги без `operator` — группа «Не указан».
+- `dialogs` — все диалоги сотрудника, `scored` — с итогом, `avg_total` — средний итог оценённых (`null`, если их нет); `gross_errors`, `needs_review`, `appeals_open` — как `risk.dialogs`, `needs_review`, `open_appeals` отчёта по его диалогам.
+- `weakest` — до трёх критериев с наименьшей средней долей баллов ниже 1, худший первым. `trend` — по дням `ДД.ММ` из `at` в порядке календаря: средний итог и число оценённых диалогов дня (у чата `at` — время загрузки набора).
+- Раздел отчёта «По сотрудникам»: `attention` — до 5 худших, `best` — до 3 лучших оценённых сотрудников без «Не указан»; списки не пересекаются (при малом числе сотрудников лучших не больше половины). Нет ни одного сотрудника — оба списка пустые, таблиц нет.

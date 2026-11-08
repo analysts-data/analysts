@@ -42,33 +42,32 @@ def _groups(rows: Sequence[tuple[str, float]], label: Mapping[str, str]) -> list
     return sorted(out, key=lambda g: -g["n"])
 
 
-def build_report(
-    checklist: Checklist,
-    dialogs: Sequence[Dialog],
-    appeals: Sequence[Appeal],
-    owners: Mapping[str, str],
-    *,
-    at: str,
-    lang: str | None = None,
-    ch: str | None = None,
-) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны."""
-    lang = lang.upper() if lang else None
-    picked = [d for d in dialogs if lang in (None, d.lang.upper()) and ch in (None, d.ch)]
-    ids = {d.id for d in picked}
-    appeals = [a for a in appeals if a.dlg in ids]
-    decided = {(a.dlg, a.cid) for a in appeals if a.status in ("confirmed", "changed")}
-    scored_cs = [c for c in checklist.criteria if c.type != "flag"]
-    questions = [(fc.id, q) for fc in checklist.criteria if fc.type == "flag" for q in fc.questions or []]
+Row = tuple[Dialog, dict[str, Answer], float]  # оценённый диалог: ответы с учётом решений, итог
 
-    rows: list[tuple[Dialog, dict[str, Answer], float]] = []
-    for d in picked:
+
+def _scored(checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]) -> list[Row]:
+    rows: list[Row] = []
+    for d in dialogs:
         answers = {
             cid: effective_answer(r, [a for a in appeals if a.dlg == d.id and a.cid == cid])
             for cid, r in d.res.items()
         }
         if (t := total(checklist, answers)) is not None:
             rows.append((d, answers, t))
+    return rows
+
+
+def _summary(
+    checklist: Checklist,
+    picked: Sequence[Dialog],
+    rows: Sequence[Row],
+    appeals: Sequence[Appeal],
+    owners: Mapping[str, str],
+) -> dict[str, Any]:
+    """summary, criteria, reasons, channels, langs по выбранным диалогам; `appeals` — только их."""
+    decided = {(a.dlg, a.cid) for a in appeals if a.status in ("confirmed", "changed")}
+    scored_cs = [c for c in checklist.criteria if c.type != "flag"]
+    questions = [(fc.id, q) for fc in checklist.criteria if fc.type == "flag" for q in fc.questions or []]
     n = len(rows)
 
     def found(answers: dict[str, Answer], cid: str, k: str) -> bool:
@@ -110,9 +109,7 @@ def build_report(
                     names.append(c.name)
     top = sorted(reasons.items(), key=lambda kv: -len(kv[1][0]))[:TOP]
 
-    rep: dict[str, Any] = {
-        "at": at,
-        "filters": {"lang": lang, "ch": ch},
+    return {
         "summary": {
             "dialogs": len(picked),
             "scored": n,
@@ -142,8 +139,116 @@ def build_report(
         "channels": _groups([(d.ch, t) for d, _, t in rows], CHANNEL),
         "langs": _groups([(d.lang, t) for d, _, t in rows], {}),
     }
-    rep["findings"] = _findings(rep, any(c.signal == "resolution" for c in scored_cs))
+
+
+def build_report(
+    checklist: Checklist,
+    dialogs: Sequence[Dialog],
+    appeals: Sequence[Appeal],
+    owners: Mapping[str, str],
+    *,
+    at: str,
+    lang: str | None = None,
+    ch: str | None = None,
+    operator: str | None = None,
+) -> dict[str, Any]:
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры необязательны."""
+    lang = lang.upper() if lang else None
+    picked = [
+        d
+        for d in dialogs
+        if lang in (None, d.lang.upper()) and ch in (None, d.ch) and operator in (None, d.operator or UNKNOWN)
+    ]
+    ids = {d.id for d in picked}
+    appeals = [a for a in appeals if a.dlg in ids]
+    rep: dict[str, Any] = {
+        "at": at,
+        "filters": {"lang": lang, "ch": ch, "operator": operator},
+        **_summary(checklist, picked, _scored(checklist, picked, appeals), appeals, owners),
+        "operators": _section(checklist, picked, appeals),
+    }
+    rep["findings"] = _findings(
+        rep, any(c.type != "flag" and c.signal == "resolution" for c in checklist.criteria)
+    )
     return rep
+
+
+# --- По сотрудникам ---
+
+UNKNOWN = "Не указан"  # группа диалогов без сотрудника
+ATTENTION, BEST = 5, 3
+_CARD_ONLY = ("dialog_ids", "reasons")
+
+
+def _operator(
+    checklist: Checklist, name: str, mine: list[Dialog], appeals: Sequence[Appeal], owners: Mapping[str, str]
+) -> dict[str, Any]:
+    ids = {d.id for d in mine}
+    own = [a for a in appeals if a.dlg in ids]
+    rows = _scored(checklist, mine, own)
+    core = _summary(checklist, mine, rows, own, owners)
+    s = core["summary"]
+    days: dict[str, list[float]] = {}
+    for d, _, t in rows:
+        days.setdefault(d.at[:5], []).append(t)  # `at` — «ДД.ММ ЧЧ:ММ»
+    return {
+        "operator": name,
+        "dialogs": s["dialogs"],
+        "scored": s["scored"],
+        "avg_total": s["avg_total"],
+        "gross_errors": s["risk"]["dialogs"],
+        "needs_review": s["needs_review"],
+        "appeals_open": s["open_appeals"],
+        "weakest": [
+            {"cid": c["id"], "name": c["name"], "share": c["share"]}
+            for c in core["criteria"]
+            if c["share"] < 1
+        ][:3],
+        # ponytail: года в `at` нет, на стыке декабря и января порядок дней ломается
+        "trend": [
+            {"day": day, "avg_total": r2(sum(ts) / len(ts)), "dialogs": len(ts)}
+            for day, ts in sorted(days.items(), key=lambda kv: kv[0][3:5] + kv[0][:2])
+        ],
+        "dialog_ids": [d.id for d in mine],
+        "reasons": core["reasons"],
+    }
+
+
+def _by_operator(dialogs: Sequence[Dialog]) -> dict[str, list[Dialog]]:
+    groups: dict[str, list[Dialog]] = {}
+    for d in dialogs:
+        groups.setdefault(d.operator or UNKNOWN, []).append(d)
+    return groups
+
+
+def operators(
+    checklist: Checklist, dialogs: Sequence[Dialog], appeals: Sequence[Appeal]
+) -> list[dict[str, Any]]:
+    """GET /api/operators: строка на сотрудника, худший средний итог первым, без оценённых — в конце."""
+    rows = [
+        {k: v for k, v in _operator(checklist, name, mine, appeals, {}).items() if k not in _CARD_ONLY}
+        for name, mine in _by_operator(dialogs).items()
+    ]
+    return sorted(rows, key=lambda r: (r["avg_total"] is None, r["avg_total"] or 0.0))
+
+
+def operator_card(
+    checklist: Checklist,
+    dialogs: Sequence[Dialog],
+    appeals: Sequence[Appeal],
+    owners: Mapping[str, str],
+    name: str,
+) -> dict[str, Any] | None:
+    """GET /api/operators/{name}: строка списка, его диалоги и топ причин; неизвестное имя — None."""
+    mine = _by_operator(dialogs).get(name)
+    return _operator(checklist, name, mine, appeals, owners) if mine else None
+
+
+def _section(checklist: Checklist, picked: Sequence[Dialog], appeals: Sequence[Appeal]) -> dict[str, Any]:
+    """«По сотрудникам»: до 5 худших и до 3 лучших оценённых, без «Не указан»; списки не пересекаются."""
+    rows = [r for r in operators(checklist, picked, appeals) if r["scored"] and r["operator"] != UNKNOWN]
+    best = min(BEST, len(rows) // 2)
+    return {"attention": rows[: min(ATTENTION, len(rows) - best)], "best": rows[::-1][:best]}
 
 
 # --- Выводы словами ---
@@ -213,6 +318,9 @@ def _findings(rep: dict[str, Any], resolution: bool) -> list[str]:
 Table = tuple[str, list[str], set[int], list[tuple[list[str], float]]]  # заголовок, шапка, числа, строки
 
 
+OPERATOR_HEAD = ["Сотрудник", "Оценено", "Средний итог", "Грубые нарушения", "Слабее всего"]
+
+
 def _tables(rep: dict[str, Any]) -> list[Table]:
     """Строки — (ячейки, доля для полоски 0..1). Пустые таблицы не выводятся."""
     risk = rep["summary"]["risk"]
@@ -220,6 +328,21 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
 
     def groups(rows: list[dict[str, Any]]) -> list[tuple[list[str], float]]:
         return [([g["label"], str(g["n"]), _d(g["avg"])], g["avg"] / 100) for g in rows]
+
+    def people(rows: list[dict[str, Any]]) -> list[tuple[list[str], float]]:
+        return [
+            (
+                [
+                    r["operator"],
+                    str(r["scored"]),
+                    _d(r["avg_total"]),
+                    str(r["gross_errors"]),
+                    ", ".join(w["name"] for w in r["weakest"]) or "—",
+                ],
+                r["avg_total"] / 100,
+            )
+            for r in rows
+        ]
 
     tables: list[Table] = [
         (
@@ -237,6 +360,8 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
                 for r in rep["reasons"]
             ],
         ),
+        ("По сотрудникам: нужна помощь", OPERATOR_HEAD, {1, 2, 3}, people(rep["operators"]["attention"])),
+        ("По сотрудникам: лучшие", OPERATOR_HEAD, {1, 2, 3}, people(rep["operators"]["best"])),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
     ]  # fmt: skip
@@ -248,6 +373,7 @@ def _scope(rep: dict[str, Any]) -> str:
     parts = [
         f"язык {f['lang']}" if f["lang"] else "",
         f"канал: {CHANNEL[f['ch']].lower()}" if f["ch"] else "",
+        f"сотрудник: {f['operator']}" if f.get("operator") else "",
     ]
     scope = ", ".join(p for p in parts if p)
     return f"Сформирован {rep['at']}" + (f" · {scope}" if scope else "")
