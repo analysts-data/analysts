@@ -109,7 +109,9 @@ def check(
 
 
 def _seg(rng: Any) -> str | None:
-    return f"реплики {rng[0]}–{rng[1]}" if rng else None
+    if not rng:
+        return None
+    return f"реплика {rng[0]}" if rng[0] == rng[1] else f"реплики {rng[0]}–{rng[1]}"
 
 
 def to_result(
