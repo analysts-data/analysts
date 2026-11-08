@@ -40,6 +40,7 @@ class OrgRecord(BaseModel):
     language: str
     transcript: list[OrgTurn]
     audio_url: str | None = None
+    client_ref: str | None = None  # стабильный псевдо-ID; имена и телефоны не принимаются
 
 
 class PayloadError(ValueError):
@@ -259,6 +260,7 @@ def build_dialog(
         dur=dur,
         at=at or now.strftime(_AT),
         lines=items,
+        client_ref=record.client_ref,
     )
     return dialog, warnings
 
