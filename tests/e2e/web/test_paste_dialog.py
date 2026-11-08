@@ -72,8 +72,9 @@ def test_paste_saves_dialog_opens_card_and_offers_evaluation(page: Page, web_url
         lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(RUN_DONE)),
     )
     page.goto(f"{web_url}/#/queue")
-    expect(page.locator("#clVer")).to_have_text("Чек-лист v3")
+    expect(page.get_by_text("Чек-лист v3", exact=True)).to_be_attached()
 
+    page.get_by_role("button", name="Добавить диалоги").click()  # вставка — пункт меню
     page.locator('[data-act="paste"]').click()
     modal = page.locator("#dlgForm")
     expect(modal).to_be_visible()
@@ -98,7 +99,7 @@ def test_paste_saves_dialog_opens_card_and_offers_evaluation(page: Page, web_url
     with page.expect_request(lambda r: r.method == "POST" and r.url.endswith("/api/runs")) as run_req:
         page.locator('[data-act="prun"]').click()
     assert run_req.value.post_data_json == {"dialogs": ["paste-1"], "criteria": None}
-    expect(page.locator("#dlg")).not_to_have_attribute("open", "")
+    expect(page.get_by_role("dialog")).to_have_count(0)
     page.evaluate("location.hash = '#/queue'")
     expect(page.locator("#runProgress")).to_contain_text("оценено 1 из 1")  # опрос дошёл до done
     assert problems == []
@@ -120,10 +121,11 @@ def test_paste_without_operator_line_shows_server_error_in_the_modal(page: Page,
         ),
     )
     page.goto(f"{web_url}/#/queue")
+    page.get_by_role("button", name="Добавить диалоги").click()  # вставка — пункт меню
     page.locator('[data-act="paste"]').click()
     modal = page.locator("#dlgForm")
     modal.locator('[name="title"]').fill(TITLE)
     modal.locator('[name="text"]').fill("Клиент: один на свете")
     modal.locator('[data-act="psave"]').click()
     expect(modal.locator("#pErr")).to_have_text("Диалог не сохранён: 422: в диалоге нет реплики оператора")
-    expect(page.locator("#dlg")).to_have_attribute("open", "")  # окно осталось открытым
+    expect(page.get_by_role("dialog")).to_be_visible()  # окно осталось открытым

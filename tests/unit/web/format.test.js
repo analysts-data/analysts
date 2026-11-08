@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { esc, titleOf, f2, fn, mmss, ansTxt } from '../../../web/js/format.js';
+import { esc, titleOf, f2, fn, mmss, ansTxt } from '../../../frontend/src/lib/format.js';
 
 const scale = { type: 'scale', steps: [20, 15, 10, 5, 0] };
 const bool = { type: 'bool' };
