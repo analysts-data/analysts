@@ -257,6 +257,20 @@ async def test_cancel_lets_the_dialog_in_flight_finish_and_starts_no_new_one(sto
     )
 
 
+async def test_interrupted_run_is_cancelled_not_done(store: Store) -> None:
+    """Ctrl-C в scripts/results.py или остановка сервера отменяют задачу: запуск не «done»."""
+    evaluator = FakeEvaluator(gate=asyncio.Event())
+    runner = Runner(store, evaluator, parallel=1)
+    run_id = runner.start(None, None)
+    await _first_in_flight(evaluator)
+    for task in runner._tasks:
+        task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await _drain(runner)
+    progress = runner.progress(run_id)
+    assert (progress["status"], progress["done"]) == ("cancelled", 0)
+
+
 async def test_new_start_after_cancel_resumes_where_the_run_stopped(store: Store) -> None:
     gate = asyncio.Event()
     first = FakeEvaluator(gate=gate)
