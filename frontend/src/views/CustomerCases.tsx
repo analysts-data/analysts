@@ -5,7 +5,7 @@ import { Card, Chip, PageHead, Skeleton } from '../ui';
 type CaseRow = {
   client_ref: string; contact_count: number; repeated_topic: string | null;
   status: string; priority: number; priority_reasons: { code: string; label: string }[];
-  dialogs: { id: string; at: string; title: string | null; topic: string | null; status: string; risks: { label: string; basis: string }[]; evaluations: { criterion: string; a?: unknown; alt?: unknown }[]; reviewer_decisions: Record<string, unknown>[] }[];
+  dialogs: { id: string; at: string; title: string | null; topic: string | null; status: string; risks: { label: string; basis: string }[]; evaluations: { criterion: string; a?: unknown; alt?: unknown }[]; reviewer_decisions: { status?: string; cid?: string; from?: unknown; to?: unknown; reason?: string; reviewer?: string }[] }[];
 };
 
 export function CustomerCases() {
@@ -32,7 +32,7 @@ export function CustomerCases() {
             <div className="flex flex-wrap justify-between gap-2"><strong>{d.title || d.id}</strong><span className="text-ink2">{d.at} · {d.topic || 'Тема не определена'} · {d.status}</span></div>
             {d.risks.map((risk, n) => <p key={n} className="mt-1 text-risk">{risk.label}: {risk.basis}</p>)}
             {d.evaluations.length > 0 && <p className="mt-1 text-ink2">Оценки по критериям: {d.evaluations.map(e => String(e.criterion) + ': ' + String(e.a ?? '—')).join(' · ')}</p>}
-            {d.reviewer_decisions.length > 0 && <p className="mt-1 text-ink2">Решения проверяющего: {d.reviewer_decisions.length}; откройте диалог для деталей.</p>}
+            {d.reviewer_decisions.map((decision, n) => <p key={n} className="mt-1 text-ink2">Проверка {decision.cid || ''}: {String(decision.from ?? '—')} → {String(decision.to ?? '—')} · {decision.status || 'без статуса'}{decision.reviewer ? ' · ' + decision.reviewer : ''}{decision.reason ? ' · ' + decision.reason : ''}</p>)}
           </div>)}</div>
         </Card>
       ))}
