@@ -69,7 +69,7 @@ class Runner:
         self._active: int | None = None
         self._failed = 0  # пары упавших диалогов активного запуска: «done» за 0 с, ETA их не считает
         # ponytail: в памяти процесса, после перезапуска 0; колонка в runs, если понадобится в истории
-        self._skipped: dict[int, int] = {}  # запуск → пропущено диалогов «Недостаточно данных»
+        self._insufficient: dict[int, int] = {}  # запуск → пропущено диалогов «Недостаточно данных»
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
     def use(self, evaluator: Evaluator) -> None:
@@ -95,7 +95,7 @@ class Runner:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
         plan = plan_run(self._store, checklist, dialogs, criteria)
         run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
-        self._skipped[run_id] = len(insufficient(self._store, dialogs))
+        self._insufficient[run_id] = len(insufficient(self._store, dialogs))
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
             return run_id
@@ -123,7 +123,7 @@ class Runner:
             "eta_s": eta,
             "errors": row.errors,
             "status": row.status,
-            "skipped": self._skipped.get(run_id, 0),
+            "insufficient": self._insufficient.get(run_id, 0),
         }
 
     def cancel(self, run_id: int) -> dict[str, str]:

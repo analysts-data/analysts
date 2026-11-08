@@ -112,7 +112,7 @@
 | `POST /api/datasets/upload` | файл JSON в формате API организаторов | `{added, skipped}` |
 | `POST /api/dialogs/text` | `{"title": "…", "ch": "chat" \| "call", "text": "Клиент: …\nОператор: …"}` | `{id}`: новый диалог из вставленного текста. Строка `Роль: текст` — реплика: клиент — `Клиент`, `Client`, `Customer`; оператор — `Оператор`, `Operator`, `Менеджер`; бот — `Бот`, `Bot`; событие — `Система`, `System`. Строка без роли продолжает предыдущую реплику. `lang` определяется по тексту, `id` — `paste-<n>`. Без реплики оператора — 422. Оценка сама не запускается |
 | `POST /api/runs` | `{"dialogs": [..] или null, "criteria": [..] или null}` | `{run_id}` |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped}`; `skipped` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2») |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", insufficient}`; `insufficient` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2») |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 
 `POST /api/runs` обрабатывает диалоги в переданном порядке, поэтому диалоги для демо ставятся первыми. Повторный запуск после отмены продолжает с места остановки: готовые ответы берутся из кэша.

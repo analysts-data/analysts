@@ -103,7 +103,7 @@ async def test_run_skips_blocked_dialogs_and_counts_them(full: Store) -> None:
     run_id = runner.start(["syn-noop", "syn-short"], None)
     while runner.progress(run_id)["status"] == "running":
         await asyncio.sleep(0.01)
-    assert (runner.progress(run_id)["skipped"], evaluator.order) == (1, ["syn-short"])
+    assert (runner.progress(run_id)["insufficient"], evaluator.order) == (1, ["syn-short"])
 
 
 def test_blocked_dialog_is_out_of_averages_and_an_error_in_results(full: Store) -> None:
