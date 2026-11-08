@@ -48,7 +48,10 @@ class CassetteTransport(httpx.AsyncBaseTransport):
             response.request = request
             return response
         if self._mode == "replay":
-            raise CassetteMissing(f"Нет записи {path}: запустите make record")
+            raise CassetteMissing(
+                "Режим «Записанные ответы»: для этого запроса нет записанного ответа модели. "
+                f"Переключите режим на живую модель или запишите ответы (make record, {path.name})"
+            )  # без полного пути: сообщение видит пользователь
         transport = self._inner or httpx.AsyncHTTPTransport()
         response = await transport.handle_async_request(request)
         await response.aread()
