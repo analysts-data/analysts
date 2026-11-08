@@ -280,15 +280,6 @@ export function CardView({ id }: { id: string | null }) {
               ))}
             </div>
           </div>
-          {flags.length > 0 && (
-            <Tip content={t('Итог {total} считается без неё: грубая ошибка не снижает балл, а отправляет диалог на обязательную проверку.', { total: f2(sum.total) })}>
-              <span tabIndex={0} className="self-start">
-                <Chip tone="risk" className="cursor-help">
-                  {t('Есть грубая ошибка')}
-                </Chip>
-              </span>
-            </Tip>
-          )}
           <details className="text-[13px]">
             <summary className="cursor-pointer font-semibold text-accent">{t('Как посчитан итог')}</summary>
             <p className="mt-1.5 text-muted">
@@ -308,37 +299,39 @@ export function CardView({ id }: { id: string | null }) {
         <Panel>
           <Label>{t('Почему снижена оценка')}</Label>
           {sum.losses.length ? (
-            sum.losses.slice(0, 3).map((r: any, k: number) => {
-              const rr = d.res[r.c.id] || {},
-                ln = rr.ev && rr.ev.length ? lineBy(d, rr.ev[0]) : null;
-              return (
-                <button
-                  key={r.c.id}
-                  type="button"
-                  className="loss grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-2.5 rounded-lg border border-line px-3 py-2 text-left hover:bg-hover"
-                  data-act="goto"
-                  data-cid={r.c.id}
-                  onClick={() => goto(r.c.id)}
-                >
-                  <span className="num pt-px text-[13px] font-semibold text-muted">{k + 1}.</span>
-                  <span className="min-w-0 text-[13px]">
-                    <b>{r.c.name}</b>, {ansTxt(r.c, r.a)}
-                    <br />
-                    <span className="text-muted">{rr.why}</span>
-                    {ln && (
-                      <>
-                        <br />
-                        <span className="text-accent">
-                          {t('Реплика {n}', { n: ln.n })}
-                          {call ? `, ${mmss(ln.t)}` : ''}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                  <em className="num font-semibold not-italic text-ev">−{fn(r.loss)}</em>
-                </button>
-              );
-            })
+            <div className="flex flex-col divide-y divide-line2">
+              {sum.losses.slice(0, 3).map((r: any, k: number) => {
+                const rr = d.res[r.c.id] || {},
+                  ln = rr.ev && rr.ev.length ? lineBy(d, rr.ev[0]) : null;
+                return (
+                  <button
+                    key={r.c.id}
+                    type="button"
+                    className="loss grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-2.5 px-3 py-2 text-left hover:bg-hover"
+                    data-act="goto"
+                    data-cid={r.c.id}
+                    onClick={() => goto(r.c.id)}
+                  >
+                    <span className="num pt-px text-[13px] font-semibold text-muted">{k + 1}.</span>
+                    <span className="min-w-0 text-[13px]">
+                      <b>{r.c.name}</b>, {t('ответ {a}', { a: ansTxt(r.c, r.a) })}
+                      <br />
+                      <span className="text-muted">{rr.why}</span>
+                      {ln && (
+                        <>
+                          <br />
+                          <span className="text-accent">
+                            {t('Реплика {n}', { n: ln.n })}
+                            {call ? `, ${mmss(ln.t)}` : ''}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                    <em className="num font-semibold not-italic text-ev">−{fn(r.loss)}</em>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             <p className="text-muted">{t('Все применимые критерии выполнены полностью.')}</p>
           )}
