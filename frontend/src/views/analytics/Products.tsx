@@ -59,13 +59,21 @@ export function Products() {
             <tbody>
               {rows.map((r: any) => (
                 <tr key={nameOf(r)} data-product={r.id ?? nameOf(r)}>
-                  <td className="font-semibold">{nameOf(r)}</td>
+                  <td className="font-semibold">{r.id ? <a href={href('queue', null, { product: r.id })}>{nameOf(r)}</a> : nameOf(r)}</td>
                   <td className="num">{r.dialogs ?? '—'}</td>
                   <td className="num">{r.scored ?? '—'}</td>
                   <td className="num">{f2(r.avg_total)}</td>
-                  <td className={`num ${r.gross_errors ? 'font-semibold text-risk' : ''}`}>{r.gross_errors ?? '—'}</td>
+                  {/* контракт: risk_share — доля диалогов с грубой ошибкой; gross_errors — прежняя форма (число) */}
+                  <td className={`num ${r.gross_errors || r.risk_share ? 'font-semibold text-risk' : ''}`}>{r.gross_errors ?? (r.risk_share == null ? '—' : pct(r.risk_share))}</td>
                   <td className="num">{r.needs_review ?? '—'}</td>
-                  <td className="text-[13px]">{(r.weakest ?? []).map((w: any) => `${w.cid} ${w.name ?? ''} ${pct(w.share)}`).join('; ') || '—'}</td>
+                  <td className="text-[13px]">
+                    {(r.weakest ?? []).map((w: any) => `${w.id ?? w.cid} ${w.name ?? ''} ${pct(w.share)}`).join('; ') || '—'}
+                    {(r.reasons ?? []).length > 0 && (
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {t('Причины: {list}', { list: r.reasons.map((x: any) => `${x.tag} (${x.dialogs})`).join(', ') })}
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

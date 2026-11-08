@@ -54,7 +54,7 @@ function Val({ v, n, low, min }: { v: React.ReactNode; n: number; low: boolean; 
   return low ? (
     <span className="low text-muted">
       {v}
-      <span className="block whitespace-nowrap text-xs">{few(n, min)}</span>
+      <span className="block text-xs leading-tight">{few(n, min)}</span>
     </span>
   ) : (
     <>{v}</>
@@ -250,7 +250,18 @@ function Drivers({ p }: { p: P }) {
                             </div>
                           )}
                         </td>
-                        <td className={cn('text-[13px]', x.low_n && 'text-muted')}>{x.what_if ?? '—'}</td>
+                        <td className={cn('text-[13px]', x.low_n && 'text-muted')}>
+                          {/* сервер присылает фразу по-русски; числа те же, фраза собирается на языке интерфейса */}
+                          {x.what_if == null || x.uplift == null || x.avg_total_if_max == null
+                            ? (x.what_if ?? '—')
+                            : t('Если поднять «{name}» до максимума во всех {n} диалогах, где он применим, средний итог вырастет на {uplift} балла: с {base} до {after}.', {
+                                name: x.name,
+                                n: x.n,
+                                uplift: f2(x.uplift),
+                                base: f2(d.base),
+                                after: f2(x.avg_total_if_max),
+                              })}
+                        </td>
                         <td className={cn('num font-semibold', x.low_n && 'text-muted')}>{x.uplift == null ? '—' : `+${f2(x.uplift)}`}</td>
                         <td className={cn('num', x.low_n && 'text-muted')}>{f2(x.gap)}</td>
                         <td className="num">{x.n}</td>
@@ -290,7 +301,7 @@ function Heatmap({ p }: { p: P }) {
         style={c.low_n ? { background: 'var(--sunken)', color: 'var(--muted)' } : heatStyle(heat(1 - c.share, 1), dark)}
       >
         <b className={cn('text-[13px]', c.low_n && 'font-medium')}>{pct(c.share)}</b>
-        <span className="whitespace-nowrap text-[11px]">{c.low_n ? t('мало данных, n={n}', { n: c.n }) : `n=${c.n}`}</span>
+        <span className="text-[11px] leading-tight">{c.low_n ? t('мало данных, n={n}', { n: c.n }) : `n=${c.n}`}</span>
       </div>
     );
   return (
@@ -335,7 +346,7 @@ function Heatmap({ p }: { p: P }) {
                       <Val v={f2(r.avg_total)} n={r.n} low={r.low_n} min={d.min_n} />
                     </td>
                     {d.columns.map((c: any) => (
-                      <td key={c.id} className="min-w-[104px] !p-1">
+                      <td key={c.id} className="min-w-[84px] !p-1">
                         {cell(r.cells[c.id], d.min_n)}
                       </td>
                     ))}

@@ -10,7 +10,7 @@ import { toast } from '../lib/state.js';
 import { rerender, useS } from '../store';
 import { Button, Card, Chip, cn, Empty, LinkButton, PageHead } from '../ui';
 
-const langName = (l: string) => (({ RU: t('Русский'), KZ: t('Қазақша'), EN: t('English') }) as Record<string, string>)[l];
+const langName = (l: string) => (({ RU: t('Русский'), KZ: t('Казахский'), EN: t('Английский') }) as Record<string, string>)[l];
 // Выбор критерия и отмеченные моменты живут между переходами (как в прежнем интерфейсе): из карточки можно вернуться к разбору.
 let selected: string | null = null;
 const sheet = new Set<string>();

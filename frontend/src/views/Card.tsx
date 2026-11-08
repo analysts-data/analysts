@@ -27,7 +27,7 @@ import { lineBy, partialTip, plural, scored } from './card/util';
 import { Why } from './card/Why';
 
 // функции, а не значения: t() срабатывает при отрисовке, на выбранном языке
-const LANG: Record<string, () => string> = { RU: () => t('Русский'), KZ: () => t('Қазақша'), EN: () => t('English') };
+const LANG: Record<string, () => string> = { RU: () => t('Русский'), KZ: () => t('Казахский'), EN: () => t('Английский') };
 const STATUS: Record<string, () => React.ReactNode> = {
   risk: () => <Chip tone="risk">{t('Грубая ошибка, нужна проверка')}</Chip>,
   review: () => <Chip tone="info">{t('Нужна проверка человека')}</Chip>,

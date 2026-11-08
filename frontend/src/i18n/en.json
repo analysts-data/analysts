@@ -11,7 +11,6 @@
   ", подтверждена": ", confirmed",
   ", реплика {n}": ", line {n}",
   "...": "...",
-  "English": "English",
   "Jev не уверен в ответе: {id}": "Jev is unsure of the answer: {id}",
   "Jev оценил уверенность в своём ответе ниже порога: ответ стоит проверить человеку.": "Jev rated its confidence in the answer below the threshold: a person should check it.",
   "criteria должен содержать текстовые описания ответов": "criteria must contain text descriptions of the answers",
@@ -299,7 +298,7 @@
   "Решённые: {n}": "Decided: {n}",
   "Роль в отчётах": "Role in reports",
   "Роль: {role}": "Role: {role}",
-  "Русский": "Русский",
+  "Русский": "Russian",
   "Сбросить": "Reset",
   "Сбросить модель «{label}» к исходным настройкам?": "Reset model “{label}” to default settings?",
   "Сейчас": "Current",
@@ -433,7 +432,6 @@
   "ступень должна иметь вид «0: описание» или «n/a: условие»": "a step must look like “0: description” or “n/a: condition”",
   "транскрипты обезличены": "transcripts anonymised",
   "удалён {id}": "removed {id}",
-  "Қазақша": "Қазақша",
   "(n={n})": "(n={n})",
   "+5 с": "+5 s",
   ", ещё {n} ждут оценки": ", {n} more awaiting evaluation",
@@ -1790,5 +1788,9 @@
   "Удалить тему": "Delete topic",
   "Добавить тему": "Add topic",
   "Перепроверить другой моделью или с другими настройками": "Recheck with another model or other settings",
-  "Показать ещё {n}": "Show {n} more"
+  "Показать ещё {n}": "Show {n} more",
+  "Если поднять «{name}» до максимума во всех {n} диалогах, где он применим, средний итог вырастет на {uplift} балла: с {base} до {after}.": "If «{name}» is raised to the maximum in all {n} dialogs where it applies, the average score rises by {uplift} points: from {base} to {after}.",
+  "Казахский": "Kazakh",
+  "Английский": "English",
+  "Причины: {list}": "Reasons: {list}"
 }
