@@ -1,4 +1,8 @@
-"""Исходящие события на `CQA_WEBHOOK_URL`: JSON `{event, data}`, подпись HMAC-SHA256 в `X-CQA-Signature`."""
+"""Исходящие события на `CQA_WEBHOOK_URL`: JSON `{event, data}`, подпись HMAC-SHA256 в `X-CQA-Signature`.
+
+События: `alert.created` (алерты) и `run.finished` (конец запуска, интеграционный API). Текста диалогов
+в событиях нет; в журнале нет адреса — в нём может быть токен получателя.
+"""
 
 import hashlib
 import hmac
@@ -28,4 +32,6 @@ async def send(
         try:
             (await client.post(url, content=body, headers=headers)).raise_for_status()
         except httpx.HTTPError as exc:
-            log.warning("вебхук %s не доставлен: %s", event, exc)
+            code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+            why = f"код {code}" if code else type(exc).__name__
+            log.warning("вебхук %s не доставлен: %s", event, why)
