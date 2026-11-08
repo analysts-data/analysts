@@ -15,9 +15,9 @@ export function track(event, props = {}) {
 export function flush() {
   clearTimeout(timer); timer = 0;
   if (!queue.length) return;
-  const q = new URLSearchParams(Object.entries({ role: ctx.role, user: ctx.user }).filter(([, v]) => v));
-  const url = `/api/telemetry?${q}`, body = JSON.stringify(queue.splice(0, 200));
-  if (!navigator.sendBeacon?.(url, body)) fetch(url, { method: 'POST', body, keepalive: true }).catch(() => {});
+  const url = '/api/telemetry' + (ctx.role ? `?role=${ctx.role}` : ''), body = JSON.stringify(queue.splice(0, 200));
+  const headers = ctx.user ? { 'X-CQA-User': ctx.user } : {}; // sendBeacon заголовков не шлёт: с сотрудником — fetch
+  if (ctx.user || !navigator.sendBeacon?.(url, body)) fetch(url, { method: 'POST', body, keepalive: true, headers }).catch(() => {});
 }
 
 export function setContext(next) { // {role, user, page}: смена экрана пишет time_on_page прошлого и page_view нового
@@ -36,7 +36,7 @@ addEventListener('click', e => { const el = e.target.closest?.('[data-act]'); if
 
 Подключение:
 
-- Роутер: `useEffect(() => setContext({ page }), [page])`; переключатель роли: `setContext({ role })`. Все клики по `[data-act]` уходят событием `action` сами.
+- Роутер: `useEffect(() => setContext({ page }), [page])`; переключатель роли: `setContext({ role })`; вошедший сотрудник: `setContext({ user: employeeId })` (то же значение, что `X-CQA-User` в `createApi`). Все клики по `[data-act]` уходят событием `action` сами.
 - Остальное — явным вызовом в обработчике:
 
 | Событие | Где | props |

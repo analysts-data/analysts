@@ -35,7 +35,7 @@ def _iso(at: datetime) -> str:
     return at.astimezone(UTC).isoformat(timespec="milliseconds")
 
 
-def record(
+def store_events(
     store: Store, events: Sequence[tuple[datetime, str, str, dict[str, Any]]], actor: str, role: str | None
 ) -> None:
     """events — (at, event, page, props); props очищаются от текста до записи."""

@@ -2,9 +2,8 @@
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
 import json
-from datetime import UTC, date, datetime
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
@@ -38,16 +37,23 @@ from cqa.services.checklists import (
     save_checklist,
 )
 from cqa.services.datasets import load_group, load_upload
-from cqa.services.dialogs import paste_text, save_owners, set_reviewed
-from cqa.services.errors import Invalid, Unavailable
+from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
-from cqa.services.errors import Unavailable
+from cqa.services.errors import Invalid, Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
+from cqa.services.state import (
+    ReportFormat,
+    build_state,
+    mode_from_settings,
+    operator_page,
+    operator_rows,
+    report,
+    scores_csv,
+)
 from cqa.services.sync import Syncer
-from cqa.services.telemetry import UsageFormat, record, usage
+from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
@@ -59,6 +65,10 @@ AppealValue = str | int | dict[str, StrictBool]
 
 class ReviewedIn(BaseModel):
     reviewed: bool
+
+
+class OperatorIn(BaseModel):
+    operator: str | None = Field(max_length=200)  # обязательное: null снимает назначение
 
 
 class PasteIn(BaseModel):
@@ -151,10 +161,12 @@ async def get_report(
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
+    store = request.app.state.store
+    body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
@@ -185,6 +197,27 @@ async def post_reviewed(dialog_id: str, body: ReviewedIn, request: Request) -> d
     set_reviewed(request.app.state.store, dialog_id, body.reviewed)
     _log(request, "dialog.reviewed" if body.reviewed else "dialog.unreviewed", "dialog", dialog_id)
     return {"ok": True}
+
+
+@router.put("/dialogs/{dialog_id}/operator")
+async def put_operator(dialog_id: str, body: OperatorIn, request: Request) -> dict[str, str | None]:
+    return {"operator": set_operator(request.app.state.store, dialog_id, body.operator)}
+
+
+@router.post("/operators/import")
+async def post_operators_import(request: Request) -> dict[str, object]:
+    """Сырое тело CSV, как у `/datasets/upload`: файл или вставленный текст."""
+    return import_operators(request.app.state.store, await request.body())
+
+
+@router.get("/operators")
+async def get_operators(request: Request) -> dict[str, Any]:
+    return operator_rows(request.app.state.store)
+
+
+@router.get("/operators/{name:path}")
+async def get_operator(name: str, request: Request) -> dict[str, Any]:
+    return operator_page(request.app.state.store, name)
 
 
 @router.put("/checklist")
@@ -415,9 +448,10 @@ TELEMETRY = TypeAdapter(Annotated[list[TelemetryIn], Field(max_length=200)])
 async def post_telemetry(
     request: Request,
     role: Annotated[str | None, Query(pattern=TOKEN)] = None,
-    user: Annotated[str | None, Query(max_length=64)] = None,
 ) -> Response:
-    """Пакет событий интерфейса. Тело читается как JSON при любом Content-Type: sendBeacon шлёт text/plain."""
+    """Пакет событий интерфейса. Тело читается как JSON при любом Content-Type: sendBeacon шлёт text/plain.
+
+    Сотрудник — `actor_from` (активный по `X-CQA-User`, его id и роль), без входа — роль из запроса."""
     state = request.app.state
     if state.settings.telemetry == "off":
         return Response(status_code=204)
@@ -428,8 +462,9 @@ async def post_telemetry(
     except ValidationError as exc:
         raise Invalid(f"Пакет метрик не принят: {exc}") from exc
     now = datetime.now(UTC)
-    actor = (request.headers.get("X-CQA-User") or user or role or "—")[:64]
-    record(state.store, [(e.at or now, e.event, e.page, e.props) for e in batch], actor, role)
+    who = actor_from(request, role or "")
+    events = [(e.at or now, e.event, e.page, e.props) for e in batch]
+    store_events(state.store, events, who.id or who.name, who.role or role)
     return Response(status_code=204)
 
 

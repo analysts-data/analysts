@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from cqa.adapters.store import Store
 from cqa.http.app import create_app
+from cqa.services.audit import ANONYMOUS
 from cqa.services.telemetry import TokenBucket
 from cqa.settings import Settings
 from fakes import FakeEvaluator, FakeSource
@@ -35,10 +36,17 @@ def test_batch_is_stored_with_role_as_actor_and_returns_204(
     ]
 
 
-def test_user_header_is_the_actor(client: TestClient, conn: sqlite3.Connection) -> None:
-    client.post("/api/telemetry?role=qa", json=batch("page_view"), headers={"X-CQA-User": "ivanova"})
+def test_active_employee_from_header_is_the_actor_with_their_role(
+    client: TestClient, store: Store, conn: sqlite3.Connection
+) -> None:
+    store.put_employees(
+        [{"id": "e1", "name": "Алия Тестова", "role": "reviewer", "team": "", "active": True}]
+    )
 
-    assert (rows(conn)[0]["actor"], rows(conn)[0]["role"]) == ("ivanova", "qa")
+    client.post("/api/telemetry?role=qa", json=batch("page_view"), headers={"X-CQA-User": "e1"})
+    client.post("/api/telemetry?role=qa", json=batch("page_view"), headers={"X-CQA-User": "nobody"})
+
+    assert [(r["actor"], r["role"]) for r in rows(conn)] == [("e1", "reviewer"), ("qa", "qa")]
 
 
 def test_beacon_body_as_text_plain_is_accepted(client: TestClient, conn: sqlite3.Connection) -> None:
@@ -49,7 +57,7 @@ def test_beacon_body_as_text_plain_is_accepted(client: TestClient, conn: sqlite3
     )
 
     assert response.status_code == 204
-    assert rows(conn)[0]["actor"] == "—"
+    assert rows(conn)[0]["actor"] == ANONYMOUS
 
 
 def test_search_text_and_dialogue_are_never_stored(client: TestClient, conn: sqlite3.Connection) -> None:
