@@ -332,6 +332,7 @@ def test_typed_text_enables_save_before_the_field_loses_focus(page: Page, web_ur
     assert [next(c for c in d["criteria"] if c["id"] == "04")["text"] for d in api.puts] == [TEXT_04]
 
 
+CHECKLIST = json.loads(STATE)["checklist"]
 XSS = "<img src=x onerror=alert(1)>"
 NOT_CHECKLIST = "Файл не похож на чек-лист"
 
