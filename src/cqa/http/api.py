@@ -7,9 +7,6 @@ from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Query, Request
-from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, Field, StrictBool
-from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
@@ -472,11 +469,6 @@ FEATURES = {
 
 
 def _paths(routes: Any) -> set[str]:
-    """Пути маршрутов, включая обёртки include_router новых FastAPI (`original_router`)."""
-    out: set[str] = set()
-    for r in routes:
-        out.add(getattr(r, "path", ""))
-        if (inner := getattr(r, "original_router", None)) is not None:
     """Пути маршрутов; FastAPI 0.16x оборачивает include_router, пути лежат в `original_router`."""
     out: set[str] = set()
     for r in routes:

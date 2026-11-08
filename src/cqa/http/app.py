@@ -47,18 +47,14 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация набора организаторов и планировщик автоматизации, пока работает сервер."""
+    """Автосинхронизация набора организаторов, очередь батчей и планировщик автоматизации."""
     syncer: Syncer = app.state.syncer
     automation: Automation = app.state.automation
     tasks = [
+        asyncio.create_task(app.state.batches.work()),
         asyncio.create_task(syncer.run(skip=automation.owns_sync)),
         asyncio.create_task(automation.run()),
     ]
-    """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
-    syncer: Syncer | None = app.state.syncer
-    tasks = [asyncio.create_task(app.state.batches.work())]
-    if syncer:
-        tasks.append(asyncio.create_task(syncer.run()))
     yield
     for task in tasks:
         task.cancel()
@@ -131,7 +127,9 @@ def create_app(
     app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
     # выключена по умолчанию: пока enabled false, планировщик только читает настройки
-    app.state.automation = Automation(store, wire(store, app.state.syncer, app.state.runner, prosody))
+    app.state.automation = Automation(
+        store, wire(store, app.state.syncer, app.state.runner, app.state.batches, prosody)
+    )
 
     app.include_router(api.router)
     app.include_router(batches.router)

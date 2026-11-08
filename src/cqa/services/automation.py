@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+from cqa.adapters.batches import Priority
 from cqa.adapters.store import Store
 from cqa.domain.automation import (
     AutomationSettings,
@@ -29,6 +30,7 @@ from cqa.domain.checklist_export import excel_csv
 from cqa.domain.models import Dialog
 from cqa.domain.review import ASTANA
 from cqa.services.audit import Actor, record
+from cqa.services.batches import Batches
 from cqa.services.errors import Conflict, NotFound, Upstream
 from cqa.services.runs import Runner, plan_run
 from cqa.services.state import current_results
@@ -51,7 +53,7 @@ def _log_audit(action: str, target_type: str, target_id: str, details: Mapping[s
 class Ports:
     sources: Callable[[], list[str]]  # коды источников, которые можно синхронизировать
     sync: Callable[[str], Awaitable[Mapping[str, Any]]]  # → {added, skipped, error}
-    evaluate: Callable[[list[str], str, Callable[[float], bool]], Awaitable[Mapping[str, Any]]]
+    evaluate: Callable[[list[str], Priority, Callable[[float], bool]], Awaitable[Mapping[str, Any]]]
     source_of: Callable[[Dialog], str]
     blocked: Callable[[Dialog], bool] = lambda d: False
     notify: Callable[[dict[str, Any]], Any] = lambda hit: None
@@ -69,26 +71,39 @@ def _merge(base: Any, over: Any) -> Any:
     return {**base, **{k: _merge(base.get(k), v) for k, v in over.items()}}
 
 
-async def runner_evaluate(
-    runner: Runner, store: Store, ids: list[str], stop: Callable[[float], bool], *, poll_s: float = POLL_S
+async def batch_evaluate(
+    batches: Batches,
+    runner: Runner,
+    ids: list[str],
+    priority: Priority,
+    stop: Callable[[float], bool],
+    *,
+    poll_s: float = POLL_S,
 ) -> dict[str, Any]:
-    """Пачка обычным запуском (Runner занят — Conflict); stop(цена) → отмена, диалоги в полёте дописываются.
+    """Пачка — задание очереди батчей с приоритетом; stop(цена) → отмена задания и его запуска
+    (диалоги в полёте дописываются). Задание на паузе (из «Батчей») — цикл не ждёт, остаток там.
 
-    Запрет реальных данных и обезличивание — внутри оценщика запуска, как у ручного запуска.
+    Запрет реальных данных и обезличивание — внутри оценщика Runner, как у ручного запуска.
     """
-    run_id = runner.start(ids, None)
-    cancelled = False
-    while (p := runner.progress(run_id))["status"] == "running":
-        if not cancelled and stop(p["cost"]):
-            runner.cancel(run_id)
-            cancelled = True
+    job_id = batches.create(ids, None, batch_size=len(ids), priority=priority, force=False)["id"]
+    stopped = False
+    while (view := batches.view(job_id))["status"] in ("queued", "running"):
+        if not stopped and stop(view["cost"]):
+            stopped = True
+            with contextlib.suppress(Conflict):
+                batches.act(job_id, "cancel")
+            run_id = view["batches"][0]["run_id"]
+            if run_id is not None:
+                with contextlib.suppress(Conflict, NotFound):
+                    runner.cancel(run_id)
         await asyncio.sleep(poll_s)
-    checklist = store.current_checklist()
-    left = {d.id for d, _ in plan_run(store, checklist, ids, None)} if checklist else set(ids)
-    return {"evaluated": sum(i not in left for i in ids), "cost": p["cost"], "errors": p["errors"]}
+    errors = [f"{f['dialog']}: {f['error']}" for f in view["failed"]]
+    return {"evaluated": view["done"], "cost": view["cost"], "errors": errors}
 
 
-def wire(store: Store, syncer: Syncer, runner: Runner, prosody: Callable[[str], Awaitable[Any]]) -> Ports:
+def wire(
+    store: Store, syncer: Syncer, runner: Runner, batches: Batches, prosody: Callable[[str], Awaitable[Any]]
+) -> Ports:
     """Порты на кусках из main. Источник один — ссылка организаторов, код «org», как в реестре источников."""
 
     async def sync(source_id: str) -> Mapping[str, Any]:  # → реестр: registry.sync(source_id)
@@ -109,7 +124,7 @@ def wire(store: Store, syncer: Syncer, runner: Runner, prosody: Callable[[str], 
     return Ports(
         sources=lambda: ["org"] if store.org_source() else [],  # → [s.id for s in registry if s.enabled]
         sync=sync,
-        evaluate=lambda ids, priority, stop: runner_evaluate(runner, store, ids, stop),  # → батч с priority
+        evaluate=lambda ids, priority, stop: batch_evaluate(batches, runner, ids, priority, stop),
         source_of=source_of,
         # blocked → lambda d: sufficiency(d).level == "block"; notify → lambda h: store.add_alerts([h], now)
         audit=lambda action, kind, target, details: record(store, AUTOMATION, action, kind, target, details),
