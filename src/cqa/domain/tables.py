@@ -63,6 +63,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
 th{color:var(--muted);font-weight:600;font-size:12px}
 .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+th.num{white-space:normal}
 tr{break-inside:avoid}
 .empty{font-size:18px;color:var(--muted);text-align:center;padding:40px 0}
 @media (max-width:640px){main{padding:16px}}

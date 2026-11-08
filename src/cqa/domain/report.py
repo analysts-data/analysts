@@ -616,6 +616,7 @@ CSS = (
 .tile b{display:block;font-size:22px;line-height:1.2}
 .findings{margin:0;padding-left:20px}.findings li{margin:0 0 4px}
 @media (max-width:640px){.tiles{grid-template-columns:1fr 1fr}}
+td svg.bar{display:block;width:100%;min-width:40px;max-width:120px;height:10px}
 """
 )
 
@@ -624,7 +625,7 @@ def _bar(x: float) -> str:
     """Полоска на SVG: в отличие от фона CSS печатается без настроек браузера."""
     w = round(120 * max(0.0, min(1.0, x)))
     return (
-        '<svg width="120" height="10" aria-hidden="true">'
+        '<svg class="bar" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true">'
         '<rect width="120" height="10" rx="2" fill="#E2F1EB"/>'
         f'<rect width="{w}" height="10" rx="2" fill="#0E6A55"/></svg>'
     )

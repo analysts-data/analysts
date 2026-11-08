@@ -116,6 +116,14 @@ def test_html_is_self_contained_a4_print_page_with_bars_and_print_button() -> No
     assert "81,22" in page and "Завершение" in page and "Нет итога и прощания" in page
 
 
+def test_html_bars_shrink_with_their_cell_so_wide_tables_fit_a4() -> None:
+    page = to_html(report())
+
+    # фиксированная ширина 120 px не давала столбцам «По сотрудникам» сжаться: таблица вылезала за лист
+    assert '<svg width="120"' not in page
+    assert 'viewBox="0 0 120 10" preserveAspectRatio="none"' in page and "td svg.bar{" in page
+
+
 def test_markdown_has_findings_numbers_and_tables() -> None:
     md = to_markdown(report())
 
