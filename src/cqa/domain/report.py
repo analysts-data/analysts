@@ -51,10 +51,17 @@ def build_report(
     at: str,
     lang: str | None = None,
     ch: str | None = None,
+    source: str | None = None,
+    source_names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch` необязательны."""
+    """`dialogs` с текущими `res`, `appeals` — как в GET /api/state. Фильтры `lang`, `ch`, `source`
+    необязательны; `source_names` — названия источников для раздела «По источникам»."""
     lang = lang.upper() if lang else None
-    picked = [d for d in dialogs if lang in (None, d.lang.upper()) and ch in (None, d.ch)]
+    picked = [
+        d
+        for d in dialogs
+        if lang in (None, d.lang.upper()) and ch in (None, d.ch) and source in (None, d.source_id)
+    ]
     ids = {d.id for d in picked}
     appeals = [a for a in appeals if a.dlg in ids]
     decided = {(a.dlg, a.cid) for a in appeals if a.status in ("confirmed", "changed")}
@@ -105,7 +112,7 @@ def build_report(
 
     rep: dict[str, Any] = {
         "at": at,
-        "filters": {"lang": lang, "ch": ch},
+        "filters": {"lang": lang, "ch": ch, "source": source},
         "summary": {
             "dialogs": len(picked),
             "scored": n,
@@ -134,6 +141,9 @@ def build_report(
         ],
         "channels": _groups([(d.ch, t) for d, _, t in rows], CHANNEL),
         "langs": _groups([(d.lang, t) for d, _, t in rows], {}),
+        "sources": _groups(
+            [(d.source_id or "—", t) for d, _, t in rows], {"—": "Не указан", **(source_names or {})}
+        ),
     }
     rep["findings"] = _findings(rep, any(c.signal == "resolution" for c in scored_cs))
     return rep
@@ -232,6 +242,7 @@ def _tables(rep: dict[str, Any]) -> list[Table]:
         ),
         ("По каналам", ["Канал", "Диалогов", "Средний итог"], {1, 2}, groups(rep["channels"])),
         ("По языкам", ["Язык", "Диалогов", "Средний итог"], {1, 2}, groups(rep["langs"])),
+        ("По источникам", ["Источник", "Диалогов", "Средний итог"], {1, 2}, groups(rep.get("sources", []))),
     ]  # fmt: skip
     return [t for t in tables if t[3]]
 

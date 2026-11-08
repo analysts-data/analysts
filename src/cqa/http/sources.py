@@ -103,4 +103,3 @@ async def post_source_ingest(source_id: str, request: Request) -> dict[str, Any]
     state = request.app.state
     raw = await request.body()
     return ingest_push(state.store, state.settings, source_id, raw, request.headers, datetime.now(UTC))
-

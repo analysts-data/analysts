@@ -223,7 +223,11 @@ def validate(kind: str, config: Mapping[str, Any]) -> dict[str, str]:
 def org_url_error(url: str) -> str | None:
     """Ссылка API организаторов: только https (подписанная ссылка уходит по сети)."""
     parts = urlsplit(url)
-    return None if parts.scheme == "https" and parts.netloc else "Ссылка API организаторов должна начинаться с https://"
+    return (
+        None
+        if parts.scheme == "https" and parts.netloc
+        else "Ссылка API организаторов должна начинаться с https://"
+    )
 
 
 def blocked_ip(ip: str) -> bool:
@@ -236,7 +240,11 @@ def blocked_ip(ip: str) -> bool:
 
 def _records(n: int) -> str:
     tail = n % 100
-    word = "записей" if 11 <= tail <= 14 else {1: "запись", 2: "записи", 3: "записи", 4: "записи"}.get(n % 10, "записей")
+    word = (
+        "записей"
+        if 11 <= tail <= 14
+        else {1: "запись", 2: "записи", 3: "записи", 4: "записи"}.get(n % 10, "записей")
+    )
     return f"{n} {word}"
 
 
@@ -258,7 +266,10 @@ def health(
     if error_rate is not None and error_rate > ERROR_RATE:
         return "warning", f"{round(error_rate * 100)}% синхронизаций с ошибкой (последние {WINDOW})"
     if last is not None and last["status"] == "partial":
-        return "warning", f"последняя синхронизация с пропусками: {_records(len(last['errors']))} не разобраны"
+        return (
+            "warning",
+            f"последняя синхронизация с пропусками: {_records(len(last['errors']))} не разобраны",
+        )
     if kind in BUILTIN:
         return "ok", "загрузка вручную" if not dialogs else "ошибок нет"
     if kind in PULL and last is None:

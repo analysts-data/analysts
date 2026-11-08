@@ -45,7 +45,9 @@ def test_records_at_follows_a_dotted_path_and_list_indices() -> None:
 
 
 def test_map_records_builds_org_shaped_records_namespaced_by_source() -> None:
-    mapped, errors = map_records([RECORD], MAPPING, prefix="src3-", channel_default=None, product_default="Карты")
+    mapped, errors = map_records(
+        [RECORD], MAPPING, prefix="src3-", channel_default=None, product_default="Карты"
+    )
     assert errors == []
     (rec,) = mapped
     assert rec["conversation_id"] == "src3-1042"
@@ -124,7 +126,15 @@ def test_validate_org_api_needs_a_group_id() -> None:
 
 
 def test_blocked_ip_covers_private_loopback_link_local_and_mapped() -> None:
-    for ip in ("10.0.0.1", "127.0.0.1", "169.254.169.254", "192.168.1.5", "::1", "::ffff:127.0.0.1", "0.0.0.0"):
+    for ip in (
+        "10.0.0.1",
+        "127.0.0.1",
+        "169.254.169.254",
+        "192.168.1.5",
+        "::1",
+        "::ffff:127.0.0.1",
+        "0.0.0.0",
+    ):
         assert blocked_ip(ip), ip
     assert not blocked_ip("93.184.216.34")
 

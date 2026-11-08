@@ -56,11 +56,21 @@ ReportFormat = Literal["html", "json", "md"]
 
 
 def report(
-    store: Store, fmt: ReportFormat, *, lang: str | None, ch: str | None, now: datetime
+    store: Store,
+    fmt: ReportFormat,
+    *,
+    lang: str | None,
+    ch: str | None,
+    now: datetime,
+    source: str | None = None,
 ) -> dict[str, Any] | str:
     """Отчёт для руководства из того же состояния, что GET /api/state: json — словарь, html и md — текст."""
     checklist, dialogs, appeals = current_state(store)
-    rep = build_report(checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch)
+    names = {s["id"]: s["name"] for s in store.sources()}
+    rep = build_report(
+        checklist, dialogs, appeals, store.get_owners(), at=stamp(now), lang=lang, ch=ch, source=source,
+        source_names=names,
+    )  # fmt: skip
     return rep if fmt == "json" else (to_html if fmt == "html" else to_markdown)(rep)
 
 
@@ -82,4 +92,10 @@ def build_state(store: Store, mode: Mode) -> dict[str, Any]:
         ],
         "owners": store.get_owners(),
         "mode": mode.model_dump(mode="json"),
+        # подписи для фильтра и плашки источника; полный реестр — GET /api/sources
+        "sources": [
+            {"id": s["id"], "name": s["name"], "kind": s["kind"], "service": s["service"]}
+            for s in store.sources()
+            if not s["archived"]
+        ],
     }

@@ -121,9 +121,10 @@ async def get_report(
     fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
     lang: str | None = None,
     ch: Literal["chat", "call"] | None = None,
+    source: str | None = None,
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
-    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
+    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), source=source)
     return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 

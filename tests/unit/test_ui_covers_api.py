@@ -12,6 +12,18 @@ HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
 EXEMPT = {"/health", "/login"}
+# UI в работе (сессия React): страница «Источники», мастер добавления, фильтр по источнику
+EXEMPT |= {
+    "/sources",
+    "/sources/stats",
+    "/sources/test",
+    "/sources/{source_id}",
+    "/sources/{source_id}/test",
+    "/sources/{source_id}/sync",
+    "/sources/{source_id}/syncs",
+}
+# вход внешнего сервиса (webhook по токену источника), не экран: интерфейс показывает только адрес
+EXEMPT |= {"/sources/{source_id}/ingest"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 

@@ -40,7 +40,7 @@ def dialog_of(state: dict[str, Any], dialog_id: str) -> dict[str, Any]:
 
 def test_state_has_exactly_six_keys_and_seed_version(store: Store) -> None:
     state = build_state(store, MODE)
-    assert set(state) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode"}
+    assert set(state) == {"checklist", "versions", "dialogs", "appeals", "owners", "mode", "sources"}
     assert state["versions"] == [{"v": 3, "note": "начальная версия"}]
     assert state["checklist"]["version"] == 3
     assert state["mode"] == MODE.model_dump(mode="json")

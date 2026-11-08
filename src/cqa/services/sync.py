@@ -43,7 +43,7 @@ class Syncer:
         self._store = store
         self._source = source
         self.http = http  # http_json; None — такие источники не синхронизируются (503)
-        self._settings = settings or Settings(_env_file=None)
+        self._settings = settings or Settings(_env_file=None)  # type: ignore[call-arg]
         self._clock = clock
 
     async def _records(self, src: dict[str, Any]) -> tuple[list[Any], IngestResult, list[dict[str, Any]]]:
@@ -122,7 +122,7 @@ class Syncer:
         return await self.test(src, sample)
 
     async def configure(self, url: str, group_id: str) -> dict[str, int]:
-        """`PUT /api/source`: сразу забирает набор по новой ссылке; ссылка сохраняется после удачной загрузки."""
+        """`PUT /api/source`: сразу забирает набор по новой ссылке, сохраняет её после удачной загрузки."""
         url, group_id = url.strip(), group_id.strip()
         if msg := org_url_error(url):
             raise Invalid(msg)

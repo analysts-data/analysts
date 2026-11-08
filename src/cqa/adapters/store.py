@@ -139,17 +139,28 @@ class Store:
                 if exists is not None:
                     duplicates += 1
                     continue
-                if dialog.source_id and dialog.external_id and self._conn.execute(
-                    "SELECT 1 FROM dialogs WHERE source_id = ? AND external_id = ?",
-                    (dialog.source_id, dialog.external_id),
-                ).fetchone():
+                if (
+                    dialog.source_id
+                    and dialog.external_id
+                    and self._conn.execute(
+                        "SELECT 1 FROM dialogs WHERE source_id = ? AND external_id = ?",
+                        (dialog.source_id, dialog.external_id),
+                    ).fetchone()
+                ):
                     duplicates += 1
                     continue
                 body = dialog.model_dump(mode="json", exclude=_COLUMNS)
                 self._conn.execute(
                     "INSERT INTO dialogs (id, body, audio_url, source_id, external_id, added) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    (dialog.id, _dump(body), audio.get(dialog.id), dialog.source_id, dialog.external_id, _now()),
+                    (
+                        dialog.id,
+                        _dump(body),
+                        audio.get(dialog.id),
+                        dialog.source_id,
+                        dialog.external_id,
+                        _now(),
+                    ),
                 )
                 added += 1
         return added, duplicates
@@ -195,7 +206,9 @@ class Store:
         return self._dialog_from_row(row) if row is not None else None
 
     def list_dialogs(self) -> list[Dialog]:
-        rows = self._conn.execute("SELECT body, reviewed, cost, source_id, external_id FROM dialogs ORDER BY rowid").fetchall()
+        rows = self._conn.execute(
+            "SELECT body, reviewed, cost, source_id, external_id FROM dialogs ORDER BY rowid"
+        ).fetchall()
         return [self._dialog_from_row(row) for row in rows]
 
     def set_reviewed(self, dialog_id: str, reviewed: bool) -> None:
@@ -433,7 +446,9 @@ class Store:
             self._conn.execute(
                 f"INSERT INTO sources ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "  # noqa: S608
                 f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{c} = excluded.{c}' for c in cols[1:])}",
-                tuple(int(values.get(c) or 0) if c in ("enabled", "archived") else values.get(c) for c in cols),
+                tuple(
+                    int(values.get(c) or 0) if c in ("enabled", "archived") else values.get(c) for c in cols
+                ),
             )
 
     def delete_source(self, source_id: str) -> None:

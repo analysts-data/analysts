@@ -17,7 +17,6 @@ from cqa.domain.ingest import ingest_records
 from cqa.domain.models import Dialog, IngestResult
 from cqa.domain.sources import (
     BUILTIN,
-    PULL,
     WINDOW,
     health,
     key_paths,
@@ -124,7 +123,9 @@ def update_source(store: Store, source_id: str, body: Mapping[str, Any]) -> dict
     check(body, saved_secret=src["secret"])
     token = secrets.token_urlsafe(24) if src["kind"] == "webhook" and body.get("rotate_token") else None
     secret = token or (body.get("secret") or "").strip() or src["secret"]
-    store.put_source(_row(body, id=source_id, secret=secret, created=src["created"], archived=src["archived"]))
+    store.put_source(
+        _row(body, id=source_id, secret=secret, created=src["created"], archived=src["archived"])
+    )
     out = view(get_source(store, source_id))
     return {**out, "token": token} if token else out
 
@@ -264,7 +265,7 @@ def preview(
             "lines": len(lines),
             "operator": m.get("operator"),
             "product": d.product,
-            "sample": [{"who": x.who, "text": x.text[:200]} for x in lines[:3]],  # type: ignore[union-attr]
+            "sample": [{"who": x.who, "text": x.text[:200]} for x in lines[:3]],
         }
 
     first = records[0] if records else None
