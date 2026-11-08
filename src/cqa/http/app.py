@@ -23,6 +23,7 @@ from cqa.domain.models import Checklist
 from cqa.http import api, integration
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
+from cqa.http.openapi import document
 from cqa.http.validation import validation_error
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
@@ -81,7 +82,8 @@ def create_app(
     evaluator: Evaluator | None = None,
     conn: sqlite3.Connection | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="CQA", lifespan=_lifespan)
+    app = FastAPI(title="CQA", openapi_url="/api/openapi.json", lifespan=_lifespan)
+    document(app)
     # встраивание в Dynamics 365: источник — домен тенанта, без cookies; чтение и запуск оценки
     app.add_middleware(
         CORSMiddleware,

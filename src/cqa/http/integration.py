@@ -61,7 +61,7 @@ class RecordIn(BaseModel):
     operator: str | None = Field(None, description="имя или id оператора")
 
 
-class PasteIn(BaseModel):
+class TextIn(BaseModel):
     """Диалог текстом, как вставка в интерфейсе: строки «Роль: текст»."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [PASTE_EXAMPLE]})
@@ -73,12 +73,12 @@ class PasteIn(BaseModel):
 def _format(v: Any) -> str | None:
     if isinstance(v, dict):
         return "record" if "conversation_id" in v else "paste" if "text" in v else None
-    return "record" if isinstance(v, RecordIn) else "paste" if isinstance(v, PasteIn) else None
+    return "record" if isinstance(v, RecordIn) else "paste" if isinstance(v, TextIn) else None
 
 
 FORMATS = ("record", "paste")  # метки вариантов: validation.py убирает их из пути поля
 Item = Annotated[
-    Annotated[RecordIn, Tag("record")] | Annotated[PasteIn, Tag("paste")],
+    Annotated[RecordIn, Tag("record")] | Annotated[TextIn, Tag("paste")],
     Discriminator(
         _format,
         custom_error_type="dialog_format",
