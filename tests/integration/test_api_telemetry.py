@@ -36,6 +36,15 @@ def test_batch_is_stored_with_role_as_actor_and_returns_204(
     ]
 
 
+def test_hash_route_page_from_the_react_ui_is_stored_as_screen_token(
+    client: TestClient, conn: sqlite3.Connection
+) -> None:
+    body = [{"event": "page_view", "at": NOW, "page": "#/analytics", "props": {}}]
+
+    assert client.post("/api/telemetry?role=qa", json=body).status_code == 204
+    assert [r["page"] for r in rows(conn)] == ["analytics"]
+
+
 def test_active_employee_from_header_is_the_actor_with_their_role(
     client: TestClient, store: Store, conn: sqlite3.Connection
 ) -> None:
