@@ -32,7 +32,7 @@ def open_queue(page: Page, web_url: str, route: str = "#/queue") -> None:
         lambda route_: route_.fulfill(status=200, content_type="application/json", body=state),
     )
     page.goto(f"{web_url}/{route}")
-    expect(page.locator("#clVer")).to_have_text("Чек-лист v3")
+    expect(page.get_by_text("Чек-лист v3", exact=True)).to_be_attached()
 
 
 def row_ids(page: Page) -> list[str]:
@@ -65,15 +65,27 @@ def test_risk_tile_filters_and_reset_returns_full_list(page: Page, web_url: str)
     expect(page.locator('[data-act="open"]')).to_have_count(10)
 
 
-def test_j_j_enter_opens_third_dialog_in_queue_order(page: Page, web_url: str) -> None:
+def test_j_j_enter_opens_second_dialog_in_queue_order(page: Page, web_url: str) -> None:
     open_queue(page, web_url)
+    expect(page.locator("tr.sel")).to_have_count(0)  # первое нажатие j выделяет первую строку
     page.keyboard.press("j")
     page.keyboard.press("j")
     expect(page.locator("tr.sel")).to_have_count(1)
-    assert page.locator("tr.sel").get_attribute("data-id") == "p1-ru-022"
+    assert page.locator("tr.sel").get_attribute("data-id") == QUEUE_ORDER[1]
     page.keyboard.press("Enter")
-    expect(page).to_have_url(re.compile(r"#/d/p1-ru-022$"))
+    expect(page).to_have_url(re.compile(rf"#/d/{QUEUE_ORDER[1]}$"))
     expect(page.locator('[data-view="d"]')).to_be_visible()
+
+
+def test_slash_focuses_search_and_keys_in_it_only_type(page: Page, web_url: str) -> None:
+    open_queue(page, web_url)
+    page.keyboard.press("j")
+    page.keyboard.press("/")
+    expect(page.locator("#q")).to_be_focused()
+    page.keyboard.type("jk")
+    expect(page.locator("#q")).to_have_value("jk")  # «/» не попал в поле, j и k набраны, а не листают
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(re.compile(r"#/queue$"))
 
 
 def test_k_at_first_row_keeps_selection(page: Page, web_url: str) -> None:
