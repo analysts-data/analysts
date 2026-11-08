@@ -36,7 +36,7 @@ html{--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B3
   /* место под полосу прокрутки всегда занято: длинный экран не сдвигает макет вбок */
   html{scrollbar-gutter:stable}
   cqa-app{display:block}
-  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1,'cv11' 1;-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
+  body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
   h1,h2,h3{letter-spacing:-.012em}
   a{color:var(--accent)}
   a:hover{color:var(--accent-ink)}
@@ -52,11 +52,13 @@ html{--on-accent:#fff;--sunken:#F7F8FA;--top:rgba(255,255,255,.92);--brand:#00B3
   option{background:var(--surface);color:var(--ink)}
 }
 @layer components{
-  .fld{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background:var(--surface);color:var(--ink)}
+  .fld{min-height:40px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background-color:var(--surface);color:var(--ink)}
+  select.fld{padding-right:32px}
   textarea.fld{padding:8px 10px;min-height:88px;width:100%;resize:vertical;line-height:1.5}
 
   .fld:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
-  .num{text-align:right;white-space:nowrap}
+  .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  [data-total],.tabular{font-variant-numeric:tabular-nums}
   .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .tbl{width:100%;border-collapse:collapse}
   .tbl th{font-size:12px;font-weight:600;color:var(--muted);text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}

@@ -46,7 +46,7 @@ function NavLink({ page, current, icon, children, badge, badgeId }: { page: stri
       aria-current={on ? 'page' : undefined}
       className={cn(
         'flex min-h-10 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 font-medium no-underline transition-colors',
-        on ? 'bg-accent-soft font-semibold text-accent-ink hover:text-accent-ink' : 'text-ink2 hover:bg-hover hover:text-ink',
+        on ? 'relative bg-hover font-semibold text-ink before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-full before:bg-brand hover:text-ink' : 'text-ink2 hover:bg-hover hover:text-ink',
       )}
     >
       <span className="flex-none [&>svg]:h-[18px] [&>svg]:w-[18px]">{icon}</span>
