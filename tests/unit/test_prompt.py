@@ -3,7 +3,14 @@ from pathlib import Path
 from typing import Any
 
 from cqa.domain.models import Checklist, Criterion, Dialog, Fold, JevQuestion, Line
-from cqa.domain.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_messages, criterion_block, render_dialog
+from cqa.domain.prompt import (
+    PROMPT_VERSION,
+    SYSTEM_PROMPT,
+    build_messages,
+    criterion_block,
+    render_dialog,
+    sound_block,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 CHECKLIST = Checklist.model_validate_json((FIXTURES / "checklist_v3.json").read_text(encoding="utf-8"))
@@ -224,3 +231,39 @@ def test_jev_answer_descriptions_replace_default_yes_no_and_na() -> None:
     )
     block = criterion_block(crit(BOOL, na=True, naCond="Клиент не спрашивал", jev=jev))
     assert '"yes" — Назвал, "no" — Не назвал, "na" — Срока нет, только если: Клиент не спрашивал.' in block
+
+
+PROSODY = {"summary": ["Клиент повысил тон в реплике 12", "Пауза 9 с перед ответом оператора (реплика 20)"]}
+
+
+def test_sound_block_lists_summary_and_allows_only_tone_pauses_and_pace_from_it() -> None:
+    block = sound_block(PROSODY)
+    head, *rest = block.split("\n")
+    assert (
+        head == "Анализ звука записи (автоматически, по тону и громкости; распознавание речи не проверялось):"
+    )
+    assert rest[:2] == [
+        "- Клиент повысил тон в реплике 12",
+        "- Пауза 9 с перед ответом оператора (реплика 20)",
+    ]
+    assert "Тон, паузы и темп" in rest[2] and "сверх этих строк" in rest[2]
+
+
+def test_sound_block_without_deviations_says_none_were_found() -> None:
+    assert "\n- отклонений тона, громкости, темпа и пауз не найдено\n" in sound_block({"summary": []})
+
+
+def test_sound_block_goes_after_dialog_and_before_the_question() -> None:
+    sound = sound_block(PROSODY)
+    for c in (SCALE, BOOL, FLAG):
+        plain, with_sound = build_messages("d", "r", c, "call"), build_messages("d", "r", c, "call", sound)
+        for (sys_a, user_a), (sys_b, user_b) in zip(plain, with_sound, strict=True):
+            assert sys_a == sys_b
+            assert user_b["content"] == user_a["content"].replace(
+                "</dialog>\n\n", f"</dialog>\n\n{sound}\n\n", 1
+            )
+
+
+def test_messages_without_sound_are_unchanged() -> None:
+    for ch in ("chat", "call"):
+        assert build_messages("d", "r", SCALE, ch, None) == build_messages("d", "r", SCALE, ch)

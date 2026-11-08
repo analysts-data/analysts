@@ -27,7 +27,7 @@ from cqa.services.errors import Unavailable
 from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
-from cqa.services.state import build_state, mode_from_settings
+from cqa.services.state import ReportFormat, build_state, mode_from_settings, report
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -112,6 +112,18 @@ async def get_state(request: Request) -> dict[str, Any]:
     syncer: Syncer | None = request.app.state.syncer
     state = build_state(request.app.state.store, request.app.state.mode)
     return {**state, "source": syncer.status() if syncer else None}
+
+
+@router.get("/report")
+async def get_report(
+    request: Request,
+    fmt: Annotated[ReportFormat, Query(alias="format")] = "html",
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+) -> Response:
+    """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
+    body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
+    return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
 @router.post("/dialogs/text")
@@ -230,7 +242,7 @@ def _apply(request: Request) -> Apply:
     state = request.app.state
 
     def apply(settings: Settings) -> None:
-        _runner(request).use(build_evaluator(settings))
+        _runner(request).use(build_evaluator(settings, state.prosody))
         state.settings, state.mode = settings, mode_from_settings(settings)
 
     return apply

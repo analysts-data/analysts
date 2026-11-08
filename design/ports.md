@@ -209,6 +209,7 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | --- | --- | --- |
 | `CQA_LLM_PROVIDER` → `llm_provider` | `Settings`, `str`, `env` | код основной модели; `effective` переносит поля провайдера в `llm_base_url`, `llm_model`, `llm_profile`, `llm_api_key`, `data_where` |
 | `CQA_PROVIDERS` → `providers` | `Settings`, `dict[str, Provider]`, `{}` | JSON `{код: {label, base_url, model, profile, where, key}}`; `effective` добавляет `env`, список из базы (`overrides["providers"]`) заменяет этот |
+| `CQA_OPENROUTER_API_KEY` → `openrouter_api_key` | `Settings`, `SecretStr \| None`, `None` | ключ встроенного провайдера `openrouter-jev`; `effective` добавляет его вторым после `env` |
 | `CQA_VERIFIER` → `verifier` | `Settings`, `str \| None` | `"jev"` или код провайдера; `Mode.verifier` — `str \| None` |
 | `Provider` | `src/cqa/settings.py` | `label`, `base_url: str \| None`, `model`, `profile`, `where`, `key: SecretStr \| None` |
 | `put_provider`, `delete_provider`, `provider`, `as_llm` | `src/cqa/services/llm_config.py` | `put_provider(store, settings, pid, body, apply)`, `delete_provider(store, settings, pid, apply)` -> `Settings`, как `configure`; `provider(settings, pid)` — `NotFound`; `as_llm(provider)` — поля основной модели |
@@ -246,5 +247,6 @@ class Voice(Protocol):            # реализует PraatVoice (src/cqa/adapt
 | `app.state.voice` | `create_app` | `PraatVoice(httpx.AsyncClient())`; тесты подменяют подделкой с синтетическими кадрами |
 | Таблица `prosody` | `data/cqa.db` | `dialog_id TEXT PK REFERENCES dialogs(id)`, `body TEXT` (JSON ответа) |
 | `ffmpeg` | системная зависимость сервера | в `PATH`; без него `/prosody` отвечает 502, остальное работает |
+| `Prosody` | `src/cqa/services/evaluation.py` | `Callable[[str], Awaitable[Mapping[str, Any]]]`: id звонка → тело `/prosody`, исключение — разбора нет; `LlmEvaluator`/`JevEvaluator(..., prosody=None)`, `build_evaluator(settings, prosody=None)`; сервер — `app.state.prosody` (`dialog_prosody` с текущими `source`, `voice`) |
 
 Атрибуты для e2e: панель `[data-prosody="on"]`, строка `[data-prosody="off"]` (502) и `[data-prosody="loading"]`, значок у реплики `#tr [data-n] .pros`. Тесты экранов подменяют `/prosody` пустым ответом (`tests/e2e/web/conftest.py`), сценарий защиты — тоже.
