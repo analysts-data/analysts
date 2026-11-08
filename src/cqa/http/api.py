@@ -1,20 +1,32 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
+import json
 import time
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
 from cqa.compose import build_evaluator, check_provider
 from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
+from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
 from cqa.services import reports
 from cqa.services.analytics import analytics
@@ -33,7 +45,7 @@ from cqa.services.checklists import (
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
-from cqa.services.errors import Unavailable
+from cqa.services.errors import Invalid, Unavailable
 from cqa.services.history import adopt, history, restore
 from cqa.services.llm_config import (
     Apply,
@@ -58,6 +70,7 @@ from cqa.services.state import (
     scores_csv,
 )
 from cqa.services.sync import Syncer
+from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
@@ -539,6 +552,66 @@ async def post_upload(request: Request) -> dict[str, int]:
     result = load_upload(request.app.state.store, _source(request), await request.body())
     _log(request, "dataset.upload", "dataset", "", result)
     return result
+
+
+MAX_PROPS = 2048
+
+
+class TelemetryIn(BaseModel):
+    event: Event
+    at: AwareDatetime | None = None  # без at — время приёма
+    page: Annotated[str, StringConstraints(pattern=TOKEN)]
+    props: dict[str, Any] = {}
+
+    @field_validator("props")
+    @classmethod
+    def _small(cls, props: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(props, ensure_ascii=False).encode()) > MAX_PROPS:
+            raise ValueError(f"props больше {MAX_PROPS} байт")
+        return props
+
+
+TELEMETRY = TypeAdapter(Annotated[list[TelemetryIn], Field(max_length=200)])
+
+
+@router.post("/telemetry", status_code=204, summary="Метрики использования: пакет событий интерфейса")
+async def post_telemetry(
+    request: Request,
+    role: Annotated[str | None, Query(pattern=TOKEN)] = None,
+) -> Response:
+    """Пакет событий интерфейса. Тело читается как JSON при любом Content-Type: sendBeacon шлёт text/plain.
+
+    Сотрудник — `actor_from` (активный по `X-CQA-User`, его id и роль), без входа — роль из запроса."""
+    state = request.app.state
+    if state.settings.telemetry == "off":
+        return Response(status_code=204)
+    if not state.telemetry_limit.take(request.client.host if request.client else "-"):
+        return Response(status_code=429)
+    try:
+        batch = TELEMETRY.validate_json(await request.body())
+    except ValidationError as exc:
+        raise Invalid(f"Пакет метрик не принят: {exc}") from exc
+    now = datetime.now(UTC)
+    who = actor_from(request, role or "")
+    events = [(e.at or now, e.event, e.page, e.props) for e in batch]
+    store_events(state.store, events, who.id or who.name, who.role or role)
+    return Response(status_code=204)
+
+
+@router.get("/usage", summary="Сводка использования системы: json или csv")
+async def get_usage(
+    request: Request,
+    since: date | None = None,
+    role: Annotated[str | None, Query(max_length=64)] = None,
+    fmt: Annotated[UsageFormat, Query(alias="format")] = "json",
+) -> Response:
+    """Как сотрудники пользуются системой: json — числа, csv — длинная таблица для Excel."""
+    body = usage(request.app.state.store, fmt, since=since, role=role)
+    if isinstance(body, dict):
+        return JSONResponse(body)
+    return Response(
+        body, media_type=MEDIA["csv"], headers={"Content-Disposition": 'attachment; filename="usage.csv"'}
+    )
 
 
 @router.post("/runs", summary="Запустить оценку")
