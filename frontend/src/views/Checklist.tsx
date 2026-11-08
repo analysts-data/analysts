@@ -1,6 +1,6 @@
 // Редактор чек-листа: черновик S.draft — копия применяемой версии, правки живут в браузере до сохранения.
-// Сохранение создаёт новую версию (PUT /api/checklist), ответ pending — критерии, которые ждут оценки модели.
-import { ChevronDown, Download, Plus, Save, Upload } from 'lucide-react';
+// Сохранение создаёт новую версию (PUT /api/checklist); какие критерии ждут оценки, видно из данных.
+import { ChevronDown, FileJson, Plus, Save } from 'lucide-react';
 import { useState, type ChangeEvent, type MouseEvent, type ReactNode } from 'react';
 import { exportQuestions, importQuestions } from '../lib/checklist_json.js';
 import { f2, fn } from '../lib/format.js';
@@ -18,9 +18,8 @@ const typeName = (type: string): string | undefined => ({ bool: t('Да/Нет')
 const scored = (cs: any[]) => cs.filter(c => c.type !== 'flag');
 const wsum = (cs: any[]) => cs.reduce((s, x) => s + (Number(x.w) || 0), 0);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-// pending приходит только из ответа PUT /api/checklist и держится, пока критерий есть в версии и у диалогов нет его записи
-const waiting = (S: any): string[] =>
-  (S.pending || []).filter((cid: string) => S.checklist.criteria.some((c: any) => c.id === cid) && S.dialogs.some((d: any) => !d.res[cid]));
+// ждёт оценки: критерий действующей версии, у которого хотя бы в одном диалоге нет записи; переживает перезагрузку
+const waiting = (S: any): string[] => S.checklist.criteria.filter((c: any) => S.dialogs.some((d: any) => !d.res[c.id])).map((c: any) => c.id);
 // средний итог набора по уже полученным ответам: для черновика — тот же calc с черновиком вместо версии
 function avgTotal(S: any, cl: any) {
   const ts = S.dialogs.map((d: any) => calc(d, cl, S.appeals).total).filter((t: any) => Number.isFinite(t));
@@ -115,7 +114,6 @@ export function Checklist() {
     busy(S, async () => {
       try {
         const { version, pending } = await api.putChecklist(S.draft);
-        S.pending = [...new Set([...(S.pending || []), ...pending])];
         if (S.run?.status !== 'running') S.run = null; // итог прошлого запуска относится к прежней версии
         await reload();
         toast(
@@ -184,51 +182,34 @@ export function Checklist() {
 
   return (
     <>
-      <PageHead
-        title={t('Чек-лист качества')}
-        sub={
-          <>
-            <span className="sub">
-              {qa ? '' : t('Как оценивается ваша работа.') + ' '}
-              <Term k="version">{t('Версия {v}', { v: cl.version })}</Term> {t('применяется к набору. Изменения сохраняются новой версией.')}
-            </span>
-            {qa && dirty && (
-              <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-                <Chip tone="ev">{t('Есть несохранённые изменения')}</Chip>
-                {note && <span className="text-ink2">{note}</span>}
-                {before != null && after != null && f2(before) !== f2(after) && (
-                  <Tip content={t('Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам')}>
-                    <span tabIndex={0}>
-                      {t('Средний итог {before} →', { before: f2(before) })} <b className="text-ink">{f2(after)}</b>
-                    </span>
-                  </Tip>
-                )}
-              </span>
-            )}
-          </>
-        }
-      >
-        {qa && (
-          <Menu label={t('Импорт')} icon={<Upload size={16} aria-hidden="true" />}>
-            <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')}>
-              {t('Импорт из файла чек-листа (JSON)')}
-              <input type="file" accept=".json,application/json" data-act="cimport" className="sr" disabled={dirty} onChange={importJson} />
-            </label>
-            <label className={cn(item, S.busy && 'cursor-not-allowed opacity-45')}>
-              {t('Импорт из формата Jev')}
-              <input type="file" accept=".json,application/json" data-act="cjevimport" className="sr" disabled={S.busy} onChange={importJev} />
-            </label>
-            <span className="px-2.5 pt-1 text-xs text-muted">
-              {dirty ? t('Файл чек-листа заменит черновик: сначала сохраните или отмените правки.') : t('Файл чек-листа заменяет черновик.')}{' '}
-              {t('Вопросы Jev обновляют его по ID, веса настраиваются отдельно.')}
-            </span>
-          </Menu>
-        )}
-        <ExportMenu S={S} onJev={qa ? exportJev : null} />
+      <PageHead title={t('Чек-лист качества')}>
+        <FileMenu
+          S={S}
+          onJev={qa ? exportJev : null}
+          imports={
+            qa && (
+              <>
+                <label className={cn(item, dirty && 'cursor-not-allowed opacity-45')}>
+                  {t('Импорт из файла чек-листа (JSON)')}
+                  <input type="file" accept=".json,application/json" data-act="cimport" className="sr" disabled={dirty} onChange={importJson} />
+                </label>
+                <label className={cn(item, S.busy && 'cursor-not-allowed opacity-45')}>
+                  {t('Импорт из формата Jev')}
+                  <input type="file" accept=".json,application/json" data-act="cjevimport" className="sr" disabled={S.busy} onChange={importJev} />
+                </label>
+                <span className="px-2.5 pt-1 text-xs text-muted">
+                  {dirty ? t('Файл чек-листа заменит черновик: сначала сохраните или отмените правки.') : t('Файл чек-листа заменяет черновик.')}{' '}
+                  {t('Вопросы Jev обновляют его по ID, веса настраиваются отдельно.')}
+                </span>
+                <hr className="my-1 border-line2" />
+              </>
+            )
+          }
+        />
         {qa && (
           <>
             <Button variant="ghost" data-act="creset" disabled={!dirty} onClick={() => (setDraft(null), rerender())}>
-              {t('Отменить изменения')}
+              {t('Отменить')}
             </Button>
             <Button data-act="cwhat" disabled={!dirty} onClick={() => showDiff(t('Что изменится при сохранении v{v}', { v: cl.version + 1 }), () => api.diffDraft(S.draft))}>
               {t('Что изменится')}
@@ -249,6 +230,27 @@ export function Checklist() {
           </>
         )}
       </PageHead>
+      {/* подзаголовок под шапкой, а не в ней: так кнопки остаются справа от заголовка */}
+      <div className="-mt-3 flex flex-col">
+        <span className="sub text-muted">
+          {qa ? '' : t('Как оценивается ваша работа.') + ' '}
+          <Term k="version">{t('Версия {v}', { v: cl.version })}</Term> {t('применяется к набору. Изменения сохраняются новой версией.')}
+        </span>
+        {qa && dirty && (
+          <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+            <Chip tone="ev">{t('Есть несохранённые изменения')}</Chip>
+            {sum !== 100 && <Chip tone="ev">{t('Сумма весов {sum} из 100', { sum })}</Chip>}
+            {note && <span className="text-ink2">{note}</span>}
+            {before != null && after != null && f2(before) !== f2(after) && (
+              <Tip content={t('Средний итог набора сейчас и после сохранения черновика, по уже полученным ответам')}>
+                <span tabIndex={0}>
+                  {t('Средний итог {before} →', { before: f2(before) })} <b className="text-ink">{f2(after)}</b>
+                </span>
+              </Tip>
+            )}
+          </span>
+        )}
+      </div>
 
       {(pend.length > 0 || run || errs) && (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-ev-line bg-ev-soft p-4" aria-label={t('Оценка набора')}>
@@ -397,11 +399,6 @@ export function Checklist() {
           title={diff.title}
           sub={t('Разницу считает сервер; ничего не сохраняется.')}
           onClose={() => setDiff(null)}
-          footer={
-            <Button variant="primary" onClick={() => setDiff(null)}>
-              {t('Закрыть')}
-            </Button>
-          }
         >
           <pre className="diff max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg bg-sunken p-3 text-[13px]">{diff.md}</pre>
         </Dlg>
@@ -424,8 +421,9 @@ function Menu({ label, icon, pop, children }: { label: string; icon: ReactNode; 
   );
 }
 
-// Файлы строит сервер (GET /api/checklist/export): пункты — обычные ссылки, по умолчанию применяемая версия.
-function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>) => void) | null }) {
+// «Файл»: импорт (только специалисту КК) и экспорт в одном меню. Файлы экспорта строит сервер
+// (GET /api/checklist/export): пункты — обычные ссылки, по умолчанию применяемая версия.
+function FileMenu({ S, onJev, imports }: { S: any; onJev: ((e: MouseEvent<HTMLElement>) => void) | null; imports: ReactNode }) {
   const [v, setV] = useState<number | null>(null);
   const cur = S.checklist.version,
     sel = v ?? cur;
@@ -435,7 +433,8 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
     </a>
   );
   return (
-    <Menu label={t('Экспорт')} icon={<Download size={16} aria-hidden="true" />} pop="menu-pop">
+    <Menu label={imports ? t('Файл') : t('Экспорт')} icon={<FileJson size={16} aria-hidden="true" />} pop="menu-pop">
+      {imports}
       <label className="mb-1 flex flex-col gap-1.5 px-2.5 pt-1">
         <span className="text-[13px] font-semibold text-ink2">
           {t('Сохранённая версия')}
@@ -476,7 +475,7 @@ function RunErrors({ run, cids }: { run: any; cids: string[] | null }) {
   const n = run.errors.length;
   const head = run.status === 'running' ? t('Ошибок пока: {n}, в диалогах: {d}.', { n, d: failedDialogs(run.errors).length }) : runNote(run);
   return (
-    <div className={cn('flex basis-full flex-col gap-1.5', !cids && 'box risk')}>
+    <div className="flex basis-full flex-col gap-1.5">
       {cids ? (
         <span>
           {cids.length

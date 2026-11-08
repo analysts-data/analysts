@@ -83,7 +83,7 @@ export function Coaching() {
                   selected = g.cid;
                   rerender();
                 }}
-                className={cn('min-h-9 rounded-lg border px-3 text-[13px] font-medium', g.cid === selected ? 'border-ink bg-ink text-bg' : 'border-line-strong bg-surface text-ink2 hover:bg-hover')}
+                className={cn('min-h-9 rounded-lg border px-3 text-[13px] font-medium', g.cid === selected ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line-strong bg-surface text-ink2 hover:bg-hover')}
               >
                 {g.cid} {crit(g.cid).name}: {g.items.length}
               </button>
