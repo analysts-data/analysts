@@ -7,6 +7,8 @@ const open = (d, appeals, pick) => c => { const r = d.res[c.id]; return r && pic
 const disagree = (d, cl, ap) => scored(cl).filter(open(d, ap, r => r.alt != null && r.alt !== r.a));
 const evFail = (d, cl, ap) => scored(cl).filter(open(d, ap, r => r.evFail));
 const resolution = cl => scored(cl).find(c => c.signal === 'resolution');
+// Ответ режима «только Jev» (или mode этого режима): model — JEV_MODEL из src/cqa/adapters/jev.py.
+export const byJev = r => /^jev/.test(r?.model || '');
 // Подписи про две модели: второе мнение включено или уже есть в ответах (режим могли сменить после оценки).
 export const twoModels = S => S.mode?.verifier != null || S.dialogs.some(d => Object.values(d.res).some(r => r.alt != null));
 
@@ -36,7 +38,8 @@ export function reasonOf(d, checklist, appeals) {
   if (g === 'review') {
     const dc = disagree(d, checklist, appeals)[0];
     if (dc) { const r = d.res[dc.id]; return { cls: 'c-info', text: `Модели разошлись: ${dc.id}, ${ansTxt(dc, r.a)} и ${ansTxt(dc, r.alt)}` }; }
-    return { cls: 'c-ev', text: `Цитата для ${evFail(d, checklist, appeals)[0].id} не найдена в реплике` };
+    const ef = evFail(d, checklist, appeals)[0];
+    return { cls: 'c-ev', text: byJev(d.res[ef.id]) ? `Jev не уверен в ответе: ${ef.id}` : `Цитата для ${ef.id} не найдена в реплике` };
   }
   if (g === 'next') { const c = resolution(checklist); return { cls: 'c-ev', text: `${c.name}: ${ansTxt(c, ans(d, c.id, appeals))}` }; }
   return flagsOf(d, checklist, appeals).length ? { cls: 'c-na', text: 'Грубая ошибка проверена' } : { cls: '', text: '' };

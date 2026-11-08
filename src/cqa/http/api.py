@@ -63,6 +63,7 @@ class ConfigIn(BaseModel):
     data_where: Literal["kz", "local", "external"]
     anonymize: bool
     verifier: Literal["jev"] | None = None
+    evaluator: Literal["llm", "jev"] = "llm"
     jev_api_key: str = ""
     allow_real_data: bool
 

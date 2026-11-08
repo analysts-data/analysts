@@ -24,6 +24,12 @@ def effective(settings: Settings, overrides: Mapping[str, Any]) -> Settings:
 
 def config_error(settings: Settings) -> str | None:
     """Ошибка конфигурации; LlmEvaluator бросает её как ConfigError при evaluate, а не при сборке."""
+    if settings.evaluator == "jev":  # только Jev: ключ и адрес языковой модели не нужны
+        if settings.llm_mode != "replay" and settings.jev_api_key is None:
+            return (
+                f"Нет ключа Jev для оценки только Jev в режиме {settings.llm_mode}: задайте CQA_JEV_API_KEY"
+            )
+        return None
     if settings.llm_profile not in PROFILES:
         return f"Неизвестный профиль модели {settings.llm_profile}, допустимы: {', '.join(PROFILES)}"
     if settings.llm_mode != "replay" and settings.llm_api_key is None:
@@ -47,6 +53,7 @@ def view(settings: Settings) -> dict[str, Any]:
         "data_where": settings.data_where,
         "anonymize": settings.anonymize,
         "verifier": settings.verifier,
+        "evaluator": settings.evaluator,
         "has_jev_key": settings.jev_api_key is not None,
         "allow_real_data": settings.allow_real_data,
     }

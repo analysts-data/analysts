@@ -301,3 +301,131 @@ async def test_disabled_verifier_sends_nothing():
     assert evaluation.verifier_calls == 0
     assert evaluation.verifier_usd == 0.0
     assert route.call_count == 0
+
+
+# --- Режим «только Jev»: JevEvaluator отвечает на все критерии одним запросом ---
+
+
+def _jev_only(*, anonymize: bool = False, sends_real_data: bool = False, config_error: str | None = None):
+    from cqa.services.evaluation import JevEvaluator
+
+    def build(http: httpx.AsyncClient) -> JevEvaluator:
+        return JevEvaluator(
+            JevVerifier(KEY, http),
+            model_name="jev-latest",
+            anonymize=anonymize,
+            sends_real_data=sends_real_data,
+            allow_real_data=False,
+            config_error=config_error,
+        )
+
+    return build
+
+
+async def _evaluate_jev_only(
+    raw: dict, criteria=None, *, dialog=None, confidence: float = 0.9, **kw
+) -> tuple[list, object, respx.Route]:
+    checklist = _checklist()
+    criteria = checklist.criteria if criteria is None else criteria
+    answers = v1(raw)
+    for answer in answers.values():
+        if answer["type"] == "choice":
+            answer["confidence"] = confidence
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(JEV_URL).respond(200, json={"answers": answers, "usage": {"input_tokens": 4000}})
+        async with httpx.AsyncClient() as http:
+            evaluation = await _jev_only(**kw)(http).evaluate(dialog or _dialog(), checklist, criteria)
+    return criteria, evaluation, route
+
+
+async def test_jev_only_answers_every_criterion_with_one_request_and_no_invented_reasons():
+    raw = {"q0": "yes", "q1": "no", "q2": "na", "q3": "15", "q4": "yes", "q5": 10, "q6": "yes"}
+    raw |= {"q7_0": 0.83, "q7_1": 0.1, "q7_2": 0.05}
+    criteria, evaluation, route = await _evaluate_jev_only(raw)
+    assert route.call_count == 1
+    by_id = {e.cid: e.result for e in evaluation.results}
+    assert [e.cid for e in evaluation.results] == [c.id for c in criteria]
+    assert [by_id[c.id].a for c in criteria[:7]] == ["yes", "no", "na", 15, "yes", 10, "yes"]
+    flag = criteria[7]
+    assert by_id[flag.id].a == dict(
+        zip([q.k for q in flag.questions or []], [True, False, False], strict=True)
+    )
+    first = by_id[criteria[0].id]
+    assert first.why == "Ответ Jev с вероятностью 0,90; модель не пишет обоснований"
+    assert (first.ev, first.quote, first.alt, first.evFail, first.model) == (
+        [],
+        None,
+        None,
+        False,
+        "jev-latest",
+    )
+    # один запрос: calls в сумме 1, цена запроса делится поровну между ответами
+    assert sum(r.calls for r in by_id.values()) == 1
+    assert sum(r.cost for r in by_id.values()) == pytest.approx(4000 * JEV_PRICE_IN / 1_000_000)
+    assert all(r.ms >= 0 for r in by_id.values())
+    assert (evaluation.verifier_calls, evaluation.verifier_usd) == (0, 0.0)
+
+
+async def test_jev_only_low_confidence_answer_goes_to_review():
+    checklist = _checklist()
+    bools = [c for c in checklist.criteria if c.type == "bool"][:1]
+    flag = next(c for c in checklist.criteria if c.type == "flag")
+    _, sure, _ = await _evaluate_jev_only({"q0": "yes"}, bools, confidence=0.6)
+    assert sure.results[0].result.evFail is False
+    _, unsure, _ = await _evaluate_jev_only({"q0": "no"}, bools, confidence=0.55)
+    assert unsure.results[0].result.evFail is True
+    assert "0,55" in (unsure.results[0].result.why or "")
+    _, flagged, _ = await _evaluate_jev_only({"q0_0": 0.45, "q0_1": 0.1, "q0_2": 0.0}, [flag])
+    assert flagged.results[0].result.evFail is True
+
+
+async def test_jev_only_flag_without_some_subanswers_is_not_found_and_on_review():
+    flag = next(c for c in _checklist().criteria if c.type == "flag")
+    _, evaluation, _ = await _evaluate_jev_only({"q0_0": 0.9}, [flag])
+    result = evaluation.results[0].result
+    assert result.a == {q.k: i == 0 for i, q in enumerate(flag.questions or [])}
+    assert result.evFail is True
+
+
+async def test_jev_only_missing_choice_answer_leaves_criterion_pending():
+    bools = [c for c in _checklist().criteria if c.type == "bool"][:2]
+    _, evaluation, _ = await _evaluate_jev_only({"q1": "yes"}, bools)
+    assert [(e.cid, e.result.calls) for e in evaluation.results] == [(bools[1].id, 1)]
+
+
+async def test_jev_only_other_channel_criterion_is_na_without_asking():
+    checklist = _checklist()
+    bools = [c for c in checklist.criteria if c.type == "bool"][:2]
+    calls_only = bools[1].model_copy(update={"channel": "call", "na": True})
+    _, evaluation, route = await _evaluate_jev_only({"q0": "yes"}, [bools[0], calls_only])
+    other = evaluation.results[1].result
+    assert (other.a, other.why, other.calls, other.model) == (
+        "na",
+        "Критерий для другого канала",
+        0,
+        "jev-latest",
+    )
+    assert list(json.loads(route.calls[0].request.content)["questions"]) == ["q0"]
+
+
+async def test_jev_only_sends_anonymized_dialog():
+    dialog = _dialog()
+    assert dialog.lines is not None
+    lines = [*dialog.lines, Line(n=3, t="00:09", who="client", text="мой телефон +7 701 123 45 67")]
+    bools = [c for c in _checklist().criteria if c.type == "bool"][:1]
+    _, _, route = await _evaluate_jev_only(
+        {"q0": "yes"}, bools, dialog=dialog.model_copy(update={"lines": lines}), anonymize=True
+    )
+    sent = json.loads(route.calls[0].request.content)["state"]["dialog"]
+    assert "[ТЕЛЕФОН]" in sent and "701 123 45 67" not in sent
+
+
+async def test_jev_only_blocks_real_call_and_config_error_before_any_request():
+    from cqa.services.errors import ConfigError
+    from cqa.services.evaluation import RealDataBlocked
+
+    call = _dialog().model_copy(update={"ch": "call"})
+    with pytest.raises(RealDataBlocked):
+        await _evaluate_jev_only({}, dialog=call, sends_real_data=True)
+    with pytest.raises(ConfigError, match="CQA_JEV_API_KEY"):
+        await _evaluate_jev_only({}, config_error="нет ключа: задайте CQA_JEV_API_KEY")

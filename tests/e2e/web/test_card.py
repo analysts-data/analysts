@@ -130,6 +130,23 @@ def test_failed_quote_asks_for_check(page: Page, open_card: Callable[..., list[s
     assert errors == []
 
 
+def test_jev_only_answer_shows_honest_why_without_quote_and_asks_for_check(
+    page: Page, open_card: Callable[..., list[str]]
+) -> None:
+    why = "Ответ Jev с вероятностью 0,52 — ниже порога 0,6, нужна проверка; модель не пишет обоснований"
+    jev = {"a": "no", "ev": [], "why": why, "evFail": True, "model": "jev-latest", "calls": 1, "ms": 400}
+    errors = open_card("call-024", lambda d: d["res"].update({"01": jev}))
+    open_crit(page, "01")
+    body = page.locator('.crit[data-cid="01"] .crit-body')
+    expect(body).to_contain_text(why)
+    expect(body.locator(".box.ev")).to_contain_text("Jev не уверен в ответе")
+    expect(body).not_to_contain_text("Цитата не нашлась")
+    expect(body).not_to_contain_text("Проверен участок")
+    expect(body.locator(".quote")).to_have_count(0)
+    expect(body.locator('[data-act="review"]')).to_have_count(2)
+    assert errors == []
+
+
 def test_reduced_criterion_shows_better_phrase_and_review_history(
     page: Page, open_card: Callable[..., list[str]]
 ) -> None:

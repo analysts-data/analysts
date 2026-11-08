@@ -24,6 +24,7 @@ export const configBody = (preset, where, f) => ({
   data_where: preset === 'local' ? 'local' : where,
   anonymize: preset === 'anon',
   verifier: f.jev ? 'jev' : null,
+  evaluator: f.evaluator === 'jev' ? 'jev' : 'llm',
   jev_api_key: f.jev_api_key.trim(),
   allow_real_data: Boolean(f.allow_real_data),
 });

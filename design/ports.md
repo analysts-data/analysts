@@ -200,3 +200,16 @@ eval-and-delivery берёт файл базы только целиком (`mak
 | `tests/e2e/fixtures/replacement_criterion.json` | один `Criterion` | eval-and-delivery |
 | `tests/fixtures/state_prototype.json` | ответ `GET /api/state` на данных прототипа | cqa-web-ui |
 | `tests/cassettes/{llm,jev}/{sha}.json` | `{"request": тело, "status": код, "response": JSON}`, без заголовков; `sha = sha256(json.dumps(тело, ensure_ascii=False, sort_keys=True, separators=(",", ":")))` | llm-evaluation |
+
+## Режим «только Jev» (llm-evaluation, jev-only)
+
+| Имя | Модуль | Сигнатура и смысл |
+| --- | --- | --- |
+| `JevEvaluator` | `src/cqa/services/evaluation.py` | реализует `Evaluator`: `JevEvaluator(jev: Verifier, *, model_name, anonymize, sends_real_data, allow_real_data, config_error=None)`; один `verify` на диалог по критериям его канала; ошибка Jev — сбой всего диалога |
+| `Verdict.confidence` | там же | `dict[str, float]`, по умолчанию пусто: id критерия → вероятность ответа Jev, у флага наименьшая по подвопросам |
+| `JEV_SURE` | там же | `0.6`: вероятность ниже или её нет — `evFail` |
+| `JEV_MODEL` | `src/cqa/adapters/jev.py` | `"jev-latest"`: модель запроса и `mode.model` в режиме jev |
+| `build_evaluator` | `src/cqa/compose.py` | `-> Evaluator`: `JevEvaluator` при `settings.evaluator == "jev"`, иначе `LlmEvaluator` |
+| `byJev` | `web/js/queue.js` | `byJev(resultOrMode)`: `model` начинается с `jev`; карточка и очередь пишут «Jev не уверен в ответе» вместо «Цитата не нашлась» и не называют проверенный участок |
+
+Settings: `CQA_EVALUATOR` → `evaluator: Literal["llm", "jev"] = "llm"`, читают llm-evaluation, review-workflow (`mode`), eval-and-delivery (`make eval`, `scenario.evaluator` в `eval/baseline.json`). Правило канала: на диалоге другого канала `na` с `why: "Критерий для другого канала"` даёт и `JevEvaluator`, без вопроса Jev.

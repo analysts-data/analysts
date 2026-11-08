@@ -1,4 +1,4 @@
-"""Второе мнение Jev: один запрос на диалог, choice на критерий, noul на подвопрос флага.
+"""Jev: один запрос на диалог, choice на критерий, noul на подвопрос флага; второе мнение и «только Jev».
 
 Формат API v1 (docs.typesafe.ai/api): вопрос — instructions и criteria; ответ choice —
 {"choice": ключ criteria, ...}, ответ noul — {"noul": вероятность 0..1}.
@@ -15,7 +15,7 @@ from cqa.domain.models import Criterion
 from cqa.services.evaluation import Verdict
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
-_JEV_MODEL = "jev-latest"
+JEV_MODEL = "jev-latest"
 # Цена Jev, USD за 1 млн входных токенов; выход бесплатный (design/ports.md)
 JEV_PRICE_IN = 0.042
 _MAX_PARALLEL = 8
@@ -76,14 +76,20 @@ def _questions(criteria: Sequence[Criterion]) -> dict[str, dict[str, Any]]:
     return questions
 
 
-def _found(value: Any) -> bool:
-    """noul: доля 0..1, порог 0,5 (замер: 8 из 8 без ложных флагов); чужое значение — не найдено."""
+def _number(value: Any) -> float | None:
+    """Число из ответа v1, в том числе строкой; чужое значение — None."""
     if isinstance(value, str):
         try:
             value = float(value)
         except ValueError:
-            return False
-    return bool(value >= 0.5) if isinstance(value, int | float) else False
+            return None
+    return float(value) if isinstance(value, int | float) else None
+
+
+def _found(value: Any) -> bool:
+    """noul: доля 0..1, порог 0,5 (замер: 8 из 8 без ложных флагов); чужое значение — не найдено."""
+    p = _number(value)
+    return p is not None and p >= 0.5
 
 
 def _field(raw: dict[str, Any], key: str, field: str) -> Any:
@@ -113,8 +119,36 @@ def _answers(raw: dict[str, Any], criteria: Sequence[Criterion]) -> dict[str, st
     return answers
 
 
+def _sure(answer: Any) -> float | None:
+    """Вероятность ответа v1: choice — confidence или вероятность выбранного ключа, noul — max(p, 1 − p)."""
+    if not isinstance(answer, dict):
+        return None
+    if "noul" in answer:
+        p = _number(answer["noul"])
+        return None if p is None else max(p, 1 - p)
+    p = _number(answer.get("confidence"))
+    if p is None and isinstance(answer.get("probabilities"), dict):
+        p = _number(answer["probabilities"].get(str(answer.get("choice"))))
+    return p
+
+
+def _confidence(raw: dict[str, Any], criteria: Sequence[Criterion]) -> dict[str, float]:
+    """id критерия → вероятность ответа; у флага — наименьшая по подвопросам с ответом."""
+    out: dict[str, float] = {}
+    for i, criterion in enumerate(criteria):
+        keys = (
+            [f"q{i}_{j}" for j in range(len(criterion.questions or []))]
+            if criterion.type == "flag"
+            else [f"q{i}"]
+        )
+        found = [p for k in keys if (p := _sure(raw.get(k))) is not None]
+        if found:
+            out[criterion.id] = min(found)
+    return out
+
+
 class JevVerifier:
-    """Второе мнение: один POST на диалог; не больше max_parallel запросов одновременно."""
+    """Один POST на диалог: второе мнение или все ответы «только Jev»; не больше max_parallel сразу."""
 
     def __init__(self, api_key: str, http: httpx.AsyncClient, *, max_parallel: int = _MAX_PARALLEL) -> None:
         self._http = http
@@ -123,13 +157,16 @@ class JevVerifier:
 
     async def verify(self, dialog_text: str, rules: str, criteria: Sequence[Criterion]) -> Verdict:
         body = {
-            "model": _JEV_MODEL,
+            "model": JEV_MODEL,
             "state": {"rules": rules, "dialog": dialog_text},
             "questions": _questions(criteria),
         }
         async with self._gate:
             response = await post_json(self._http, JEV_URL, body, self._headers)
         used = int((response.get("usage") or {}).get("input_tokens") or 0)
+        raw = response.get("answers") or {}
         return Verdict(
-            answers=_answers(response.get("answers") or {}, criteria), cost=used * JEV_PRICE_IN / 1_000_000
+            answers=_answers(raw, criteria),
+            cost=used * JEV_PRICE_IN / 1_000_000,
+            confidence=_confidence(raw, criteria),
         )

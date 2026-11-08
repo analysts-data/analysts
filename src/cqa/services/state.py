@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from typing import Any
 
+from cqa.adapters.jev import JEV_MODEL
 from cqa.adapters.store import Store
 from cqa.domain.models import Appeal, Checklist, CriterionResult, Dialog, Mode
 from cqa.domain.review import fingerprints
@@ -11,11 +12,12 @@ from cqa.settings import Settings
 
 
 def mode_from_settings(settings: Settings) -> Mode:
+    jev = settings.evaluator == "jev"  # только Jev: модель — Jev, второго мнения нет
     return Mode(
         where=settings.data_where,
         anonymized=settings.anonymize,
-        model=settings.llm_model,
-        verifier=settings.verifier,
+        model=JEV_MODEL if jev else settings.llm_model,
+        verifier=None if jev else settings.verifier,
     )
 
 

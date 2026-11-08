@@ -61,6 +61,7 @@ def test_empty_key_keeps_the_saved_one(store: Store) -> None:
         ({"llm_base_url": "ftp://x"}, "http"),
         ({"llm_profile": "nope"}, "профиль"),
         ({"verifier": "jev"}, "CQA_JEV_API_KEY"),
+        ({"evaluator": "jev"}, "CQA_JEV_API_KEY"),
     ],
 )
 def test_bad_mode_is_invalid_and_nothing_is_saved(store: Store, change: dict, message: str) -> None:
@@ -90,3 +91,20 @@ def test_view_shows_the_mode_but_never_the_keys() -> None:
     assert shown["has_llm_key"] is True and shown["has_jev_key"] is True
     assert shown["verifier"] == "jev" and "plain" in shown["profiles"]
     assert "sk-env" not in repr(shown) and "jev-secret" not in repr(shown)
+
+
+def test_jev_only_mode_needs_the_jev_key_but_not_the_llm_key(store: Store) -> None:
+    settings = Settings(_env_file=None, llm_mode="live")
+    result = configure(
+        store, settings, {**BODY, "llm_api_key": "", "evaluator": "jev", "jev_api_key": "j"}, lambda s: None
+    )
+    assert result.evaluator == "jev"
+    assert view(result)["evaluator"] == "jev"
+
+
+def test_mode_names_jev_as_the_model_and_no_second_opinion_in_jev_only_mode() -> None:
+    from cqa.services.state import mode_from_settings
+
+    mode = mode_from_settings(effective(_live(), {"evaluator": "jev", "verifier": "jev"}))
+    assert (mode.model, mode.verifier) == ("jev-latest", None)
+    assert view(_live())["evaluator"] == "llm"
