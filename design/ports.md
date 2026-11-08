@@ -137,6 +137,8 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `CQA_DB_PATH` | `db_path` | `str` | `data/cqa.db` | review-workflow, eval-and-delivery (`backup`, e2e) |
 | `CQA_EVAL_DATASET` | `eval_dataset` | `Path` | `data/dev.json` | eval-and-delivery |
 | `CQA_HOLDOUT_DIR` | `holdout_dir` | `Path \| None` | `None` | eval-and-delivery |
+| `CQA_WEBHOOK_URL` | `webhook_url` | `str \| None` | `None` (события не отправляются) | eval-and-delivery (алерты, `alert.created`) |
+| `CQA_WEBHOOK_SECRET` | `webhook_secret` | `SecretStr \| None` | `None` (без подписи) | eval-and-delivery (`X-CQA-Signature`) |
 
 Значения по умолчанию — сценарий 4. Цена Jev (0,042 USD за 1 млн входных токенов) — константа в `src/cqa/adapters/jev.py`. `CQA_NOW` читает только `scripts/stop_code.sh`, в `Settings` его нет. `.env.example` содержит все поля без значений секретов.
 
@@ -148,6 +150,9 @@ class Evaluator(Protocol):        # реализует LlmEvaluator (llm-evaluat
 | `results` | `id INTEGER PK`, `dialog_id`, `cid`, `version`, `fp`, `body` (JSON `CriterionResult`), `created`; только `INSERT` (триггеры) | — |
 | `runs` | `id`, `total`, `done`, `cost`, `calls`, `errors` (JSON-список строк), `status TEXT CHECK IN ('running', 'done', 'cancelled')`, `started`, `finished` | — |
 | `appeals` | `n INTEGER PK` (id = `"a" + n`), `dlg`, `cid`, `kind CHECK IN ('appeal', 'review')`, `fp`, `status CHECK IN ('pending', 'confirmed', 'changed', 'closed')`, `body` | — |
+| `markers` | `dialog_id`, `label`, `by`, `at`, PK (`dialog_id`, `label`) — ручные маркеры | eval-and-delivery (alerts) |
+| `lists` | `name TEXT PK` (`markers_catalog`, `alert_rules`), `body` JSON | eval-and-delivery (alerts) |
+| `alerts` | `id`, `rule_id`, `severity`, `title`, `target_type`, `target_id`, `basis` JSON, `created`, `status CHECK IN ('new', 'ack', 'resolved')`, `assignee`, `acked_by`, `acked_at`, `resolved_by`, `resolved_at`, `note`; `UNIQUE (rule_id, target_type, target_id)` | eval-and-delivery (alerts) |
 
 eval-and-delivery берёт файл базы только целиком (`make backup`, временный `CQA_DB_PATH` в e2e) и схему не читает.
 

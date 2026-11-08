@@ -207,3 +207,55 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 ## Отчёт для руководства (eval-and-delivery)
 
 JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+
+## Маркеры и алерты (eval-and-delivery, alerts)
+
+| Метод и путь | Тело | Ответ |
+| --- | --- | --- |
+| `GET /api/markers/catalog` | — | `["Жалоба", "Эскалация", "VIP-клиент", "Для обучения", "Повторное обращение"]` — подписи ручных маркеров (по умолчанию эти) |
+| `PUT /api/markers/catalog` | список подписей | тот же список; непустые неповторяющиеся строки до 40 символов, иначе 422 `{detail: [{loc: ["body", i], msg}]}` |
+| `PUT /api/dialogs/{id}/markers` | `{"add": [..], "remove": [..], "by": "Специалист КК"}` | `{markers}` диалога после правки; подпись не из каталога — 422, неизвестный диалог — 404 |
+| `GET /api/alerts/rules` | — | правила `[{id, title, kind, params, severity, enabled, why}]` |
+| `PUT /api/alerts/rules` | весь список правил | список после сохранения; ошибки — 422 `{detail: [{loc: ["body", i, "params", "threshold"], msg: "Порог итога: число от 0 до 100"}]}` по-русски, ничего не сохраняется |
+| `POST /api/alerts/evaluate` | — | `{created: [Alert]}` — только новые |
+| `GET /api/alerts?status=new\|ack\|resolved&severity=info\|warning\|critical` | — | `{alerts: [Alert] новыми первыми, counts: {new, ack, resolved, info, warning, critical}}`; счётчики по всей таблице, важность — среди незакрытых (колокольчик) |
+| `POST /api/alerts/{id}/ack` | `{"by": "…"}` | Alert; только из `new`, иначе 409 |
+| `POST /api/alerts/{id}/resolve` | `{"note": "что сделано", "by": "…"}` | Alert; из `new` или `ack`, иначе 409; пустая заметка — 422 |
+| `PUT /api/alerts/{id}/assignee` | `{"assignee": "Борис" \| null}` | Alert; у закрытого — 409 |
+
+Кто действует: заголовок `X-CQA-User` (кириллица — percent-encoding), без него — `by` из тела, по умолчанию «Специалист КК».
+
+`markers` у каждого диалога в `GET /api/state`: `[{k, label, auto: true, basis} | {k, label, auto: false, by, at}]`, автоматические первыми. Автоматические считаются при каждом запросе и не хранятся:
+
+| `k` | `label` | Когда | `basis` |
+| --- | --- | --- | --- |
+| `gross` | Грубое нарушение | вопрос флага отмечен в ответе с учётом последнего решения | `criteria`, `flags` (ключи вопросов), `lines` (`ev`), `appeals` (решения, от которых ответ) |
+| `no_next_step` | Нет следующего шага | у критерия `signal: "resolution"` доля ниже 1 (N/A — нет) | `criteria`, `answers`, `top` (верхняя ступень), `lines` |
+| `raised_tone` | Клиент повысил тон | в сохранённой интонации звонка флаг `raised` у реплики клиента | `lines` |
+| `long_pause` | Долгая пауза | в сохранённой интонации флаг `long_pause` | `lines`, `value` (самая долгая, с), `threshold` (5 с) |
+| `needs_review` | Нужна проверка | диалог не проверен, у пары расхождение моделей или `evFail` и нет решения | `criteria` |
+| `appeal` | Апелляция | апелляция на рассмотрении | `appeals`, `criteria` |
+| `low_total` | Низкий итог | итог с учётом решений ниже порога первого включённого правила `low_total`; нет такого правила — нет маркера | `rule`, `threshold`, `value` |
+
+Интонация не запрашивается: маркеры звука есть, только если она уже посчитана (`GET /api/dialogs/{id}/prosody`). Ручной маркер: `k` = `label`, ставится из каталога, снимается любой.
+
+`basis` — машиночитаемое обоснование и фраза `why` «Почему: …» по-русски: правило (`rule`), порог (`threshold`), наблюдённое значение (`value`), диалоги (`dialogs`), номера реплик (`lines`), критерии (`criteria`), апелляции и решения (`appeals`) — только те поля, что есть у вывода. Текста реплик, цитат и объяснений модели в `basis`, заголовках и событиях нет.
+
+Правило алерта — данные: `{id, title, kind, params, severity: "info" | "warning" | "critical", enabled, why}`. `why` — одна строка, почему правило и его порог такие; у вида с порогом обязательна, интерфейс показывает её рядом с правилом. Недостающий параметр берёт значение по умолчанию; неизвестный параметр, число вне диапазона, дробное там, где нужно целое, маркер не из каталога — 422 по полю.
+
+| `kind` | `params` (по умолчанию, диапазон) | Цель | Срабатывает |
+| --- | --- | --- | --- |
+| `gross_error` | — | `dialog` | есть маркер `gross` |
+| `low_total` | `threshold` 60, 0–100 | `dialog` | итог < `threshold` |
+| `operator_avg` | `n` 5, `threshold` 70, `min_dialogs` 3 | `operator` | средний итог последних `n` оценённых диалогов оператора (`Dialog.operator`) < `threshold`, если их не меньше `min_dialogs`; без оператора диалог не считается |
+| `no_next_step_share` | `threshold` 30 (%), `min_dialogs` 5 | `set`, `all` | доля оценённых диалогов с маркером `no_next_step` > `threshold`, если оценённых не меньше `min_dialogs` |
+| `raised_tone` | — | `dialog` | есть маркер `raised_tone` |
+| `appeal_overdue` | `hours` 24, 1–8760 | `appeal` | апелляция на рассмотрении дольше `hours` с `at` (Астана, год текущий) |
+| `run_errors` | — | `run` | запуск `done` с ошибками; в `basis` только id диалогов и число ошибок |
+| `marker` | `label` из каталога | `dialog` | стоит ручной маркер `label` |
+
+Правила по умолчанию: `gross` (critical), `low-total` 60 (warning), `operator-avg` 5/70/3 (warning), `no-next-step` 30 %/5 (warning), `raised-tone` (info), `appeal-overdue` 24 ч (warning), `run-errors` (warning), `complaint` — маркер «Жалоба» (critical).
+
+Alert: `{id, rule_id, severity, title, target_type: "dialog" | "operator" | "set" | "appeal" | "run", target_id, basis, created, status: "new" | "ack" | "resolved", assignee, acked_by, acked_at, resolved_by, resolved_at, note}`; время — ISO по Астане. Правила проверяются после каждого запуска оценки, после апелляции, решения и правки маркеров и по `POST /api/alerts/evaluate`. Пара (правило, цель) создаёт алерт один раз: повтор в любом статусе пропускается (уникальный ключ в базе). Сбой проверки после действия пишется в журнал и действие не отменяет.
+
+Событие `alert.created` уходит на `CQA_WEBHOOK_URL` для каждого нового алерта: `POST` JSON `{"event": "alert.created", "data": Alert}`, заголовок `X-CQA-Signature: sha256=<hex HMAC-SHA256 тела ключом CQA_WEBHOOK_SECRET>` (без ключа — без подписи). Таймаут 5 с, сбой получателя пишется в журнал, алерт остаётся.
