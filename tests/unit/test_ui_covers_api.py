@@ -50,6 +50,8 @@ EXEMPT |= {
     "/dialogs/{dialog_id}/markers",
     "/markers/catalog",
 }
+# UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
+EXEMPT |= {"/telemetry", "/usage"}
 # UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
 EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
 # UI в работе: рекомендации (PR #89)
