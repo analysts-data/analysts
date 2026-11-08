@@ -138,6 +138,21 @@ def configure(store: Store, settings: Settings, body: Mapping[str, Any], apply: 
     return _commit(store, candidate, update, apply)
 
 
+def run_settings(settings: Settings, override: Mapping[str, Any]) -> Settings:
+    """Режим одного запуска (перепроверка другой моделью или с другими настройками): `override` —
+    `evaluator`, `llm_provider`, `verifier` поверх текущего режима. Сохранённый режим не меняется."""
+    main, second = override.get("llm_provider"), override.get("verifier")
+    if main is not None and main not in settings.providers:
+        raise Invalid(f"override.llm_provider: нет провайдера {main}")
+    if second not in (None, "jev") and second not in settings.providers:
+        raise Invalid(f"override.verifier: нет провайдера {second}")
+    candidate = effective(settings, override)
+    error = config_error(candidate)
+    if error is not None:
+        raise Invalid(f"Перепроверка: {error}")
+    return candidate
+
+
 def put_provider(
     store: Store, settings: Settings, pid: str, body: Mapping[str, Any], apply: Apply
 ) -> Settings:

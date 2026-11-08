@@ -13,13 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from cqa.adapters.batches import BatchStore
 from cqa.adapters.store import Store, connect
 from cqa.adapters.voice import PraatVoice
 from cqa.compose import build_evaluator, build_source
 from cqa.domain.models import Checklist
-from cqa.http import api, docs
+from cqa.http import api, batches, docs
 from cqa.http.access import protect
 from cqa.http.audio import router as audio_router
+from cqa.services.batches import Batches
 from cqa.services.errors import Conflict, Invalid, NotFound, Unavailable, Upstream
 from cqa.services.llm_config import effective
 from cqa.services.ports import DialogSource, Evaluator
@@ -44,11 +46,13 @@ STATUS: dict[type[Exception], int] = {
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Автосинхронизация набора организаторов, пока работает сервер."""
+    """Автосинхронизация набора организаторов и очередь батчей, пока работает сервер."""
     syncer: Syncer | None = app.state.syncer
-    task = asyncio.create_task(syncer.run()) if syncer else None
+    tasks = [asyncio.create_task(app.state.batches.work())]
+    if syncer:
+        tasks.append(asyncio.create_task(syncer.run()))
     yield
-    if task:
+    for task in tasks:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
@@ -98,7 +102,8 @@ def create_app(
     def health() -> dict[str, bool]:
         return {"ok": True}
 
-    store = Store(conn if conn is not None else connect(settings.db_path))
+    conn = conn if conn is not None else connect(settings.db_path)
+    store = Store(conn)
     settings = app.state.settings = effective(settings, store.overrides())  # режим из интерфейса поверх .env
     store.cancel_stale_runs()
     seed_checklist(store)
@@ -114,9 +119,12 @@ def create_app(
     app.state.prosody = prosody
     evaluator = evaluator if evaluator is not None else build_evaluator(settings, prosody)  # llm-evaluation
     app.state.runner = Runner(store, evaluator, parallel=settings.llm_max_parallel)
+    app.state.batches = Batches(store, BatchStore(conn), app.state.runner)
+    app.state.batches.recover()  # незаконченные задания прошлого процесса — на паузу с пояснением
     app.state.mode = mode_from_settings(settings)
 
     app.include_router(api.router)
+    app.include_router(batches.router)
     app.include_router(audio_router)
     app.include_router(docs.router)
 
