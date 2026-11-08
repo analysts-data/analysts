@@ -134,9 +134,9 @@ export function Coaching() {
                   <span className="text-[13px]">
                     <a href={href('d', g.dialogId)}>{titleOf(dlg(g.dialogId))}</a>{t(', реплика {n}', { n: g.lineNo })}
                   </span>
-                  <Chip tone="ok">{t('полный балл')}</Chip>
+                  <Chip tone="ok">{t('полный балл по критерию')}</Chip>
                 </div>
-                <p className="border-l-2 border-ev pl-3 text-[15px]">«{g.text}»</p>
+                <p className="border-l-2 border-accent pl-3 text-[15px]">«{g.text}»</p>
               </article>
             ))
           ) : (

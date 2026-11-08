@@ -89,6 +89,8 @@ export function Checklist() {
   const pend = waiting(S),
     run = S.run?.status === 'running' ? S.run : null,
     errs = S.run?.errors?.length ? S.run : null; // запуск с ошибками остаётся на баннере до следующего запуска
+  // демо без записанных ответов: это не сбой, а ограничение режима, о нём одна понятная строка
+  const noRec = S.llmMode === 'replay' && !!errs && errs.errors.every((e: string) => e.includes('Нет записи'));
   const c = dr.criteria.find((x: any) => x.id === S.cSel) || dr.criteria[0];
   S.cSel = c?.id;
   const sum = wsum(scored(dr.criteria));
@@ -278,7 +280,7 @@ export function Checklist() {
               )}
               {pend.length > 0 && (
                 <Button
-                  variant={dirty ? 'default' : 'primary'}
+                  variant={dirty || noRec ? 'default' : 'primary'}
                   data-act="crun"
                   disabled={!!run || S.busy}
                   onClick={() => busy(S, () => startRun({ dialogs: null, criteria: waiting(S) }))}
@@ -288,7 +290,7 @@ export function Checklist() {
               )}
             </span>
           )}
-          {errs && <RunErrors run={errs} />}
+          {errs && <RunErrors run={errs} cids={noRec ? pend : null} />}
         </section>
       )}
 
@@ -467,21 +469,33 @@ function ExportMenu({ S, onJev }: { S: any; onJev: ((e: MouseEvent<HTMLElement>)
 }
 
 // Ошибки запуска: строки «<диалог>: …» или «<диалог>/<критерий>: …», диалог — ссылка на карточку.
-function RunErrors({ run }: { run: any }) {
+// cids — демо без записанных ответов: вместо красного блока строка в янтарном баннере, сырой текст под «Показать ошибки».
+// Пути к файлам записей пользователю не нужны.
+const noPath = (e: string) => e.replace(/\/\S+\.json/g, '…');
+function RunErrors({ run, cids }: { run: any; cids: string[] | null }) {
   const n = run.errors.length;
   const head = run.status === 'running' ? t('Ошибок пока: {n}, в диалогах: {d}.', { n, d: failedDialogs(run.errors).length }) : runNote(run);
   return (
-    <div className="box risk flex basis-full flex-col gap-1.5">
-      <b>{head}</b>
-      <details>
+    <div className={cn('flex basis-full flex-col gap-1.5', !cids && 'box risk')}>
+      {cids ? (
+        <span>
+          {cids.length
+            ? t('В демо-режиме нет записанных ответов для критериев {ids}. Оцените вручную в карточке или включите модель.', { ids: cids.join(', ') })
+            : t('В демо-режиме нет записанных ответов модели. Оцените вручную в карточке или включите модель.')}
+        </span>
+      ) : (
+        <b>{head}</b>
+      )}
+      <details className={cids ? 'text-[13px] text-ink2' : undefined}>
         <summary className="cursor-pointer">{t('Показать ошибки ({n})', { n })}</summary>
+        {cids && <p className="mt-1.5">{head}</p>}
         <ul className="mt-1.5 list-disc pl-5 [overflow-wrap:anywhere]">
           {run.errors.map((e: string, i: number) => {
             const id = failedDialogs([e])[0];
             return (
               <li key={i}>
                 <a href={href('d', id)}>{id}</a>
-                {e.slice(id.length)}
+                {noPath(e.slice(id.length))}
               </li>
             );
           })}
