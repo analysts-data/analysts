@@ -219,3 +219,12 @@ def evaluator_mode(s: Settings) -> str:
     from cqa.services.state import mode_from_settings
 
     return mode_from_settings(s).where
+
+
+@pytest.mark.parametrize("mode", ["llm", "jev"])
+def test_evaluator_gets_the_sound_analysis_port(mode: str) -> None:
+    async def prosody(dialog_id: str) -> dict[str, Any]:
+        return {"summary": []}
+
+    assert build_evaluator(settings(evaluator=mode), prosody).prosody is prosody
+    assert build_evaluator(settings(evaluator=mode)).prosody is None
