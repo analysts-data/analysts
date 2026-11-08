@@ -176,9 +176,10 @@ export function Automation(_: { id: string | null }) {
             data-act="automation-toggle"
             disabled={busy === 'toggle'}
             onClick={toggle}
-            className={cn('relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors disabled:opacity-45', cfg.enabled ? 'border-accent bg-accent' : 'border-line-strong bg-sunken')}
+            className={cn('relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors disabled:opacity-45', cfg.enabled ? 'border-accent bg-accent' : 'border-field bg-sunken')}
           >
-            <span className={cn('absolute top-0.5 h-[18px] w-[18px] rounded-full bg-surface shadow-card transition-[left] duration-150 ease-out', cfg.enabled ? 'left-[22px]' : 'left-0.5')} />
+            {/* выключено — серый бегунок и обводка цвета полей (контраст 3:1), включено — белый на акценте */}
+            <span className={cn('absolute top-0.5 h-[18px] w-[18px] rounded-full transition-[left] duration-150 ease-out', cfg.enabled ? 'left-[22px] bg-surface shadow-card' : 'left-0.5 bg-field')} />
           </button>
         </div>
 
@@ -220,7 +221,7 @@ export function Automation(_: { id: string | null }) {
             <div>
               <dt className="text-muted">{t('Бюджет на сегодня')}</dt>
               <dd data-today="budget">{t('{spent} из {budget}', { spent: usd(today.cost_usd), budget: usd(budget) })}</dd>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-sunken" role="meter" aria-label={t('Бюджет на сегодня')} aria-valuemin={0} aria-valuemax={budget} aria-valuenow={today.cost_usd ?? 0}>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-line" role="meter" aria-label={t('Бюджет на сегодня')} aria-valuemin={0} aria-valuemax={budget} aria-valuenow={today.cost_usd ?? 0}>
                 <div className={cn('h-full rounded-full', used >= 1 ? 'bg-risk' : used >= 0.8 ? 'bg-ev' : 'bg-accent')} style={{ width: `${used * 100}%` }} />
               </div>
             </div>

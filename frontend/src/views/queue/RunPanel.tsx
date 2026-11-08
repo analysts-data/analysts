@@ -44,7 +44,7 @@ async function rerun(dialogs: string[] | null) {
 
 function Bar({ pct, label }: { pct: number; label: string }) {
   return (
-    <div className="h-1.5 overflow-hidden rounded-full bg-hover" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+    <div className="h-1.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
       <i className="block h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
     </div>
   );
