@@ -811,6 +811,12 @@ class TelemetryIn(BaseModel):
     page: Annotated[str, StringConstraints(pattern=TOKEN)]
     props: dict[str, Any] = {}
 
+    @field_validator("page", mode="before")
+    @classmethod
+    def _screen(cls, page: Any) -> Any:
+        """Интерфейс шлёт маршрут `#/analytics`; хранится токен экрана `analytics`."""
+        return page.removeprefix("#/") if isinstance(page, str) else page
+
     @field_validator("props")
     @classmethod
     def _small(cls, props: dict[str, Any]) -> dict[str, Any]:
