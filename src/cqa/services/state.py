@@ -11,7 +11,9 @@ from cqa.domain.report import build_report, to_html, to_markdown
 from cqa.domain.review import fingerprints, stamp
 from cqa.domain.scores_export import Shape
 from cqa.domain.scores_export import to_csv as scores_to_csv
+from cqa.domain.sufficiency import mark_unsupported
 from cqa.services.errors import Unavailable
+from cqa.services.sufficiency import assess_dialogs
 from cqa.settings import Settings
 
 
@@ -34,14 +36,27 @@ def current_results(
 
 
 def current_state(store: Store) -> tuple[Checklist, list[Dialog], list[Appeal]]:
-    """Current checklist, dialogs with current `res`, appeals the score takes into account."""
+    """Current checklist, dialogs with current `res` and `sufficiency`, appeals the score takes into account.
+
+    Достаточность и пометка «ответ без основания» считаются здесь, при чтении: смена исходов правил
+    сразу видна везде — в состоянии, очереди, отчёте, экспорте и файле результатов.
+    """
     checklist = store.current_checklist()
     if checklist is None:
         raise Unavailable("Чек-лист не загружен")
     fps = fingerprints(checklist)
     stored = store.list_dialogs()
     results = current_results(store, checklist, stored)
-    dialogs = [d.model_copy(update={"res": results.get(d.id, {})}) for d in stored]
+    verdicts = assess_dialogs(store, stored)
+    dialogs = [
+        d.model_copy(
+            update={
+                "res": mark_unsupported(results.get(d.id, {}), verdicts[d.id]),
+                "sufficiency": verdicts[d.id],
+            }
+        )
+        for d in stored
+    ]
     ch = {d.id: d.ch for d in stored}
     # open records always; decided ones only for the current meaning of the criterion (decision 12)
     appeals = [

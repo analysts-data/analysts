@@ -64,6 +64,7 @@
 - `s`: секунда начала реплики в аудиофайле (только звонок): метка стоит в конце реплики, паузы записи вычтены, сдвиг файла учтён.
 - `seg`: `pre` (до оператора), `conv` (оценивается), `internal` (разговор с коллегой, удержание), `after` (после конца разговора). Свёрнутые участки описывает объект `fold`.
 - `who`: `client`, `operator`, `bot`, `system` (из поля `speaker` организаторов; имя поля как в прототипе).
+- `sufficiency`: `{"status": "ok" | "flag" | "block", "reasons": [{"id": "too_short", "text": "Слишком короткий диалог", "basis": "реплик клиента и оператора — 2, нужно не меньше 3", "outcome": "flag"}]}` — достаточность данных по правилам `docs/insufficient-data.md`. Считается сервером при каждом чтении и не хранится. `block` («Недостаточно данных») — диалог модели не отправляется, в отчёте вне средних, в `results.json` `status: error` с причиной. `flag` («Мало данных») — оценивается, но стоит в «Нужна проверка», пока его не отметят проверенным. `info` — только сведение, статус `ok`. `lines: null` — правила не применяются.
 
 ## CriterionResult
 
@@ -82,6 +83,7 @@
 - `ev`: номера реплик-оснований, можно системное сообщение. Для пропущенного действия пусто, а `seg` называет участок.
 - `tag`: короткая причина снижения для группировки в аналитике. `better`: пример лучшей реплики для обучения.
 - `evFail`: основание не прошло проверку после повтора, ответ помечен «на проверку».
+- `reviewWhy`: причина проверки, которую сервер считает при чтении (в базе её нет). Сейчас бывает одна: «ответ без основания при неполных данных». Её получает ответ не N/A без `ev` и `seg` на диалоге `sufficiency.status: "flag"`; флаг и ручной ответ её не получают. Ответ не меняется. Решение проверяющего — `POST /api/decisions`, как при `evFail`.
 
 ## Appeal
 
@@ -110,7 +112,7 @@
 | `POST /api/datasets/upload` | файл JSON в формате API организаторов | `{added, skipped}` |
 | `POST /api/dialogs/text` | `{"title": "…", "ch": "chat" \| "call", "text": "Клиент: …\nОператор: …"}` | `{id}`: новый диалог из вставленного текста. Строка `Роль: текст` — реплика: клиент — `Клиент`, `Client`, `Customer`; оператор — `Оператор`, `Operator`, `Менеджер`; бот — `Бот`, `Bot`; событие — `Система`, `System`. Строка без роли продолжает предыдущую реплику. `lang` определяется по тексту, `id` — `paste-<n>`. Без реплики оператора — 422. Оценка сама не запускается |
 | `POST /api/runs` | `{"dialogs": [..] или null, "criteria": [..] или null}` | `{run_id}` |
-| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled"}` |
+| `GET /api/runs/{id}` | — | `{done, total, cost, calls, eta_s, errors: [строка], status: "running" \| "done" \| "cancelled", skipped}`; `skipped` — диалоги запуска со `sufficiency.status: "block"`, модели не отправлялись («пропущено: недостаточно данных — 2») |
 | `POST /api/runs/{id}/cancel` | — | `{status: "cancelled"}`; диалоги в работе завершаются, новые не начинаются |
 
 `POST /api/runs` обрабатывает диалоги в переданном порядке, поэтому диалоги для демо ставятся первыми. Повторный запуск после отмены продолжает с места остановки: готовые ответы берутся из кэша.
@@ -125,6 +127,8 @@
 | `POST /api/dialogs/{id}/reviewed` | `{"reviewed": true \| false}` | `{ok}`; снятие отметки возвращает диалог в верхние группы очереди |
 | `GET /api/dialogs/{id}/audio` | — | 302 на свежую ссылку записи |
 | `GET /api/dialogs/{id}/player` | — | 302 на плеер организаторов: запасной путь, если у реплики нет `s` |
+| `GET /api/sufficiency` | — | `{rules: [{id, text, why, default, outcome}]}`: правила достаточности данных в порядке проверки; `why` — обоснование исхода по умолчанию (`docs/insufficient-data.md`) |
+| `PUT /api/sufficiency` | `{"<id правила>": "block" \| "flag" \| "info"}` | то же, что `GET`: исходы сохранены в базе; неизвестное правило или исход — 422, ничего не меняется |
 | `PUT /api/owners` | `{"<tag>": "Инструкция" \| "Сервис" \| "Продукт"}` | весь словарь `owners` после правки |
 | `PUT /api/source` | `{"url": "https://…", "group_id": "DEV"}` | `{added, skipped}`: набор загружается сразу, ссылка сохраняется после удачной загрузки и включает автосинхронизацию |
 | `PUT /api/dialogs/{id}/answers/{cid}` | `{"a": ответ, "reason": "…" или "", "by": "Специалист КК"}` | CriterionResult с `model: "вручную"`: ручной ответ по критерию, в том числе ещё не оценённому |
@@ -207,7 +211,7 @@ Provider: `{"id": "deepseek", "label": "DeepSeek", "base_url": "https://api.deep
 
 ## Отчёт для руководства (eval-and-delivery)
 
-JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением или `evFail` без решения. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
+JSON: `{at, filters: {lang, ch}, summary: {dialogs, scored, avg_total, risk: {dialogs, share, kinds: [{k, label, n}]}, no_next_step: {dialogs, share}, needs_review, insufficient, low_data, open_appeals, cost: {dialogs, avg_usd, avg_s}}, criteria: [{id, name, n, na, share}], reasons: [{tag, dialogs, owner, criteria}], channels, langs: [{key, label, n, avg}], findings: [строка]}`. Ответы с учётом последнего решения, итог как в «Итог», доли от оценённых диалогов: `no_next_step` — ступень ниже верхней у `signal: "resolution"`, `needs_review` — не проверенные диалоги с расхождением, `evFail` или `reviewWhy` без решения или со `sufficiency.status: "flag"`. Диалоги `block` в средние и доли не входят, их число — `insufficient`; `low_data` — оценённые диалоги `flag`. `criteria` — средняя доля баллов без N/A, худшие первыми; `reasons` — топ-10 `tag` сниженных ответов; `findings` — 3–5 выводов по-русски из чисел, без модели. `html` — самодостаточная страница A4 для печати, данные экранированы; `md` — для вики и почты; без оценённых диалогов — «Нет оценённых диалогов».
 
 ## Доступ по токену (eval-and-delivery)
 

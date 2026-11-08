@@ -326,6 +326,7 @@ def test_progress_of_a_running_run_extrapolates_eta_from_the_clock(store: Store)
         "eta_s": 30,
         "errors": ["p1-ru-003: timeout"],
         "status": "running",
+        "skipped": 0,
     }
 
 
@@ -341,6 +342,7 @@ async def test_progress_of_a_finished_run(store: Store) -> None:
         "eta_s": 0,
         "errors": [],
         "status": "done",
+        "skipped": 0,
     }
 
 

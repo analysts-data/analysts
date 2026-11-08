@@ -29,6 +29,8 @@ from cqa.services.llm_config import Apply, configure, delete_provider, provider,
 from cqa.services.ports import DialogSource
 from cqa.services.runs import Runner
 from cqa.services.state import ReportFormat, build_state, mode_from_settings, report, scores_csv
+from cqa.services.sufficiency import configure as configure_sufficiency
+from cqa.services.sufficiency import view as sufficiency_view
 from cqa.services.sync import Syncer
 from cqa.settings import Settings
 
@@ -190,6 +192,17 @@ async def post_checklist_diff(
     draft: Checklist, request: Request, fmt: Annotated[DiffFormat, Query(alias="format")] = "json"
 ) -> Response:
     return _diff_out(diff_draft(request.app.state.store, draft, fmt))
+
+
+@router.get("/sufficiency")
+async def get_sufficiency(request: Request) -> dict[str, Any]:
+    """Правила достаточности данных: текст, обоснование, исход по умолчанию и текущий."""
+    return sufficiency_view(request.app.state.store)
+
+
+@router.put("/sufficiency")
+async def put_sufficiency(body: dict[str, str], request: Request) -> dict[str, Any]:
+    return configure_sufficiency(request.app.state.store, body)
 
 
 @router.put("/owners")

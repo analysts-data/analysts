@@ -11,6 +11,7 @@ from cqa.domain.review import fingerprints
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.state import current_results
+from cqa.services.sufficiency import assess_dialogs
 
 
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
@@ -26,13 +27,12 @@ def plan_run(
 ) -> list[tuple[Dialog, list[Criterion]]]:
     """Пары без результата текущего смысла в порядке `dialogs` (None — порядок добавления).
 
-    Неизвестные id пропускаются: их отсеивает `Runner.start`.
+    Неизвестные id пропускаются: их отсеивает `Runner.start`. Диалоги «Недостаточно данных» (block)
+    модели не отправляются: их считает `insufficient`.
     """
     chosen = [c for c in checklist.criteria if criteria is None or c.id in criteria]
-    if dialogs is None:
-        items = store.list_dialogs()
-    else:
-        items = [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None]
+    blocked = set(insufficient(store, dialogs))
+    items = [d for d in _dialogs(store, dialogs) if d.id not in blocked]
     current = current_results(store, checklist, items)
     plan = []
     for dialog in items:
@@ -40,6 +40,19 @@ def plan_run(
         if todo:
             plan.append((dialog, todo))
     return plan
+
+
+def _dialogs(store: Store, dialogs: list[str] | None) -> list[Dialog]:
+    if dialogs is None:
+        return store.list_dialogs()
+    return [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None]
+
+
+def insufficient(store: Store, dialogs: list[str] | None) -> list[str]:
+    """Диалоги запуска со статусом block: «пропущено: недостаточно данных»."""
+    items = _dialogs(store, dialogs)
+    verdicts = assess_dialogs(store, items)
+    return [d.id for d in items if verdicts[d.id].status == "block"]
 
 
 class Runner:
@@ -55,6 +68,8 @@ class Runner:
         self._cancel = asyncio.Event()
         self._active: int | None = None
         self._failed = 0  # пары упавших диалогов активного запуска: «done» за 0 с, ETA их не считает
+        # ponytail: в памяти процесса, после перезапуска 0; колонка в runs, если понадобится в истории
+        self._skipped: dict[int, int] = {}  # запуск → пропущено диалогов «Недостаточно данных»
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
     def use(self, evaluator: Evaluator) -> None:
@@ -80,6 +95,7 @@ class Runner:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
         plan = plan_run(self._store, checklist, dialogs, criteria)
         run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
+        self._skipped[run_id] = len(insufficient(self._store, dialogs))
         if not plan:
             self._store.finish_run(run_id, self._clock(), "done")
             return run_id
@@ -107,6 +123,7 @@ class Runner:
             "eta_s": eta,
             "errors": row.errors,
             "status": row.status,
+            "skipped": self._skipped.get(run_id, 0),
         }
 
     def cancel(self, run_id: int) -> dict[str, str]:

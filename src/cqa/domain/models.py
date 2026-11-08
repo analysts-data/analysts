@@ -113,6 +113,22 @@ class CriterionResult(BaseModel):
     calls: int = 0
     cost: float = 0.0
     ms: int = 0
+    reviewWhy: str | None = None  # считается при чтении (domain.sufficiency), в базе не хранится
+
+
+Outcome = Literal["block", "flag", "info"]
+
+
+class Reason(BaseModel):  # Dialog.sufficiency.reasons
+    id: str
+    text: str
+    basis: str
+    outcome: Outcome
+
+
+class Sufficiency(BaseModel):  # Dialog.sufficiency, считается при чтении
+    status: Literal["ok", "flag", "block"]
+    reasons: list[Reason] = []
 
 
 class Cost(BaseModel):  # Dialog.cost
@@ -133,6 +149,7 @@ class Dialog(BaseModel):
     res: dict[str, CriterionResult] = {}
     reviewed: bool = False
     cost: Cost | None = None
+    sufficiency: Sufficiency | None = None
 
 
 class Appeal(BaseModel):

@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HTTP = ROOT / "src" / "cqa" / "http"
 FRONT = ROOT / "frontend" / "src"
 # Служебные пути без экрана: проверка живости для мониторинга и вход по ссылке с токеном (make share).
-EXEMPT = {"/health", "/login"}
+# /sufficiency — UI в работе (правила при недостаточности данных, docs/insufficient-data.md).
+EXEMPT = {"/health", "/login", "/sufficiency"}
 
 ROUTE = re.compile(r'@(?:router|app)\.(?:get|post|put|delete|patch)\(\s*"([^"]+)"')
 
