@@ -14,8 +14,8 @@ from cqa.compose import build_evaluator, check_provider
 from cqa.domain.models import Answer, Appeal, Checklist
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
-from cqa.services import reports
 from cqa.http.actor import actor_from, signed
+from cqa.services import reports
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
@@ -142,6 +142,7 @@ async def get_report(
 ) -> Response:
     """Отчёт для руководства: html — для печати, json — числа для аналитики, md — для вики и почты."""
     body = report(request.app.state.store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA))
+    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
     return _file(body, fmt, "report")
 
 
@@ -188,8 +189,6 @@ async def get_results(which: Literal["dev", "prod"], request: Request) -> FileRe
     """Файл организаторов results/<which>/results.json, собранный make results."""
     path = reports.results_file(request.app.state.settings.results_dir, which)
     return FileResponse(path, media_type="application/json", filename=f"results-{which}.json")
-    _log(request, "export", "report", fmt, {"lang": lang, "ch": ch})
-    return JSONResponse(body) if isinstance(body, dict) else Response(body, media_type=MEDIA[fmt])
 
 
 @router.get("/scores/export")
@@ -202,10 +201,8 @@ async def get_scores_export(
 ) -> Response:
     """Оценки для Excel: wide — строка на диалог, long — на пару диалог × критерий."""
     version, body = scores_csv(request.app.state.store, shape, lang=lang, ch=ch)
-    return _file(body, fmt, f"cqa-scores-v{version}")
     _log(request, "export", "scores", version, {"shape": shape, "lang": lang, "ch": ch})
-    disposition = f'attachment; filename="cqa-scores-v{version}.{fmt}"'
-    return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
+    return _file(body, fmt, f"cqa-scores-v{version}")
 
 
 @router.post("/dialogs/text")
@@ -238,11 +235,8 @@ async def get_checklist_export(
 ) -> Response:
     """Файл версии v (без v — текущей); памятка html открывается во вкладке, остальное скачивается."""
     version, body = export_checklist(request.app.state.store, v, fmt)
-    return _file(body, fmt, f"checklist-v{version}")
     _log(request, "export", "checklist", version, {"format": fmt})
-    how = "inline" if fmt == "html" else "attachment"
-    disposition = f'{how}; filename="checklist-v{version}.{fmt}"'
-    return Response(body, media_type=MEDIA[fmt], headers={"Content-Disposition": disposition})
+    return _file(body, fmt, f"checklist-v{version}")
 
 
 def _diff_out(result: dict[str, Any] | str) -> Response:
