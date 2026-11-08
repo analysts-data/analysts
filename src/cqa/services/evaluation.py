@@ -138,7 +138,7 @@ class LlmEvaluator:
         lines = {x.n: x.text for x in dialog.lines if isinstance(x, Line)}
         # канал решает код: критерий другого канала не идёт ни к модели, ни ко второму мнению
         asked = [c for c in criteria if c.channel in ("all", dialog.ch)]
-        prompts = [build_messages(text, checklist.rules, c) for c in asked]
+        prompts = [build_messages(text, checklist.rules, c, dialog.ch) for c in asked]
         failures: list[tuple[str, ModelUnavailable]] = []
         found_future = asyncio.gather(
             *(self._criterion(m, c, lines, failures) for m, c in zip(prompts, asked, strict=True))

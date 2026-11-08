@@ -36,11 +36,10 @@ def results(store: Store) -> None:
     checklist = store.current_checklist()
     assert checklist is not None
     c04 = next(c for c in checklist.criteria if c.id == "04")
-    fp = fingerprint(checklist, c04)
-    store.add_result("p1-ru-003", "04", 3, fp, CriterionResult(a=5))
-    store.add_result("call-024", "04", 3, fp, CriterionResult(a=15, alt=10))
+    store.add_result("p1-ru-003", "04", 3, fingerprint(checklist, c04, "chat"), CriterionResult(a=5))
+    store.add_result("call-024", "04", 3, fingerprint(checklist, c04, "call"), CriterionResult(a=15, alt=10))
     c08 = next(c for c in checklist.criteria if c.id == "08")
-    store.add_result("p1-ru-003", "08", 3, fingerprint(checklist, c08), CriterionResult(a=FLAG))
+    store.add_result("p1-ru-003", "08", 3, fingerprint(checklist, c08, "chat"), CriterionResult(a=FLAG))
 
 
 def state_of(client: TestClient, dlg: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:

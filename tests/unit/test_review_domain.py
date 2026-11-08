@@ -56,8 +56,8 @@ def by_id(cl: Checklist, cid: str) -> Criterion:
     return next(c for c in cl.criteria if c.id == cid)
 
 
-def fp(cl: Checklist, cid: str) -> str:
-    return fingerprint(cl, by_id(cl, cid))
+def fp(cl: Checklist, cid: str, ch: str = "chat") -> str:
+    return fingerprint(cl, by_id(cl, cid), ch)
 
 
 def crit(**kw: Any) -> Criterion:
@@ -102,6 +102,20 @@ def test_fingerprint_changes_with_meaning(cid: str, field: str, value: Any) -> N
 
 def test_fingerprint_changes_with_rules() -> None:
     assert fp(draft(rules="Другие правила"), "06") != fp(draft(), "06")
+
+
+def test_call_addendum_changes_only_the_call_fingerprint() -> None:
+    with_call = edit("04", call="Уточнение для звонка")
+    assert fp(with_call, "04", "chat") == fp(draft(), "04", "chat")
+    assert fp(with_call, "04", "call") != fp(draft(), "04", "call")
+
+
+def test_without_addendum_call_and_chat_fingerprints_match() -> None:
+    assert fp(draft(), "04", "call") == fp(draft(), "04", "chat")
+
+
+def test_call_addendum_change_is_pending() -> None:
+    assert diff_checklists(draft(), edit("04", call="Уточнение для звонка")).pending == ["04"]
 
 
 def test_fingerprint_has_16_chars() -> None:

@@ -9,15 +9,19 @@ from typing import Any
 import pytest
 
 from cqa.adapters.store import Store
-from cqa.domain.models import Checklist, Criterion, Dialog
+from cqa.domain.models import Checklist, Criterion, CriterionResult, Dialog
 from cqa.domain.review import fingerprint
 from cqa.services.errors import Conflict, NotFound
 from cqa.services.runs import Runner, eta_seconds, plan_run
+from cqa.services.state import current_results
 from fakes import FakeEvaluator, prototype_checklist, prototype_dialogs
 
 CHECKLIST = prototype_checklist()
 DIALOGS = {d.id: d for d in prototype_dialogs()}
-FPS = {c.id: fingerprint(CHECKLIST, c) for c in CHECKLIST.criteria}
+
+
+def _current(store: Store) -> dict[str, dict[str, CriterionResult]]:
+    return current_results(store, CHECKLIST, store.list_dialogs())
 
 
 def _clock() -> Callable[[], float]:
@@ -51,13 +55,35 @@ def test_plan_takes_every_criterion_of_dialogs_without_results(store: Store) -> 
 
 def test_plan_skips_pairs_with_a_current_result(store: Store) -> None:
     for c in CHECKLIST.criteria:
-        store.add_result("call-024", c.id, 3, fingerprint(CHECKLIST, c), DIALOGS["call-024"].res[c.id])
+        store.add_result(
+            "call-024", c.id, 3, fingerprint(CHECKLIST, c, "call"), DIALOGS["call-024"].res[c.id]
+        )
     assert _ids(plan_run(store, CHECKLIST, None, None)) == [("p1-ru-003", ALL)]
 
 
 def test_plan_ignores_results_of_another_meaning(store: Store) -> None:
     store.add_result("call-024", "04", 3, "0000000000000000", DIALOGS["call-024"].res["04"])
     assert _ids(plan_run(store, CHECKLIST, ["call-024"], ["04"])) == [("call-024", ["04"])]
+
+
+def test_changed_call_addendum_replans_only_call_dialogs(store: Store) -> None:
+    for d in store.list_dialogs():
+        for c in CHECKLIST.criteria:
+            store.add_result(d.id, c.id, 3, fingerprint(CHECKLIST, c, d.ch), CriterionResult(a="yes"))
+    criteria = [
+        c.model_copy(update={"call": "Новое уточнение"}) if c.id == "01" else c for c in CHECKLIST.criteria
+    ]
+    changed = CHECKLIST.model_copy(update={"criteria": criteria})
+    assert _ids(plan_run(store, changed, None, None)) == [("call-024", ["01"])]
+
+
+async def test_execute_saves_call_results_under_the_call_fingerprint(store: Store) -> None:
+    criteria = [c.model_copy(update={"call": "Уточнение"}) if c.id == "01" else c for c in CHECKLIST.criteria]
+    changed = CHECKLIST.model_copy(update={"criteria": criteria})
+    plan = plan_run(store, changed, None, ["01"])
+    await Runner(store, FakeEvaluator(), parallel=1).execute(store.add_run(2, 100.0), changed, plan)
+    assert sorted(current_results(store, changed, store.list_dialogs())) == ["call-024", "p1-ru-003"]
+    assert plan_run(store, changed, None, ["01"]) == []
 
 
 def test_plan_limits_criteria_to_the_argument(store: Store) -> None:
@@ -81,7 +107,7 @@ async def test_execute_saves_results_with_version_and_fingerprint(
     store: Store, conn: sqlite3.Connection
 ) -> None:
     await _execute(store, FakeEvaluator())
-    current = store.current_results(FPS)
+    current = _current(store)
     assert {d: sorted(r) for d, r in current.items()} == {"call-024": ALL, "p1-ru-003": ALL}
     assert current["call-024"]["04"].a == DIALOGS["call-024"].res["04"].a
     versions = conn.execute("SELECT DISTINCT version FROM results").fetchall()
@@ -137,7 +163,7 @@ async def test_failed_dialog_is_an_error_and_does_not_stop_the_rest(store: Store
     run = store.get_run(await _execute(store, FakeEvaluator(fail_on={"p1-ru-003"})))
     assert run is not None
     assert (run.done, run.errors, run.status) == (16, ["p1-ru-003: timeout"], "done")
-    assert sorted(store.current_results(FPS)) == ["call-024"]
+    assert sorted(_current(store)) == ["call-024"]
     assert store.get_dialog("p1-ru-003").cost is None  # type: ignore[union-attr]
 
 
@@ -149,7 +175,7 @@ async def test_missing_answer_is_an_error_and_waits_for_evaluation(store: Store)
         "p1-ru-003/04: нет ответа модели, ждёт оценки",
     ]
     assert run.done == 16
-    assert "04" not in store.current_results(FPS)["call-024"]
+    assert "04" not in _current(store)["call-024"]
 
 
 async def _drain(runner: Runner) -> None:
@@ -221,7 +247,7 @@ async def test_cancel_lets_the_dialog_in_flight_finish_and_starts_no_new_one(sto
     gate.set()
     await _drain(runner)
     assert evaluator.order == ["call-024"]
-    assert sorted(store.current_results(FPS)) == ["call-024"]
+    assert sorted(_current(store)) == ["call-024"]
     progress = runner.progress(run_id)
     assert (progress["status"], progress["done"], progress["total"], progress["eta_s"]) == (
         "cancelled",

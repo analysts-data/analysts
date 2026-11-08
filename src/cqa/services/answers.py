@@ -25,7 +25,8 @@ def _check(c: Criterion, a: Answer) -> None:
 
 
 def set_answer(store: Store, *, dlg: str, cid: str, a: Answer, reason: str, by: str) -> CriterionResult:
-    if store.get_dialog(dlg) is None:
+    dialog = store.get_dialog(dlg)
+    if dialog is None:
         raise NotFound(f"Диалог {dlg} не найден")
     checklist = store.current_checklist()
     assert checklist is not None, "create_app сеет чек-лист на пустой базе"
@@ -35,7 +36,7 @@ def set_answer(store: Store, *, dlg: str, cid: str, a: Answer, reason: str, by: 
     if not by.strip():
         raise Invalid("Укажите, кто ставит ответ")
     _check(criterion, a)
-    fp = fingerprint(checklist, criterion)
+    fp = fingerprint(checklist, criterion, dialog.ch)
     for record, rfp in store.list_appeals():
         if record.dlg != dlg or record.cid != cid or rfp != fp:
             continue

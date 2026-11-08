@@ -13,6 +13,7 @@ ASTANA = timezone(timedelta(hours=5))
 Answer = str | int | dict[str, bool]  # bool, scale или флаг {"<k>": true | false}
 
 # Поля смысла критерия: их смена требует новой оценки. name, w, sec, signal — лёгкие.
+# call — смысл только для звонков: входит в отпечаток звонка, отпечаток чата не меняет.
 MEANING = {"text", "type", "steps", "stepText", "na", "naCond", "questions", "channel"}
 
 
@@ -23,9 +24,17 @@ def allowed_answers(c: Criterion) -> list[Answer]:
     return base + ["na"] if c.na else base
 
 
-def fingerprint(checklist: Checklist, c: Criterion) -> str:
-    payload = [checklist.rules, c.model_dump(mode="json", include=MEANING)]
+def fingerprint(checklist: Checklist, c: Criterion, ch: str) -> str:
+    """Отпечаток смысла критерия для канала диалога. Без call у звонка тот же отпечаток, что у чата."""
+    payload: list[object] = [checklist.rules, c.model_dump(mode="json", include=MEANING)]
+    if ch == "call" and c.call:
+        payload.append(c.call)
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def fingerprints(checklist: Checklist) -> dict[str, dict[str, str]]:
+    """Канал → id критерия → отпечаток."""
+    return {ch: {c.id: fingerprint(checklist, c, ch) for c in checklist.criteria} for ch in ("chat", "call")}
 
 
 @dataclass(frozen=True)
@@ -44,7 +53,8 @@ def diff_checklists(old: Checklist, new: Checklist) -> ChecklistDiff:
     light: list[str] = []
     for c in new.criteria:
         prev = before.get(c.id)
-        if prev is None or fingerprint(old, prev) != fingerprint(new, c):
+        # отпечаток звонка покрывает весь смысл, включая call
+        if prev is None or fingerprint(old, prev, "call") != fingerprint(new, c, "call"):
             pending.append(c.id)
         elif prev != c:
             light.append(c.id)

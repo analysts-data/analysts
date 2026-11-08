@@ -13,7 +13,7 @@ from cqa.services.runs import plan_run
 from fakes import prototype_checklist, prototype_dialogs
 
 CHECKLIST = prototype_checklist()
-FPS = {c.id: fingerprint(CHECKLIST, c) for c in CHECKLIST.criteria}
+FPS = {c.id: fingerprint(CHECKLIST, c, "chat") for c in CHECKLIST.criteria}  # p1-ru-003 — чат
 BOOL = next(c for c in CHECKLIST.criteria if c.type == "bool" and not c.na)
 SCALE = next(c for c in CHECKLIST.criteria if c.type == "scale")
 FLAG = next(c for c in CHECKLIST.criteria if c.type == "flag")

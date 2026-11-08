@@ -37,10 +37,11 @@ def _criterion(store: Store, cid: str) -> tuple[Checklist, Criterion]:
 
 
 def _pair(store: Store, dlg: str, cid: str) -> _Pair:
-    if store.get_dialog(dlg) is None:
+    dialog = store.get_dialog(dlg)
+    if dialog is None:
         raise NotFound(f"Диалог {dlg} не найден")
     checklist, criterion = _criterion(store, cid)
-    fp = fingerprint(checklist, criterion)
+    fp = fingerprint(checklist, criterion, dialog.ch)
     result = store.current_results({cid: fp}).get(dlg, {}).get(cid)
     if result is None:
         raise Invalid(f"Критерий {cid} ждёт оценки, оспаривать пока нечего")
