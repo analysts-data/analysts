@@ -5,11 +5,12 @@ import { coachingStats, goodExamples } from '../lib/analytics.js';
 import { href } from '../lib/router.js';
 import { calc } from '../lib/scoring.js';
 import { ansTxt, f2, titleOf } from '../lib/format.js';
+import { t } from '../lib/i18n.js';
 import { toast } from '../lib/state.js';
 import { rerender, useS } from '../store';
 import { Button, Card, Chip, cn, Empty, LinkButton, PageHead } from '../ui';
 
-const LANG: Record<string, string> = { RU: 'Русский', KZ: 'Қазақша', EN: 'English' };
+const langName = (l: string) => (({ RU: t('Русский'), KZ: t('Қазақша'), EN: t('English') }) as Record<string, string>)[l];
 // Выбор критерия и отмеченные моменты живут между переходами (как в прежнем интерфейсе): из карточки можно вернуться к разбору.
 let selected: string | null = null;
 const sheet = new Set<string>();
@@ -29,7 +30,7 @@ export function Coaching() {
   const good = c ? goodExamples(S, c.id) : [];
   // Разбор для встречи — инструмент специалиста и руководителя, оператору не показываем.
   const coach = S.role !== 'operator';
-  const totals = S.dialogs.map((d: any) => calc(d, S.checklist, S.appeals).total).filter((t: number | null) => t != null);
+  const totals = S.dialogs.map((d: any) => calc(d, S.checklist, S.appeals).total).filter((x: number | null) => x != null);
   const appeals = S.appeals.filter((a: any) => a.kind === 'appeal');
   const pick = (key: string, on: boolean) => {
     if (on) sheet.add(key);
@@ -38,26 +39,29 @@ export function Coaching() {
   };
   const copy = () =>
     navigator.clipboard.writeText(list.current?.innerText ?? '').then(
-      () => toast('Текст разбора скопирован.'),
-      () => toast('Браузер не дал доступа к буферу обмена. Выделите текст вручную.'),
+      () => toast(t('Текст разбора скопирован.')),
+      () => toast(t('Браузер не дал доступа к буферу обмена. Выделите текст вручную.')),
     );
 
   return (
     <>
-      <PageHead title="Обучение" sub="Обратная связь на конкретных репликах из наших диалогов: где модель снизила балл и как сказать лучше">
+      <PageHead title={t('Обучение')} sub={t('Обратная связь на конкретных репликах из наших диалогов: где модель снизила балл и как сказать лучше')}>
         {coach && (
           <Button className="no-print" data-act="sheet" onClick={() => document.getElementById('sheet')?.scrollIntoView({ block: 'start' })}>
             <ListChecks size={16} aria-hidden="true" />
-            Разбор для встречи: {picked.length}
+            {t('Разбор для встречи: {n}', { n: picked.length })}
           </Button>
         )}
       </PageHead>
 
       {!coach && (
         <p className="text-ink2">
-          Средний итог {totals.length ? f2(totals.reduce((s: number, t: number) => s + t, 0) / totals.length) : '—'} из 100 по {totals.length} диалогам.{' '}
+          {t('Средний итог {avg} из 100 по {n} диалогам.', { avg: totals.length ? f2(totals.reduce((s: number, x: number) => s + x, 0) / totals.length) : '—', n: totals.length })}{' '}
           <a href="#/appeals">
-            Апелляции: на рассмотрении {appeals.filter((a: any) => a.status === 'pending').length}, решено {appeals.filter((a: any) => a.status === 'confirmed' || a.status === 'changed').length}
+            {t('Апелляции: на рассмотрении {pending}, решено {decided}', {
+              pending: appeals.filter((a: any) => a.status === 'pending').length,
+              decided: appeals.filter((a: any) => a.status === 'confirmed' || a.status === 'changed').length,
+            })}
           </a>
         </p>
       )}
@@ -65,7 +69,7 @@ export function Coaching() {
       {groups.length > 0 && (
         <div className="no-print flex flex-col gap-1.5">
           <span className="text-xs text-muted" id="coachLbl">
-            Критерий и число моментов, где теряют баллы
+            {t('Критерий и число моментов, где теряют баллы')}
           </span>
           <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="coachLbl">
             {groups.map(g => (
@@ -89,72 +93,72 @@ export function Coaching() {
       )}
 
       <div className="no-print grid gap-4 lg:grid-cols-2">
-        <section className="flex min-w-0 flex-col gap-3" aria-label="Где теряем баллы">
-          <h2 className="text-base font-semibold">Где теряем баллы</h2>
+        <section className="flex min-w-0 flex-col gap-3" aria-label={t('Где теряем баллы')}>
+          <h2 className="text-base font-semibold">{t('Где теряем баллы')}</h2>
           {sel ? (
             sel.items.map(x => (
               <article key={x.key} className={ARTICLE}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[13px]">
-                    <a href={href('d', x.dialogId)}>{titleOf(dlg(x.dialogId))}</a>, {LANG[x.lang] || x.lang}
+                    <a href={href('d', x.dialogId)}>{titleOf(dlg(x.dialogId))}</a>, {langName(x.lang) || x.lang}
                   </span>
                   <Chip tone="ev">{ansTxt(c, x.answer)}</Chip>
                 </div>
                 {x.line && <p className="border-l-2 border-ev pl-3 text-[15px]">«{x.line.text}»</p>}
                 <p className="text-[13px]">
-                  <b>Что не так:</b> {x.why}
+                  <b>{t('Что не так:')}</b> {x.why}
                 </p>
                 <p className="text-[13px]">
-                  <b>Как сказать лучше:</b> «{x.better}»
+                  <b>{t('Как сказать лучше:')}</b> «{x.better}»
                 </p>
                 {coach && (
                   <label className="flex items-center gap-2 text-[13px]">
                     <input type="checkbox" data-act="pick" data-key={x.key} checked={sheet.has(x.key)} onChange={e => pick(x.key, e.target.checked)} />
-                    Добавить в разбор
+                    {t('Добавить в разбор')}
                   </label>
                 )}
               </article>
             ))
           ) : (
             <Card>
-              <Empty action={<LinkButton href="#/queue">Перейти к диалогам</LinkButton>}>Подсказок пока нет: они появятся после оценки, где модель снизила балл и предложила формулировку.</Empty>
+              <Empty action={<LinkButton href="#/queue">{t('Перейти к диалогам')}</LinkButton>}>{t('Подсказок пока нет: они появятся после оценки, где модель снизила балл и предложила формулировку.')}</Empty>
             </Card>
           )}
         </section>
-        <section className="flex min-w-0 flex-col gap-3" aria-label="Как звучит хороший ответ">
-          <h2 className="text-base font-semibold">Как звучит хороший ответ</h2>
+        <section className="flex min-w-0 flex-col gap-3" aria-label={t('Как звучит хороший ответ')}>
+          <h2 className="text-base font-semibold">{t('Как звучит хороший ответ')}</h2>
           {good.length ? (
             good.map(g => (
               <article key={`${g.dialogId}/${g.lineNo}`} className={ARTICLE}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[13px]">
-                    <a href={href('d', g.dialogId)}>{titleOf(dlg(g.dialogId))}</a>, реплика {g.lineNo}
+                    <a href={href('d', g.dialogId)}>{titleOf(dlg(g.dialogId))}</a>{t(', реплика {n}', { n: g.lineNo })}
                   </span>
-                  <Chip tone="ok">полный балл</Chip>
+                  <Chip tone="ok">{t('полный балл')}</Chip>
                 </div>
                 <p className="border-l-2 border-ev pl-3 text-[15px]">«{g.text}»</p>
               </article>
             ))
           ) : (
             <Card className="p-4 text-muted">
-              В наборе пока нет ответа с полным баллом и цитатой оператора по критерию «{c ? c.name : ''}». Примеры появятся, когда модель даст полный балл с основанием.
+              {t('В наборе пока нет ответа с полным баллом и цитатой оператора по критерию «{name}». Примеры появятся, когда модель даст полный балл с основанием.', { name: c ? c.name : '' })}
             </Card>
           )}
         </section>
       </div>
 
       {coach && (
-        <Card id="sheet" className="flex scroll-mt-20 flex-col gap-3 p-4" aria-label="Разбор для встречи с оператором">
+        <Card id="sheet" className="flex scroll-mt-20 flex-col gap-3 p-4" aria-label={t('Разбор для встречи с оператором')}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold">Разбор для встречи с оператором</h2>
+            <h2 className="text-base font-semibold">{t('Разбор для встречи с оператором')}</h2>
             <div className="no-print flex flex-wrap gap-2">
               <Button data-act="copy" disabled={!picked.length} onClick={copy}>
                 <ClipboardCopy size={16} aria-hidden="true" />
-                Скопировать текст
+                {t('Скопировать текст')}
               </Button>
               <Button data-act="print" disabled={!picked.length} onClick={() => window.print()}>
                 <Printer size={16} aria-hidden="true" />
-                Печать
+                {t('Печать')}
               </Button>
             </div>
           </div>
@@ -165,12 +169,12 @@ export function Coaching() {
                   <b>
                     {titleOf(dlg(x.dialogId))}, {x.c.name}.
                   </b>{' '}
-                  {x.why} Лучше: «{x.better}»
+                  {x.why} {t('Лучше: «{text}»', { text: x.better })}
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="text-muted">Отметьте «Добавить в разбор» у моментов выше, и они соберутся в один лист для встречи.</p>
+            <p className="text-muted">{t('Отметьте «Добавить в разбор» у моментов выше, и они соберутся в один лист для встречи.')}</p>
           )}
         </Card>
       )}

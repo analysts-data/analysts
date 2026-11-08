@@ -1,5 +1,6 @@
 // Состояние приложения: данные GET /api/state как есть, состояние интерфейса и действия, вызывающие API.
 import { createApi } from './api.js';
+import { t } from './i18n.js';
 
 export const S = {
   r: null, loading: true, error: null,
@@ -31,10 +32,10 @@ export function toast(msg) {
 async function addDataset(request) {
   try {
     const { added, skipped } = await request;
-    toast(`Набор загружен: добавлено ${added}, пропущено ${skipped}.`);
+    toast(t('Набор загружен: добавлено {added}, пропущено {skipped}.', { added, skipped }));
     await reload();
   } catch (e) {
-    toast(`Набор не загружен: ${e.message}`);
+    toast(t('Набор не загружен: {error}', { error: e.message }));
   }
 }
 export const postDataset = groupId => addDataset(api.postDataset(groupId));
@@ -46,10 +47,10 @@ export const failedDialogs = errors => [...new Set(errors.map(e => e.split(/[/:]
 
 // Итог законченного запуска одной фразой: toast, панель очереди, баннер чек-листа.
 export function runNote(run) {
-  const n = run.errors.length, head = run.status === 'cancelled' ? 'Оценка остановлена' : 'Оценка завершена';
-  if (n) return `${head} с ошибками: ${n}, в диалогах: ${failedDialogs(run.errors).length}. Эти ответы ждут оценки, итог считается без них.`;
-  if (!run.total) return 'Оценивать нечего: все ответы по текущему чек-листу уже есть.';
-  return `${head}: оценено ${run.done} из ${run.total} ответов по критериям.`;
+  const n = run.errors.length, head = run.status === 'cancelled' ? t('Оценка остановлена') : t('Оценка завершена');
+  if (n) return t('{head} с ошибками: {n}, в диалогах: {dialogs}. Эти ответы ждут оценки, итог считается без них.', { head, n, dialogs: failedDialogs(run.errors).length });
+  if (!run.total) return t('Оценивать нечего: все ответы по текущему чек-листу уже есть.');
+  return t('{head}: оценено {done} из {total} ответов по критериям.', { head, done: run.done, total: run.total });
 }
 
 // localStorage может быть недоступен (приватный режим, песочница iframe): каждое обращение — в try/catch.
@@ -64,11 +65,11 @@ export async function startRun({ dialogs, criteria }) {
     const { run_id } = await api.postRun({ dialogs, criteria });
     rememberRun(run_id);
     S.run = { id: run_id, done: 0, total: 0, cost: 0, calls: 0, eta_s: null, errors: [], status: 'running' };
-    toast('Оценка запущена.');
+    toast(t('Оценка запущена.'));
     render();
     setTimeout(poll, 400); // первый опрос не сразу: «Оценка запущена» успевает показаться до итога короткого прогона
   } catch (e) {
-    toast(`Оценка не запущена: ${e.message}`);
+    toast(t('Оценка не запущена: {error}', { error: e.message }));
   }
 }
 
@@ -80,7 +81,7 @@ async function poll() {
   } catch (e) {
     forgetRun();
     S.run = null;
-    toast(`Прогресс оценки недоступен: ${e.message}`);
+    toast(t('Прогресс оценки недоступен: {error}', { error: e.message }));
     return render();
   }
   render();
@@ -112,6 +113,6 @@ export async function cancelRun() {
   try {
     await api.cancelRun(S.run.id);
   } catch (e) {
-    toast(`Оценка не остановлена: ${e.message}`);
+    toast(t('Оценка не остановлена: {error}', { error: e.message }));
   }
 }
