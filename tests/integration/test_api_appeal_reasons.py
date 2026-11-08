@@ -62,6 +62,22 @@ def test_catalogue_is_seeded_and_editable(client: TestClient) -> None:
     assert client.get("/api/appeals/reasons").json() == mine
 
 
+def test_catalogue_save_and_coded_decision_land_in_the_audit(client: TestClient) -> None:
+    client.put(
+        "/api/appeals/reasons", json=[{"code": "script", "label": "Нарушен скрипт", "applies": "both"}]
+    )
+    client.post("/api/appeals", json=APPEAL)
+    client.post("/api/appeals/a1/decision", json=DECISION | {"reason_code": "script"})
+
+    entries = client.get("/api/audit").json()
+
+    assert [(e["action"], e["details"]) for e in entries] == [
+        ("appeal.decide", {"status": "changed", "reason_code": "script"}),
+        ("appeal.file", {"dlg": "p1-ru-003", "cid": "04"}),
+        ("reasons.save", {"codes": ["script"]}),
+    ]
+
+
 def test_catalogue_refusals_are_russian(client: TestClient) -> None:
     twice = [{"code": "x", "label": "а", "applies": "both"}] * 2
 

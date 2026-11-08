@@ -16,7 +16,6 @@ from cqa.domain.scores_export import Shape
 from cqa.http.actor import actor_from, signed
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, reasons, record_review, save_reasons, stats
-from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
 from cqa.services.checklists import (
     DiffFormat,
@@ -296,7 +295,9 @@ async def get_reasons(request: Request) -> list[ReasonCode]:
 
 @router.put("/appeals/reasons")
 async def put_reasons(body: list[ReasonCode], request: Request) -> list[ReasonCode]:
-    return save_reasons(request.app.state.store, body)
+    saved = save_reasons(request.app.state.store, body)
+    _log(request, "reasons.save", "appeal_reasons", "", {"codes": [r.code for r in saved]})
+    return saved
 
 
 @router.get("/appeals/stats")
@@ -319,7 +320,8 @@ async def post_decision(appeal_id: str, body: DecisionIn, request: Request) -> d
     actor = actor_from(request, body.reviewer)
     fields = {**body.model_dump(), "reviewer": signed(actor, body.reviewer)}
     appeal = decide(request.app.state.store, appeal_id, **fields, now=datetime.now(ASTANA))
-    _log(request, "appeal.decide", "appeal", appeal.id, {"status": appeal.status}, actor)
+    details = {"status": appeal.status} | ({"reason_code": appeal.reason_code} if appeal.reason_code else {})
+    _log(request, "appeal.decide", "appeal", appeal.id, details, actor)
     return _appeal_out(appeal)
 
 
