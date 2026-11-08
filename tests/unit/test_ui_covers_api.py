@@ -27,9 +27,24 @@ EXEMPT = {
     "/employees/{employee_id}",
     "/me",
     "/overview",
+    # UI в работе: экран «Пакеты» (пакетная обработка), спецификация — в PR «пакетная обработка»
+    "/batches",
+    "/batches/{job_id}",
+    "/batches/{job_id}/{action}",
+    # UI в работе: история оценок, возврат оценки, сравнение и принятие запусков (review-workflow-history)
+    "/dialogs/{dialog_id}/history",
+    "/results/{result_id}/restore",
+    "/runs/compare",
+    "/runs/{run_id}/adopt",
 }
 # UI в работе: оценки по сотрудникам (PR #80)
 EXEMPT |= {"/dialogs/{dialog_id}/operator", "/operators", "/operators/import", "/operators/{name:path}"}
+# UI в работе: метрики использования (PR #83, клиент — docs/telemetry.md)
+EXEMPT |= {"/telemetry", "/usage"}
+# UI в работе: статистика разговора (блок карточки «Статистика разговора», PR #93)
+EXEMPT |= {"/dialogs/{id}/talkstats", "/talkstats/norms"}
+# UI в работе: рекомендации (PR #89)
+EXEMPT |= {"/recommendations"}
 # страницы документации, не API интерфейса (src/cqa/http/docs.py)
 EXEMPT |= {"/docs", "/docs/", "/docs/search.json", "/docs/{slug}"}
 # UI в работе: темы обращений (PR #95)

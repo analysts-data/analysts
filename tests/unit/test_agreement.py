@@ -663,3 +663,51 @@ def test_gate_passes_a_drop_of_exactly_three_points() -> None:
     now = report(agree_total=0.87, per_lang={"RU": 0.92, "KZ": 0.87}, kz_gap_pts=5.0)
 
     assert gate(now, thresholds(), baseline) == []
+
+
+# --- сравнение двух запусков ----------------------------------------------------
+
+
+def test_compare_answers_counts_only_pairs_answered_in_both_runs() -> None:
+    from cqa.domain.agreement import compare_answers
+
+    a = {("d1", "04"): 20, ("d1", "01"): "yes", ("d2", "04"): 10, ("d2", "01"): "no", ("d3", "01"): "yes"}
+    b = {("d1", "04"): 20, ("d1", "01"): "no", ("d2", "04"): 0, ("d2", "01"): "no", ("d4", "01"): "yes"}
+
+    got = compare_answers(a, b, v3_checklist())
+
+    assert (got["pairs"], got["agree"]) == (4, 0.5)
+    assert got["criteria"] == [  # порядок чек-листа
+        {"cid": "01", "pairs": 2, "agree": 0.5, "mean_step_diff": None},
+        {"cid": "04", "pairs": 2, "agree": 0.5, "mean_step_diff": 1.0},  # 20→20: 0 ступеней, 10→0: 2
+    ]
+    assert got["diffs"] == [
+        {"dialog": "d1", "cid": "01", "a": "yes", "b": "no"},
+        {"dialog": "d2", "cid": "04", "a": 10, "b": 0},
+    ]
+
+
+def test_compare_answers_step_difference_ignores_na_and_flags_compare_whole_objects() -> None:
+    from cqa.domain.agreement import compare_answers
+
+    flag = {"insult": False, "paid": False, "leak": False}
+    a = {("d1", "04"): "na", ("d2", "04"): 15, ("d1", "08"): flag}
+    b = {("d1", "04"): 20, ("d2", "04"): 15, ("d1", "08"): {**flag, "leak": True}}
+
+    got = compare_answers(a, b, v3_checklist())
+
+    assert got["criteria"] == [
+        {"cid": "04", "pairs": 2, "agree": 0.5, "mean_step_diff": 0.0},
+        {"cid": "08", "pairs": 1, "agree": 0.0, "mean_step_diff": None},
+    ]
+
+
+def test_compare_answers_without_common_pairs() -> None:
+    from cqa.domain.agreement import compare_answers
+
+    assert compare_answers({("d1", "01"): "yes"}, {}, v3_checklist()) == {
+        "pairs": 0,
+        "agree": None,
+        "criteria": [],
+        "diffs": [],
+    }

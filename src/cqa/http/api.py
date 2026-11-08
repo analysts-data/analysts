@@ -1,21 +1,35 @@
 """Contract paths of design/contract.md except /audio and /player. Handlers are async: one SQLite
 connection, used only from the event loop thread (review-workflow design, decision 17)."""
 
+import json
 import time
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+)
 
 from cqa.compose import build_classifier, build_evaluator, check_provider
+from cqa.domain.analytics import Filters
 from cqa.domain.models import Answer, Appeal, Checklist, Product
 from cqa.domain.review import ASTANA
 from cqa.domain.scores_export import Shape
+from cqa.domain.usage import TOKEN, Event
 from cqa.http.actor import actor_from, signed
 from cqa.services import reports
+from cqa.services.analytics import analytics
 from cqa.services.answers import set_answer
 from cqa.services.appeals import decide, file_appeal, record_review
 from cqa.services.audit import Actor, AuditFormat, audit_log, record
@@ -30,22 +44,34 @@ from cqa.services.checklists import (
 from cqa.services.datasets import load_group, load_upload
 from cqa.services.dialogs import import_operators, paste_text, save_owners, set_operator, set_reviewed
 from cqa.services.employees import Role, import_csv, overview, put_employee
-from cqa.services.errors import Unavailable
-from cqa.services.llm_config import Apply, configure, delete_provider, provider, put_provider, view
+from cqa.services.errors import Invalid, Unavailable
+from cqa.services.history import adopt, history, restore
+from cqa.services.llm_config import (
+    Apply,
+    configure,
+    delete_provider,
+    provider,
+    put_provider,
+    run_settings,
+    view,
+)
 from cqa.services.ports import DialogSource
 from cqa.services.products import save_products, set_manual, taxonomy
-from cqa.services.runs import Runner
+from cqa.services.runs import ApplyMode, Runner, compare_runs, list_runs
 from cqa.services.state import (
+    Audience,
     ReportFormat,
     build_state,
     mode_from_settings,
     operator_page,
     operator_rows,
     product_stats_of,
+    recommendations,
     report,
     scores_csv,
 )
 from cqa.services.sync import Syncer
+from cqa.services.telemetry import UsageFormat, store_events, usage
 from cqa.settings import Settings
 
 router = APIRouter(prefix="/api")
@@ -107,8 +133,26 @@ class ProductIn(BaseModel):
     reason: str = ""
 
 
+class OverrideIn(BaseModel):
+    """Перепроверка другой моделью: поля поверх текущего режима, неуказанное — как в режиме."""
+
+    model_config = ConfigDict(extra="forbid")
+    evaluator: Literal["llm", "jev"] | None = None
+    llm_provider: str | None = None
+    verifier: str | None = None  # "jev", код провайдера или null — без второго мнения
+
+
 class RunIn(BaseModel):
     dialogs: list[str] | None = None  # порядок очереди: диалоги для демо первыми
+    criteria: list[str] | None = None
+    force: bool = False  # повторная проверка: заново и пары с ответом, кроме ручных и с апелляцией
+    confirm: bool = False  # повторная проверка без списка dialogs больше CONFIRM_OVER диалогов
+    apply: ApplyMode = "replace"  # compare — ответы теневые до adopt или restore
+    override: OverrideIn | None = None
+
+
+class AdoptIn(BaseModel):
+    dialogs: list[str] | None = None
     criteria: list[str] | None = None
 
 
@@ -165,6 +209,37 @@ async def get_report(
     body = report(store, fmt, lang=lang, ch=ch, now=datetime.now(ASTANA), operator=operator)
     _log(request, "export", "report", fmt, {"lang": lang, "ch": ch, "operator": operator})
     return _file(body, fmt, "report")
+
+
+@router.get("/recommendations")
+async def get_recommendations(
+    request: Request,
+    audience: Annotated[Audience, Query(alias="for")],
+    operator: Annotated[str | None, Query(alias="id")] = None,
+) -> dict[str, Any]:
+    """Рекомендации оператору (id — имя), проверяющему, руководителю и автору чек-листа; без модели."""
+    return recommendations(request.app.state.store, audience, operator)
+
+
+AnalyticsName = Literal["trend", "heatmap", "drivers", "distribution", "crosstab", "appeals", "model"]
+AnalyticsBy = Literal["day", "week", "operator", "product", "lang", "ch"]
+
+
+@router.get("/analytics/{name}")
+async def get_analytics(
+    name: AnalyticsName,
+    request: Request,
+    by: AnalyticsBy | None = None,
+    lang: str | None = None,
+    ch: Literal["chat", "call"] | None = None,
+    operator: str | None = None,
+    product: str | None = None,
+    since: date | None = None,
+    until: date | None = None,
+) -> dict[str, Any]:
+    """Расширенная аналитика (design/contract.md, «Аналитика»): n, low_n и формулы в каждом ответе."""
+    filters = Filters(lang=lang, ch=ch, operator=operator, product=product, since=since, until=until)
+    return analytics(request.app.state.store, name, filters, by, datetime.now(ASTANA))
 
 
 def _file(body: dict[str, Any] | str, fmt: str, name: str) -> Response:
@@ -373,6 +448,18 @@ async def put_answer(dialog_id: str, cid: str, body: AnswerIn, request: Request)
     return result.model_dump(mode="json", exclude_none=True)
 
 
+@router.get("/dialogs/{dialog_id}/history")
+async def get_history(dialog_id: str, request: Request) -> dict[str, list[dict[str, Any]]]:
+    return history(request.app.state.store, dialog_id)
+
+
+@router.post("/results/{result_id}/restore")
+async def post_restore(result_id: int, request: Request) -> dict[str, Any]:
+    result = restore(request.app.state.store, result_id)
+    _log(request, "result.restore", "result", result_id, {"model": result.model})
+    return result.model_dump(mode="json", exclude_none=True)
+
+
 def _apply(request: Request) -> Apply:
     """Пересобрать оценщик и плашку `mode` без перезапуска; во время запуска — 409."""
     state = request.app.state
@@ -473,12 +560,109 @@ async def post_upload(request: Request) -> dict[str, int]:
     return result
 
 
+MAX_PROPS = 2048
+
+
+class TelemetryIn(BaseModel):
+    event: Event
+    at: AwareDatetime | None = None  # без at — время приёма
+    page: Annotated[str, StringConstraints(pattern=TOKEN)]
+    props: dict[str, Any] = {}
+
+    @field_validator("props")
+    @classmethod
+    def _small(cls, props: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(props, ensure_ascii=False).encode()) > MAX_PROPS:
+            raise ValueError(f"props больше {MAX_PROPS} байт")
+        return props
+
+
+TELEMETRY = TypeAdapter(Annotated[list[TelemetryIn], Field(max_length=200)])
+
+
+@router.post("/telemetry", status_code=204, summary="Метрики использования: пакет событий интерфейса")
+async def post_telemetry(
+    request: Request,
+    role: Annotated[str | None, Query(pattern=TOKEN)] = None,
+) -> Response:
+    """Пакет событий интерфейса. Тело читается как JSON при любом Content-Type: sendBeacon шлёт text/plain.
+
+    Сотрудник — `actor_from` (активный по `X-CQA-User`, его id и роль), без входа — роль из запроса."""
+    state = request.app.state
+    if state.settings.telemetry == "off":
+        return Response(status_code=204)
+    if not state.telemetry_limit.take(request.client.host if request.client else "-"):
+        return Response(status_code=429)
+    try:
+        batch = TELEMETRY.validate_json(await request.body())
+    except ValidationError as exc:
+        raise Invalid(f"Пакет метрик не принят: {exc}") from exc
+    now = datetime.now(UTC)
+    who = actor_from(request, role or "")
+    events = [(e.at or now, e.event, e.page, e.props) for e in batch]
+    store_events(state.store, events, who.id or who.name, who.role or role)
+    return Response(status_code=204)
+
+
+@router.get("/usage", summary="Сводка использования системы: json или csv")
+async def get_usage(
+    request: Request,
+    since: date | None = None,
+    role: Annotated[str | None, Query(max_length=64)] = None,
+    fmt: Annotated[UsageFormat, Query(alias="format")] = "json",
+) -> Response:
+    """Как сотрудники пользуются системой: json — числа, csv — длинная таблица для Excel."""
+    body = usage(request.app.state.store, fmt, since=since, role=role)
+    if isinstance(body, dict):
+        return JSONResponse(body)
+    return Response(
+        body, media_type=MEDIA["csv"], headers={"Content-Disposition": 'attachment; filename="usage.csv"'}
+    )
+
+
 @router.post("/runs", summary="Запустить оценку")
 async def post_run(body: RunIn, request: Request) -> dict[str, int]:
-    run_id = _runner(request).start(body.dialogs, body.criteria)
+    state = request.app.state
+    runner = _runner(request)
+    evaluator, model, override = None, state.mode.model, None
+    if body.override is not None:  # оценщик только на этот запуск, сохранённый режим не меняется
+        override = body.override.model_dump(exclude_unset=True)
+        settings = run_settings(state.settings, override)
+        evaluator, model = build_evaluator(settings, state.prosody), mode_from_settings(settings).model
+    run_id = runner.start(
+        body.dialogs,
+        body.criteria,
+        force=body.force,
+        confirm=body.confirm,
+        model=model,
+        apply=body.apply,
+        override=override,
+        evaluator=evaluator,
+    )
     picked = None if body.dialogs is None else len(body.dialogs)
-    _log(request, "run.start", "run", run_id, {"dialogs": picked, "criteria": body.criteria})
+    details = {"dialogs": picked, "criteria": body.criteria, "force": body.force, "apply": body.apply}
+    recheck = body.force or body.apply == "compare" or override is not None
+    _log(request, "run.recheck" if recheck else "run.start", "run", run_id, {**details, "override": override})
     return {"run_id": run_id}
+
+
+@router.post("/runs/{run_id}/adopt")
+async def post_adopt(run_id: int, request: Request, body: AdoptIn | None = None) -> dict[str, int]:
+    """Теневые ответы запуска compare — текущими (все или часть по dialogs и criteria)."""
+    body = body or AdoptIn()
+    result = adopt(request.app.state.store, run_id, body.dialogs, body.criteria)
+    _log(request, "run.adopt", "run", run_id, {**body.model_dump(), **result})
+    return result
+
+
+@router.get("/runs")
+async def get_runs(request: Request) -> list[dict[str, Any]]:
+    return list_runs(request.app.state.store)
+
+
+@router.get("/runs/compare")  # до /runs/{run_id}: иначе «compare» разбирается как id
+async def get_runs_compare(a: int, b: int, request: Request) -> dict[str, Any]:
+    return compare_runs(request.app.state.store, a, b)
 
 
 @router.get("/runs/{run_id}", summary="Прогресс запуска оценки")

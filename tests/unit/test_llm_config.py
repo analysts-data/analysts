@@ -7,7 +7,15 @@ from pydantic import SecretStr
 
 from cqa.adapters.store import Store, connect
 from cqa.services.errors import Conflict, Invalid, NotFound
-from cqa.services.llm_config import OPENROUTER, configure, delete_provider, effective, put_provider, view
+from cqa.services.llm_config import (
+    OPENROUTER,
+    configure,
+    delete_provider,
+    effective,
+    put_provider,
+    run_settings,
+    view,
+)
 from cqa.settings import Settings
 
 BODY: dict[str, Any] = {
@@ -267,3 +275,32 @@ def test_openrouter_jev_as_main_model_shows_external_data_in_the_mode(store: Sto
     result = configure(store, settings, {**BODY, "llm_provider": OPENROUTER}, lambda s: None)
     mode = mode_from_settings(result)
     assert (mode.where, mode.model, result.llm_profile) == ("external", "typesafe/jev-router", "plain")
+
+
+# --- настройки одного запуска (перепроверка другой моделью) ---
+
+
+def test_run_override_swaps_the_main_model_and_verifier_for_one_run(store: Store) -> None:
+    settings = _with_ds(store)
+    got = run_settings(settings, {"llm_provider": "ds", "verifier": None})
+    assert (got.llm_provider, got.llm_model, got.verifier) == ("ds", "ds-pro", None)
+    assert settings.llm_provider == "env"  # saved mode stays as it was
+    assert run_settings(settings, {}) == settings
+
+
+def test_run_override_with_jev_only_needs_a_jev_key_outside_replay() -> None:
+    with pytest.raises(Invalid, match="^Перепроверка: Нет ключа Jev"):
+        run_settings(_live(), {"evaluator": "jev"})
+    assert run_settings(_live(jev_api_key=SecretStr("jk")), {"evaluator": "jev"}).evaluator == "jev"
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"llm_provider": "nope"}, "^override.llm_provider: нет провайдера nope$"),
+        ({"verifier": "nope"}, "^override.verifier: нет провайдера nope$"),
+    ],
+)
+def test_run_override_names_the_bad_field(override: dict[str, Any], message: str) -> None:
+    with pytest.raises(Invalid, match=message):
+        run_settings(_live(), override)

@@ -1,14 +1,18 @@
-"""Запуски оценки: план пар без текущего результата, диалоги по порядку, отмена и продолжение."""
+"""Запуски оценки: план пар без текущего результата или повторная проверка, диалоги по порядку,
+отмена и продолжение, список запусков и сравнение двух."""
 
 import asyncio
 import time
-from collections.abc import Callable, Sequence
-from typing import Any, Protocol
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Any, Literal, Protocol
 
-from cqa.adapters.store import RunRow, Store
+from cqa.adapters.store import DialogStatus, RunRow, Store
+from cqa.domain.agreement import compare_answers
 from cqa.domain.models import Checklist, Cost, Criterion, Dialog, Product, ProductTag, RiskKind, RiskMark
 from cqa.domain.review import fingerprints
-from cqa.services.errors import Conflict, NotFound
+from cqa.services.answers import MANUAL
+from cqa.services.errors import Conflict, Invalid, NotFound
 from cqa.services.ports import Evaluator
 from cqa.services.products import classify_plan
 from cqa.services.state import current_results
@@ -22,6 +26,10 @@ class Classifier(Protocol):  # services.products.Classifier
     ) -> tuple[ProductTag, list[RiskMark]]: ...
 
 
+def _no_products() -> dict[str, Any]:
+    return {"done": 0, "total": 0, "errors": 0, "cost": 0.0}
+
+
 def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
     if done >= total:
         return 0
@@ -30,32 +38,97 @@ def eta_seconds(done: int, total: int, elapsed: float) -> int | None:
     return round(elapsed / done * (total - done))
 
 
-def plan_run(
-    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
-) -> list[tuple[Dialog, list[Criterion]]]:
-    """Пары без результата текущего смысла в порядке `dialogs` (None — порядок добавления).
+Plan = list[tuple[Dialog, list[Criterion]]]
+ApplyMode = Literal["replace", "compare"]
+CONFIRM_OVER = 5  # повторная проверка без списка диалогов больше стольких диалогов ждёт confirm: true
 
-    Неизвестные id пропускаются: их отсеивает `Runner.start`.
-    """
+
+def _select(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> tuple[list[Dialog], list[Criterion]]:
+    """Диалоги в порядке `dialogs` (None — порядок добавления) и критерии; неизвестные id пропускаются."""
     chosen = [c for c in checklist.criteria if criteria is None or c.id in criteria]
-    items = _selected(store, dialogs)
-    current = current_results(store, checklist, items)
+    if dialogs is None:
+        return store.list_dialogs(), chosen
+    return [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None], chosen
+
+
+def _plan(items: list[Dialog], chosen: list[Criterion], skip: Callable[[Dialog, Criterion], bool]) -> Plan:
     plan = []
     for dialog in items:
-        todo = [c for c in chosen if c.id not in current.get(dialog.id, {})]
+        todo = [c for c in chosen if not skip(dialog, c)]
         if todo:
             plan.append((dialog, todo))
     return plan
 
 
-def _selected(store: Store, dialogs: list[str] | None) -> list[Dialog]:
-    if dialogs is None:
-        return store.list_dialogs()
-    return [d for d in map(store.get_dialog, dict.fromkeys(dialogs)) if d is not None]
+def plan_run(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> Plan:
+    """Пары без результата текущего смысла. Неизвестные id пропускаются: их отсеивает `Runner.start`."""
+    items, chosen = _select(store, checklist, dialogs, criteria)
+    current = current_results(store, checklist, items)
+    return _plan(items, chosen, lambda d, c: c.id in current.get(d.id, {}))
 
 
-def _no_products() -> dict[str, Any]:
-    return {"done": 0, "total": 0, "errors": 0, "cost": 0.0}
+def plan_rerun(
+    store: Store, checklist: Checklist, dialogs: list[str] | None, criteria: list[str] | None
+) -> tuple[Plan, dict[str, int]]:
+    """Повторная проверка: все выбранные пары, кроме тех, что держит человек, — текущий ответ ручной
+    или по паре текущего смысла есть апелляция на рассмотрении или решение.
+    Второе — диалог → число таких пар (только диалоги, где они есть)."""
+    items, chosen = _select(store, checklist, dialogs, criteria)
+    held = held_by_human(store, checklist, items)
+    held_by = {d.id: n for d in items if (n := sum(held(d, c.id) for c in chosen))}
+    return _plan(items, chosen, lambda d, c: held(d, c.id)), held_by
+
+
+def held_by_human(store: Store, checklist: Checklist, dialogs: list[Dialog]) -> Callable[[Dialog, str], bool]:
+    """Пару держит человек: текущий ответ ручной или по паре текущего смысла есть апелляция на
+    рассмотрении или решение. Такую пару модель не перезаписывает. `cid` — из текущего чек-листа."""
+    fps = fingerprints(checklist)
+    current = current_results(store, checklist, dialogs)
+    appealed = {(a.dlg, a.cid, fp) for a, fp in store.list_appeals() if a.status != "closed"}
+
+    def held(d: Dialog, cid: str) -> bool:
+        result = current.get(d.id, {}).get(cid)
+        return (result is not None and result.model == MANUAL) or (d.id, cid, fps[d.ch][cid]) in appealed
+
+    return held
+
+
+def list_runs(store: Store) -> list[dict[str, Any]]:
+    """`GET /api/runs`: последние запуски, новые первыми."""
+    return [
+        {
+            "id": r.id,
+            "created": datetime.fromtimestamp(r.started, UTC).isoformat(),
+            "status": r.status,
+            "model": r.model,
+            "checklist_version": r.checklist_version,
+            "total": r.total,
+            "done": r.done,
+            "cost": r.cost,
+            "errors_count": len(r.errors),
+            "force": r.force,
+            "skipped": r.skipped,
+            "apply": r.apply,
+            "override": r.override,
+        }
+        for r in store.list_runs()
+    ]
+
+
+def compare_runs(store: Store, a: int, b: int) -> dict[str, Any]:
+    """`GET /api/runs/compare`: пары, отвеченные в обоих запусках; у пары берётся последняя строка запуска."""
+    answers = []
+    for run_id in (a, b):
+        if store.get_run(run_id) is None:
+            raise NotFound(f"Запуск {run_id} не найден")
+        answers.append({(r.dialog_id, r.cid): r.result.a for r in store.result_rows(run_id=run_id)})
+    checklist = store.current_checklist()
+    assert checklist is not None, "create_app сеет чек-лист на пустой базе"
+    return {"a": a, "b": b, **compare_answers(answers[0], answers[1], checklist)}
 
 
 class Runner:
@@ -83,15 +156,33 @@ class Runner:
         self._tasks: set[asyncio.Task[None]] = set()  # ссылка держит задачу от сборщика мусора
 
     def use(self, evaluator: Evaluator, classifier: Classifier | None = None) -> None:
-        """Новый оценщик (и классификатор) для следующих запусков; во время запуска — Conflict."""
+        """Новый оценщик (и классификатор тем) для следующих запусков; во время запуска — Conflict."""
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт: режим можно сменить после него")
         self._evaluator = evaluator
         if classifier is not None:
             self._classifier = classifier
 
-    def start(self, dialogs: list[str] | None, criteria: list[str] | None) -> int:
-        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий."""
+    def start(
+        self,
+        dialogs: list[str] | None,
+        criteria: list[str] | None,
+        *,
+        force: bool = False,
+        confirm: bool = False,
+        model: str | None = None,
+        apply: ApplyMode = "replace",
+        override: Mapping[str, Any] | None = None,
+        evaluator: Evaluator | None = None,
+    ) -> int:
+        """Проверить аргументы, записать запуск и оценивать план в фоне. Вызывать внутри цикла событий.
+
+        `force` — повторная проверка (`plan_rerun`); без списка `dialogs` больше `CONFIRM_OVER` диалогов
+        нужен `confirm`. `model` — подпись модели в списке запусков. Перепроверка другой моделью:
+        `evaluator` только на этот запуск, `override` — его настройки для истории; `apply: "compare"` —
+        ответы теневые, текущими их делает `adopt` или `restore`. `override` и `compare` — всегда `force`.
+        """
+        force = force or apply == "compare" or override is not None
         if self._active is not None:
             raise Conflict(f"Запуск {self._active} ещё идёт")
         if dialogs is not None:
@@ -105,14 +196,40 @@ class Runner:
             unknown = [i for i in dict.fromkeys(criteria) if i not in known]
             if unknown:
                 raise NotFound(f"Критериев нет в чек-листе v{checklist.version}: {', '.join(unknown)}")
-        plan = plan_run(self._store, checklist, dialogs, criteria)
+        plan, held = (
+            plan_rerun(self._store, checklist, dialogs, criteria)
+            if force
+            else (plan_run(self._store, checklist, dialogs, criteria), {})
+        )
+        if force and dialogs is None and not confirm and len(plan) > CONFIRM_OVER:
+            raise Invalid(f"Подтвердите перезапуск {len(plan)} диалогов")
         products = self._store.products() or []
         todo = (
-            classify_plan(self._store, products, _selected(self._store, dialogs), self._classifier.risks)
+            classify_plan(
+                self._store,
+                products,
+                _select(self._store, checklist, dialogs, None)[0],
+                self._classifier.risks,
+            )
             if self._classifier and products
             else []
         )
-        run_id = self._store.add_run(sum(len(cs) for _, cs in plan), self._clock())
+        run_id = self._store.add_run(
+            sum(len(cs) for _, cs in plan),
+            self._clock(),
+            model=model,
+            checklist_version=checklist.version,
+            force=force,
+            skipped=sum(held.values()),
+            apply=apply,
+            override=override,
+        )
+        planned = {d.id for d, _ in plan}
+        rows: list[tuple[str, DialogStatus, int, int]] = [
+            (d.id, "queued", len(cs), held.get(d.id, 0)) for d, cs in plan
+        ]
+        rows += [(i, "skipped", 0, n) for i, n in held.items() if i not in planned]
+        self._store.queue_dialogs(run_id, rows)
         self._products[run_id] = {**_no_products(), "total": len(todo)}
         if not plan and not todo:
             self._store.finish_run(run_id, self._clock(), "done")
@@ -122,7 +239,17 @@ class Runner:
         self._active = run_id
         self._failed = 0
         self._cancel = asyncio.Event()
-        task = asyncio.create_task(self.execute(run_id, checklist, plan, todo, products))
+        task = asyncio.create_task(
+            self.execute(
+                run_id,
+                checklist,
+                plan,
+                evaluator=evaluator,
+                shadow=apply == "compare",
+                todo=todo,
+                products=products,
+            )
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return run_id
@@ -143,6 +270,8 @@ class Runner:
             "eta_s": eta,
             "errors": row.errors,
             "status": row.status,
+            "skipped": row.skipped,
+            "dialogs": self._store.run_dialogs(run_id),
             "products": dict(self._products.get(run_id) or _no_products()),
         }
 
@@ -167,12 +296,16 @@ class Runner:
         self,
         run_id: int,
         checklist: Checklist,
-        plan: list[tuple[Dialog, list[Criterion]]],
+        plan: Plan,
+        *,
+        evaluator: Evaluator | None = None,
+        shadow: bool = False,
         todo: Sequence[tuple[Dialog, str]] = (),
         products: Sequence[Product] = (),
     ) -> None:
         """`plan` — пары для оценки, `todo` — диалоги для темы с ключом кэша: одна задача на диалог."""
         fps = fingerprints(checklist)
+        use = evaluator or self._evaluator
         keys = {d.id: k for d, k in todo}
         jobs = {d.id: (d, cs) for d, cs in plan}  # сначала порядок плана, затем диалоги только для темы
         for d, _ in todo:
@@ -183,7 +316,11 @@ class Runner:
             for dialog, criteria in queue:
                 if self._cancel.is_set():
                     return
-                steps = [self._evaluate(run_id, checklist, fps, dialog, criteria)] if criteria else []
+                steps = (
+                    [self._evaluate(run_id, checklist, fps, dialog, criteria, use, shadow)]
+                    if criteria
+                    else []
+                )
                 if dialog.id in keys:
                     steps.append(self._classify(run_id, dialog, keys[dialog.id], products))
                 await asyncio.gather(*steps)
@@ -198,7 +335,7 @@ class Runner:
             self._active = None
 
     async def _classify(self, run_id: int, dialog: Dialog, key: str, products: Sequence[Product]) -> None:
-        """Тема диалога; сбой — статус error с текстом у темы, оценку и `errors` запуска не трогает."""
+        """Тема и маркеры диалога; сбой — статус error с текстом, оценку и `errors` запуска не трогает."""
         assert self._classifier is not None, "todo строится только с классификатором"
         risks: list[RiskMark] | None
         try:
@@ -218,24 +355,35 @@ class Runner:
         fps: dict[str, dict[str, str]],  # канал → id критерия → отпечаток
         dialog: Dialog,
         criteria: list[Criterion],
+        evaluator: Evaluator,
+        shadow: bool,
     ) -> None:
         started = self._clock()
+        self._store.set_dialog_status(run_id, dialog.id, "evaluating")
         try:
-            out = await self._evaluator.evaluate(dialog, checklist, criteria)
+            out = await evaluator.evaluate(dialog, checklist, criteria)
         except Exception as exc:  # сбой одного диалога не останавливает запуск
             self._failed += len(criteria)
-            self._store.record_progress(
-                run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {str(exc) or type(exc).__name__}"]
-            )
+            error = str(exc) or type(exc).__name__
+            self._store.set_dialog_status(run_id, dialog.id, "error", error=error)
+            self._store.record_progress(run_id, len(criteria), 0.0, 0, [f"{dialog.id}: {error}"])
             return
         ms = round((self._clock() - started) * 1000)
         for e in out.results:
-            self._store.add_result(dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result)
+            self._store.add_result(
+                dialog.id, e.cid, checklist.version, fps[dialog.ch][e.cid], e.result, run_id, shadow
+            )
         calls = sum(e.result.calls for e in out.results)
         usd = sum(e.result.cost for e in out.results) + out.verifier_usd
         self._store.set_cost(dialog.id, Cost(calls=calls, verifier_calls=out.verifier_calls, usd=usd, ms=ms))
         answered = {e.cid for e in out.results}
-        missing = [
-            f"{dialog.id}/{c.id}: нет ответа модели, ждёт оценки" for c in criteria if c.id not in answered
-        ]
-        self._store.record_progress(run_id, len(criteria), usd, calls, missing)
+        missing = [c.id for c in criteria if c.id not in answered]
+        note = f"нет ответа модели, ждёт оценки: {', '.join(missing)}" if missing else None
+        self._store.set_dialog_status(run_id, dialog.id, "done", done=len(answered), error=note)
+        self._store.record_progress(
+            run_id,
+            len(criteria),
+            usd,
+            calls,
+            [f"{dialog.id}/{cid}: нет ответа модели, ждёт оценки" for cid in missing],
+        )
