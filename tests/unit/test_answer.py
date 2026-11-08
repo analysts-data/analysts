@@ -180,6 +180,12 @@ def test_full_marks_drop_tag_and_better() -> None:
     assert res.a == "yes" and res.tag is None and res.better is None and res.seg is None
 
 
+def test_range_of_one_line_reads_as_that_line() -> None:
+    answer = raw("no", checked_range=[10, 10])
+    res = to_result(answer, crit(BOOL), ev_fail=False, model="m", calls=1, cost=0, ms=0)
+    assert res.seg == "реплика 10"
+
+
 def test_failed_evidence_keeps_answer_without_turns_quote_or_range() -> None:
     answer = raw("no", turn_ids=[4], quote="Добрый вечер", checked_range=[3, 5], tag="Нет приветствия")
     res = to_result(answer, crit(BOOL), ev_fail=True, model="m", calls=2, cost=0, ms=0)
